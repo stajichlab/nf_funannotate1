@@ -1,0 +1,16 @@
+# Nextflow run artifacts
+work/
+work.*/
+.nextflow/
+.nextflow.log*
+logs/
+# pipeline outputs
+genome_annotation/
+genome_annotation_training/
+input_clean_genomes/
+rnaseq_reads/
+rnaseq_data/
+results/
+# python
+__pycache__/
+*.pyc
