@@ -20,3 +20,5 @@ nextflow/tests/data/*.rnaseq_sra.csv
 # python
 __pycache__/
 *.pyc
+# built Rust helper binaries (scripts/build_tools.sh)
+nextflow/tools/

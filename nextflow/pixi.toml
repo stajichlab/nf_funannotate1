@@ -1,0 +1,60 @@
+# pixi.toml — project-local tool environments for the `pixi` provisioning profile.
+#
+# conf/provision_pixi.config activates one of these environments per process label
+# via `pixi shell-hook --environment <name>`. Build/lock with:
+#   pixi install            # from this directory
+#
+# NOTE: funannotate and signalp are best-effort. funannotate is heavy and pulls
+# many pins; signalp6-gpu is licensed and NOT on conda — prefer the `module` or
+# `singularity` profile for those until validated here.
+
+[workspace]
+name      = "nf_euk_genome_annotate"
+channels  = ["conda-forge", "bioconda"]
+platforms = ["linux-64"]
+
+# ── per-label features ────────────────────────────────────────────────────────
+[feature.genome_clean.dependencies]
+taxonkit = "*"
+aaftf    = "*"
+pigz     = "*"
+
+[feature.edirect.dependencies]
+entrez-direct = "*"
+
+[feature.sra.dependencies]
+sra-tools           = "*"
+parallel-fastq-dump = "*"
+fastp               = "*"
+bbmap               = "*"
+seqkit              = "*"
+aria2               = "*"
+pigz                = "*"
+
+[feature.antismash.dependencies]
+antismash = "*"
+
+[feature.interproscan.dependencies]
+# InterProScan is large and often run from a site install; this is best-effort.
+interproscan = "*"
+
+[feature.funannotate.dependencies]
+# Heavy — pins many tools. Best-effort; module/singularity preferred.
+funannotate = "*"
+fastp       = "*"
+
+[feature.signalp.dependencies]
+# signalp6-gpu is licensed and not redistributable via conda.
+# Placeholder feature so the env name resolves; provide signalp yourself or use
+# the module/singularity profile. pigz keeps the env non-empty.
+pigz = "*"
+
+# ── environments (one per process label) ──────────────────────────────────────
+[environments]
+genome_clean = ["genome_clean"]
+edirect      = ["edirect"]
+sra          = ["sra"]
+antismash    = ["antismash"]
+interproscan = ["interproscan"]
+funannotate  = ["funannotate"]
+signalp      = ["signalp"]
