@@ -22,3 +22,5 @@ __pycache__/
 *.pyc
 # built Rust helper binaries (scripts/build_tools.sh)
 nextflow/tools/
+# run-time data assets (augustus config copy, protein evidence, sbt)
+/lib/

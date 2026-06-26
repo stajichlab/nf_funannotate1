@@ -36,7 +36,18 @@ params.repeat_taxon        = 'fungi'                     // EarlGrey -r RepeatMa
 params.earlgrey_version    = '7.2.6'
 params.repeatmasker_version = '4.1.8'
 params.outdir              = "${launchDir}/results/repeatlibrary"
-params.masked_dir          = "${launchDir}/input_clean_genomes"   // where <asmid>.masked.fasta land
+params.masked_dir          = "${launchDir}/input_clean_genomes"   // where <asmid>.masked.fasta.gz land
+params.earlgrey_workdir    = "${launchDir}/work/earlgrey_persist"  // persistent per-species EarlGrey output (enables resume)
+
+// Clean genomes in input_clean_genomes are stored gzip-compressed (.fa.gz) to save space
+// (see funannotate.nf GENOME_CLEAN). Given the uncompressed base path, return the existing
+// file, preferring the compressed form, else the plain path (so .exists() still reports
+// missing when neither is present). Mirrors funannotate.nf's genomeFile().
+def genomeFile(String base) {
+    def gz = file("${base}.gz", glob: false)
+    if (gz.exists() && gz.size() > 0) return gz
+    return file(base, glob: false)
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // PROCESSES
@@ -99,56 +110,90 @@ process EARLGREY_BUILD_LIB {
 
     output:
         tuple val(species), val(rep_asmid), path("${rep_asmid}.families.fa"), emit: lib
-        tuple val(rep_asmid), path("${rep_asmid}.masked.fasta"), emit: masked
+        tuple val(rep_asmid), path("${rep_asmid}.masked.fasta.gz"), emit: masked
         path("*_RepeatLandscape"), emit: landscape, optional: true
         path("*_summaryFiles"),    emit: summary,   optional: true
 
     script:
     def sp_safe = species.replaceAll(/[^A-Za-z0-9._-]+/, '_')
+    // EarlGrey -M is a memory cap in MB. Derive it from the SLURM allocation,
+    // keeping ~10% headroom so the cap sits just under task.memory and EarlGrey
+    // throttles its heavy steps instead of being OOM-killed mid-run. Never 0
+    // (unlimited); falls back to a conservative 3200 MB if no memory was allocated.
+    def mem_mb = task.memory ? (task.memory.toMega() * 0.9) as long : 3200
+    // Persistent per-species EarlGrey output dir, OUTSIDE the ephemeral task work
+    // dir. EarlGrey checkpoints completed steps via .earlGrey_stamps/*.sha256, so
+    // pointing -o here lets a re-run (after a crash/walltime kill) resume from the
+    // last completed step instead of restarting the multi-hour de-novo discovery.
+    // One representative per species => no concurrent writers to this dir.
+    def egdir = "${params.earlgrey_workdir}/${sp_safe}"
     """
     source /etc/profile.d/modules.sh 2>/dev/null || true
     module load earlgrey/${params.earlgrey_version}
 
-    # rm -rf earlgrey_out
-    mkdir -p earlgrey_out
+    # Inflate a gzipped clean genome to a local uncompressed copy; EarlGrey cannot read
+    # a gzipped FASTA via -g. A plain (uncompressed) genome passes through unchanged.
+    GENOME_IN="${genome}"
+    case "${genome}" in
+        *.gz) echo "[INFO] Inflating compressed genome ${genome}"; gzip -dc "${genome}" > genome_input.fa; GENOME_IN="\$(pwd)/genome_input.fa" ;;
+    esac
+
+    # Do NOT remove \$egdir — its .earlGrey_stamps let EarlGrey resume in place.
+    mkdir -p ${egdir}
 
     earlGrey \\
-        -g ${genome} \\
+        -g "\$GENOME_IN" \\
         -s ${sp_safe} \\
-        -o earlgrey_out \\
+        -o ${egdir} \\
         -r ${params.repeat_taxon} \\
         -d yes \\
         -c yes \\
         -v yes \\
         -q yes \\
-	-M 3200 \\
+        -M ${mem_mb} \\
         -t ${task.cpus}
 
     # Locate EarlGrey products (paths are version-specific; glob defensively).
-    lib=\$(find earlgrey_out -name '*-families.fa' | head -n1)
-    soft=\$(find earlgrey_out -name '*.softmasked.fasta' | head -n1)
+    lib=\$(find ${egdir} -name '*-families.fa' | head -n1)
+    soft=\$(find ${egdir} -name '*.softmasked.fasta' | head -n1)
 
     if [ -z "\$lib" ] || [ -z "\$soft" ]; then
         echo "ERROR: EarlGrey outputs not found (lib=\$lib soft=\$soft)" >&2
-        find earlgrey_out -maxdepth 3 -type f >&2
+        find ${egdir} -maxdepth 3 -type f >&2
         exit 1
     fi
 
     cp "\$lib"  ${rep_asmid}.families.fa
-    cp "\$soft" ${rep_asmid}.masked.fasta
+    # Deliver the soft-masked genome gzip-compressed to save space in input_clean_genomes.
+    gzip -c "\$soft" > ${rep_asmid}.masked.fasta.gz
 
     # Preserve the RepeatLandscape and summaryFiles report directories so storeDir
     # keeps them under results/repeatlibrary/<species>/ (named with the EarlGrey
     # species prefix). Copy to the task root; emitted via the optional path globs.
-    for d in \$(find earlgrey_out -maxdepth 3 -type d \\( -name '*_RepeatLandscape' -o -name '*_summaryFiles' \\)); do
+    for d in \$(find ${egdir} -maxdepth 3 -type d \\( -name '*_RepeatLandscape' -o -name '*_summaryFiles' \\)); do
         cp -r "\$d" ./
     done
+
+    # Compress the summaryFiles contents (large soft-masked FASTA + reports) to save
+    # space in storeDir. Done after the soft-masked genome is already delivered above,
+    # so gzipping here is safe. Skip anything already compressed; use pigz if available.
+    gz=\$(command -v pigz >/dev/null 2>&1 && echo "pigz -p ${task.cpus}" || echo "gzip")
+    for d in ./*_summaryFiles; do
+        [ -d "\$d" ] || continue
+        find "\$d" -type f ! -name '*.gz' ! -name '*.bgz' ! -name '*.zip' -print0 \\
+            | xargs -0 -r \$gz -f
+    done
+
+    # Products are secured (copied to the task root for storeDir). Only reached on
+    # full success, so reclaim the bulky persistent workdir here. A crash/kill
+    # skips this line, leaving \$egdir intact for a resume on the next run.
+    rm -rf ${egdir}
     """
 
     stub:
     """
     printf '>stub_family_1#Unknown\\nACGTACGTACGT\\n' > ${rep_asmid}.families.fa
-    printf '>stub_${rep_asmid}\\nacgtACGTacgt\\n'      > ${rep_asmid}.masked.fasta
+    printf '>stub_${rep_asmid}\\nacgtACGTacgt\\n' | gzip -c > ${rep_asmid}.masked.fasta.gz
 
     sp_safe=\$(echo '${species}' | sed 's/[^A-Za-z0-9._-]\\+/_/g')
     mkdir -p "\${sp_safe}_RepeatLandscape" "\${sp_safe}_summaryFiles"
@@ -172,12 +217,19 @@ process REPEATMASK_STRAIN {
         tuple val(asmid), val(species), path(genome), path(library)
 
     output:
-        tuple val(asmid), path("${asmid}.masked.fasta")
+        tuple val(asmid), path("${asmid}.masked.fasta.gz")
 
     script:
     """
     source /etc/profile.d/modules.sh 2>/dev/null || true
     module load RepeatMasker/${params.repeatmasker_version}
+
+    # Inflate a gzipped clean genome to a local uncompressed copy; RepeatMasker cannot
+    # read a gzipped FASTA. A plain (uncompressed) genome passes through unchanged.
+    GENOME_IN="${genome}"
+    case "${genome}" in
+        *.gz) echo "[INFO] Inflating compressed genome ${genome}"; gzip -dc "${genome}" > genome_input.fa; GENOME_IN=genome_input.fa ;;
+    esac
 
     mkdir -p rmask_out
     RepeatMasker \\
@@ -185,21 +237,23 @@ process REPEATMASK_STRAIN {
         -xsmall \\
         -pa ${task.cpus} \\
         -dir rmask_out \\
-        ${genome}
+        "\$GENOME_IN"
 
-    # RepeatMasker writes <genome>.masked; if nothing was masked it may be absent,
-    # in which case the (unmasked) input is the correct soft-masked result.
-    if [ -f rmask_out/${genome}.masked ]; then
-        cp rmask_out/${genome}.masked ${asmid}.masked.fasta
+    # RepeatMasker writes <input>.masked (named after the file it was given); if nothing
+    # was masked it may be absent, in which case the (unmasked) input is the correct
+    # soft-masked result. Deliver gzip-compressed to save space in input_clean_genomes.
+    MASKED="rmask_out/\$(basename "\$GENOME_IN").masked"
+    if [ -f "\$MASKED" ]; then
+        gzip -c "\$MASKED" > ${asmid}.masked.fasta.gz
     else
         echo "WARN: no repeats masked for ${asmid}; using unmasked genome" >&2
-        cp ${genome} ${asmid}.masked.fasta
+        gzip -c "\$GENOME_IN" > ${asmid}.masked.fasta.gz
     fi
     """
 
     stub:
     """
-    printf '>stub_${asmid}\\nacgtACGTacgt\\n' > ${asmid}.masked.fasta
+    printf '>stub_${asmid}\\nacgtACGTacgt\\n' | gzip -c > ${asmid}.masked.fasta.gz
     """
 }
 
@@ -219,7 +273,7 @@ process DELIVER_MASK {
         tuple val(asmid), path(masked)
 
     output:
-        path("${asmid}.masked.fasta")
+        path("${asmid}.masked.fasta.gz")
 
     script:
     'true'
@@ -250,7 +304,7 @@ workflow {
 
     // ── EarlGrey library build on the representative ──────────────────────────
     def build_in = records.map { species, rep_asmid, _members ->
-        def g = file("${params.genome_dir}/${rep_asmid}${params.genome_suffix}", glob: false)
+        def g = genomeFile("${params.genome_dir}/${rep_asmid}${params.genome_suffix}")
         if (!g.exists() && !workflow.stubRun) {
             log.warn "Skipping ${species}: representative genome not found at ${g}"
             return null
@@ -273,7 +327,7 @@ workflow {
     def mask_in = members_ch
         .combine(lib_by_species, by: 0)     // tuple(species, asmid, library)
         .map { species, asmid, library ->
-            def g = file("${params.genome_dir}/${asmid}${params.genome_suffix}", glob: false)
+            def g = genomeFile("${params.genome_dir}/${asmid}${params.genome_suffix}")
             if (!g.exists() && !workflow.stubRun) {
                 log.warn "Skipping member ${asmid} (${species}): genome not found at ${g}"
                 return null

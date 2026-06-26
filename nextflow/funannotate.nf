@@ -114,7 +114,7 @@ process GENOME_CLEAN {
 
     // container '/rhome/jstajich/projects/AAFTF/AAFTF_v0.6.1-signed.sif'
 
-    // Nextflow skips this task when input_clean_genomes/<asmid>.fa already exists.
+    // Nextflow skips this task when input_clean_genomes/<asmid>.fa.gz already exists.
     storeDir "${launchDir}/input_clean_genomes"
 
     cpus   16
@@ -129,7 +129,7 @@ process GENOME_CLEAN {
     output:
     tuple val(out), val(asmid), val(species), val(strain), val(locustag),
           val(busco_lineage), val(header_length), val(transl_table),
-          path("${asmid}.fa"), val(taxonid), emit: genome
+          path("${asmid}.fa.gz"), val(taxonid), emit: genome
 
     script:
     """
@@ -139,44 +139,193 @@ process GENOME_CLEAN {
     fi
 
     source /etc/profile.d/modules.sh 2>/dev/null || true
-    # Ensure /dev/shm/gxdb is present on this node; register for cleanup when done.
-    source ${params.fcs_shm_script}
-    SCRATCH=\$(printf '%s' "\${SCRATCH}" | tr -d '\\n\\r')
-    TAXONKIT_DB=${taxondb}
-    phylum=\$(echo ${taxonid} | taxonkit --data-dir \$TAXONKIT_DB lineage | taxonkit --data-dir \$TAXONKIT_DB reformat -f "{p}" --output-ambiguous-result | cut -f3 | taxonkit --data-dir \$TAXONKIT_DB name2taxid | cut -f2 | uniq | head -n 1)
-    if [ -z "\$phylum" ]; then
-    	phylum=\$(echo ${taxonid} | taxonkit --data-dir \$TAXONKIT_DB lineage | taxonkit --data-dir \$TAXONKIT_DB reformat -f "{K}" --output-ambiguous-result | cut -f3 | taxonkit --data-dir \$TAXONKIT_DB name2taxid | uniq | cut -f2 | head -n 1)
-	# weird we are getting 2 lines from name2taxid when input is Fungi add the uniq/head -n 1 to ensure only one line
-    fi
-    echo "[INFO] Phylum for ${asmid} (taxonid=${taxonid}): \$phylum"
-    echo "[INFO] Decompressing and cleaning genome for ${asmid}..."
+    SCRATCH=\$(printf '%s' "\${SCRATCH:-.}" | tr -d '\\n\\r')
+
+    echo "[INFO] Decompressing genome for ${asmid}..."
     # Accept either a gzipped (NCBI_ASM .fna.gz) or plain (local GENOME column) FASTA.
     if printf '%s' "${genome_gz}" | grep -qiE '\\.gz\$'; then
         pigz -dc ${genome_gz} > \$SCRATCH/${asmid}.raw.fa
     else
         cat ${genome_gz} > \$SCRATCH/${asmid}.raw.fa
     fi
-    AAFTF fcs_gx_purge --db /dev/shm/gxdb/all \
-        -i \$SCRATCH/${asmid}.raw.fa --cpus ${task.cpus} \
-        -o \$SCRATCH/${asmid}.purge.fasta \
-        -t "\$phylum" -w \$SCRATCH/${asmid}.fcs_report
-    mkdir -p ${launchDir}/input_clean_genomes/clean
-    cat \$SCRATCH/${asmid}.purge.fasta | \
-        ${params.clean_script} --len ${params.min_contig_len} > ${asmid}.fa
-    echo "[INFO] Clean genome written: ${asmid}.fa (\$(du -sh ${asmid}.fa | cut -f1))"
-    pigz \$SCRATCH/${asmid}.purge.fasta
-    [ -f \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv ] && pigz \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv
-    mv \$SCRATCH/${asmid}.purge.fasta.gz ${launchDir}/input_clean_genomes/clean/
-    [ -f \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv.gz ] && \
-        mv \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv.gz ${launchDir}/input_clean_genomes/clean/
+
+    if [ "${params.skip_fcs}" = "true" ]; then
+        # --skip_fcs: bypass AAFTF FCS-GX contaminant purge (no 470 GB gxdb needed);
+        # just length-filter the assembly.
+        echo "[INFO] --skip_fcs set: skipping FCS-GX purge for ${asmid}"
+        ${params.clean_script} --len ${params.min_contig_len} \
+            -i \$SCRATCH/${asmid}.raw.fa -o ${asmid}.fa
+    else
+        # Ensure /dev/shm/gxdb is present on this node; register for cleanup when done.
+        source ${params.fcs_shm_script}
+        TAXONKIT_DB=${taxondb}
+        phylum=\$(echo ${taxonid} | taxonkit --data-dir \$TAXONKIT_DB lineage | taxonkit --data-dir \$TAXONKIT_DB reformat -f "{p}" --output-ambiguous-result | cut -f3 | taxonkit --data-dir \$TAXONKIT_DB name2taxid | cut -f2 | uniq | head -n 1)
+        if [ -z "\$phylum" ]; then
+            phylum=\$(echo ${taxonid} | taxonkit --data-dir \$TAXONKIT_DB lineage | taxonkit --data-dir \$TAXONKIT_DB reformat -f "{K}" --output-ambiguous-result | cut -f3 | taxonkit --data-dir \$TAXONKIT_DB name2taxid | uniq | cut -f2 | head -n 1)
+            # weird we are getting 2 lines from name2taxid when input is Fungi add the uniq/head -n 1 to ensure only one line
+        fi
+        echo "[INFO] Phylum for ${asmid} (taxonid=${taxonid}): \$phylum"
+        echo "[INFO] FCS-GX purge + cleaning genome for ${asmid}..."
+        AAFTF fcs_gx_purge --db /dev/shm/gxdb/all \
+            -i \$SCRATCH/${asmid}.raw.fa --cpus ${task.cpus} \
+            -o \$SCRATCH/${asmid}.purge.fasta \
+            -t "\$phylum" -w \$SCRATCH/${asmid}.fcs_report
+        mkdir -p ${launchDir}/input_clean_genomes/clean
+        cat \$SCRATCH/${asmid}.purge.fasta | \
+            ${params.clean_script} --len ${params.min_contig_len} > ${asmid}.fa
+        pigz \$SCRATCH/${asmid}.purge.fasta
+        [ -f \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv ] && pigz \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv
+        mv \$SCRATCH/${asmid}.purge.fasta.gz ${launchDir}/input_clean_genomes/clean/
+        [ -f \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv.gz ] && \
+            mv \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv.gz ${launchDir}/input_clean_genomes/clean/
+    fi
+    # Deliver the clean genome gzip-compressed to save space in input_clean_genomes;
+    # downstream tools inflate it on the fly (they cannot read a gzipped FASTA via -i).
+    pigz -f ${asmid}.fa
+    echo "[INFO] Clean genome written: ${asmid}.fa.gz (\$(du -sh ${asmid}.fa.gz | cut -f1))"
+    rm -f \$SCRATCH/${asmid}.raw.fa
     """
 
     stub:
     """
-    echo ">stub_${asmid}" > ${asmid}.fa
+    echo ">stub_${asmid}" | pigz -c > ${asmid}.fa.gz
     mkdir -p ${launchDir}/input_clean_genomes/clean
     touch ${launchDir}/input_clean_genomes/clean/${asmid}.purge.fasta
     touch ${launchDir}/input_clean_genomes/clean/${asmid}.purge.fcs_gx-taxonomy.tsv
+    """
+}
+
+// Batched variant of GENOME_CLEAN. Receives a LIST of per-genome tuples and stages
+// the FCS-GX database into /dev/shm ONCE (~30 min) via the shared label provisioning,
+// then cleans every genome in the batch sequentially against that in-memory DB. This
+// amortizes the expensive staging step over ~clean_batch_size genomes instead of
+// paying it per genome. (Only used when params.skip_fcs is false — with FCS skipped
+// there is no DB to stage and per-genome GENOME_CLEAN is used instead.)
+//
+// Outputs are written directly to ${launchDir}/input_clean_genomes/<asmid>.fa (the same
+// location GENOME_CLEAN's storeDir uses) plus a per-batch manifest listing every cleaned
+// assembly. Genomes whose .fa already exists are skipped, so a killed/retried batch
+// resumes without redoing finished assemblies.
+//
+// Uses the 'genome_clean' label, whose beforeScript loads miniconda3/conda + taxonkit +
+// AAFTF, so the script stays tool-agnostic (no inline module loads), matching GENOME_CLEAN.
+process GENOME_CLEAN_BATCH {
+    label 'genome_clean'
+    tag "clean_batch_${task.index}"
+
+    cpus   16
+    memory '450 GB'
+    time   '7d'
+
+    input:
+    tuple val(items), val(taxondb)
+
+    output:
+    path "clean_batch_*.manifest.tsv", emit: manifest
+
+    script:
+    def batch_tsv = items.collect { row -> "${row[1]}\t${row[8]}\t${row[9]}" }.join('\n')
+    """
+    set -uo pipefail
+    source /etc/profile.d/modules.sh 2>/dev/null || true
+
+    SCRATCH=\$(printf '%s' "\${SCRATCH:-.}" | tr -d '\\n\\r')
+    TAXONKIT_DB=${taxondb}
+    DEST=${launchDir}/input_clean_genomes
+    mkdir -p \$DEST/clean
+
+    MANIFEST=clean_batch_${task.index}.manifest.tsv
+    : > \$MANIFEST
+
+    cat > batch.tsv <<'BATCH_EOF'
+${batch_tsv}
+BATCH_EOF
+
+    n_total=\$(grep -c . batch.tsv || true)
+    echo "[INFO] batch ${task.index}: \$n_total genomes to consider"
+
+    # Stage the FCS-GX DB into /dev/shm ONCE for the whole batch (~30 min). FCS_GX_KEEP_SHM=1
+    # tells the staging script not to register its own per-shell EXIT cleanup; we remove the
+    # RAM copy ourselves when the batch finishes (or aborts) via the trap below.
+    export FCS_GX_KEEP_SHM=1
+    source ${params.fcs_shm_script}
+    trap 'rm -rf /dev/shm/gxdb 2>/dev/null || true' EXIT
+    if [ ! -f /dev/shm/gxdb/all.gxi ]; then
+        echo "[ERROR] FCS-GX DB not staged into /dev/shm/gxdb; aborting batch" >&2
+        exit 1
+    fi
+
+    i=0
+    while IFS=\$'\\t' read -r asmid gz taxonid; do
+        [ -z "\$asmid" ] && continue
+        i=\$((i+1))
+        target=\$DEST/\${asmid}.fa.gz
+        if [ -s "\$target" ]; then
+            echo "[\$i/\$n_total][SKIP] \$asmid already cleaned"
+            printf '%s\\t%s\\n' "\$asmid" "\$target" >> \$MANIFEST
+            continue
+        elif [ -s "\$DEST/\${asmid}.fa" ]; then
+            # Back-compat: a prior run may have left an uncompressed .fa.
+            echo "[\$i/\$n_total][SKIP] \$asmid already cleaned (uncompressed)"
+            printf '%s\\t%s\\n' "\$asmid" "\$DEST/\${asmid}.fa" >> \$MANIFEST
+            continue
+        fi
+        if [ ! -f "\$gz" ]; then
+            echo "[\$i/\$n_total][WARN] missing genome for \$asmid: \$gz" >&2
+            continue
+        fi
+
+        phylum=\$(echo \$taxonid | taxonkit --data-dir \$TAXONKIT_DB lineage | taxonkit --data-dir \$TAXONKIT_DB reformat -f "{p}" --output-ambiguous-result | cut -f3 | taxonkit --data-dir \$TAXONKIT_DB name2taxid | cut -f2 | uniq | head -n 1)
+        if [ -z "\$phylum" ]; then
+            phylum=\$(echo \$taxonid | taxonkit --data-dir \$TAXONKIT_DB lineage | taxonkit --data-dir \$TAXONKIT_DB reformat -f "{K}" --output-ambiguous-result | cut -f3 | taxonkit --data-dir \$TAXONKIT_DB name2taxid | uniq | cut -f2 | head -n 1)
+        fi
+        echo "[\$i/\$n_total][INFO] \$asmid taxonid=\$taxonid phylum=\$phylum"
+
+        # Accept gzipped (NCBI_ASM .fna.gz) or plain (local GENOME column) FASTA input.
+        if printf '%s' "\$gz" | grep -qiE '\\.gz\$'; then
+            pigz -dc "\$gz" > \$SCRATCH/\${asmid}.raw.fa
+        else
+            cat "\$gz" > \$SCRATCH/\${asmid}.raw.fa
+        fi
+        if AAFTF fcs_gx_purge --db /dev/shm/gxdb/all \\
+            -i \$SCRATCH/\${asmid}.raw.fa --cpus ${task.cpus} \\
+            -o \$SCRATCH/\${asmid}.purge.fasta \\
+            -t "\$phylum" -w \$SCRATCH/\${asmid}.fcs_report ; then
+            cat \$SCRATCH/\${asmid}.purge.fasta | ${params.clean_script} --len ${params.min_contig_len} > \$SCRATCH/\${asmid}.clean.fa \\
+                && pigz -c \$SCRATCH/\${asmid}.clean.fa > \${target}.tmp \\
+                && mv \${target}.tmp \$target
+            rm -f \$SCRATCH/\${asmid}.clean.fa
+            echo "[\$i/\$n_total][OK] \$asmid -> \$target (\$(du -sh \$target | cut -f1))"
+            pigz -f \$SCRATCH/\${asmid}.purge.fasta
+            [ -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv ] && pigz -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv
+            mv \$SCRATCH/\${asmid}.purge.fasta.gz \$DEST/clean/ 2>/dev/null || true
+            [ -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv.gz ] && mv \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv.gz \$DEST/clean/
+            printf '%s\\t%s\\n' "\$asmid" "\$target" >> \$MANIFEST
+        else
+            echo "[\$i/\$n_total][FAIL] fcs_gx_purge failed for \$asmid" >&2
+        fi
+        rm -f \$SCRATCH/\${asmid}.raw.fa \$SCRATCH/\${asmid}.purge.fasta
+    done < batch.tsv
+
+    echo "[INFO] batch ${task.index} complete: \$(grep -c . \$MANIFEST || echo 0) cleaned genomes in manifest"
+    """
+
+    stub:
+    def batch_tsv = items.collect { row -> "${row[1]}\t${row[8]}\t${row[9]}" }.join('\n')
+    """
+    DEST=${launchDir}/input_clean_genomes
+    mkdir -p \$DEST/clean
+    MANIFEST=clean_batch_${task.index}.manifest.tsv
+    : > \$MANIFEST
+    cat > batch.tsv <<'BATCH_EOF'
+${batch_tsv}
+BATCH_EOF
+    while IFS=\$'\\t' read -r asmid gz taxonid; do
+        [ -z "\$asmid" ] && continue
+        echo ">stub_\${asmid}" | pigz -c > \$DEST/\${asmid}.fa.gz
+        touch \$DEST/clean/\${asmid}.purge.fasta \$DEST/clean/\${asmid}.purge.fcs_gx-taxonomy.tsv
+        printf '%s\\t%s\\n' "\$asmid" "\$DEST/\${asmid}.fa.gz" >> \$MANIFEST
+    done < batch.tsv
     """
 }
 
@@ -200,17 +349,26 @@ process MASKREPEAT_TANTAN_RUN {
     output:
     tuple val(out), val(asmid), val(species), val(strain), val(locustag),
           val(busco_lineage), val(header_length), val(transl_table),
-          path("${asmid}.masked.fasta"), val(taxonid), emit: masked
+          path("${asmid}.masked.fasta.gz"), val(taxonid), emit: masked
 
     script:
     """
     source /etc/profile.d/modules.sh 2>/dev/null || true
-    funannotate mask -i ${genome_fa} -o ${asmid}.masked.fasta -m tantan --cpus ${task.cpus}
+    # Inflate a gzipped clean genome to a local uncompressed copy; funannotate cannot
+    # read a gzipped FASTA via -i. Plain (uncompressed) genomes pass through unchanged.
+    GENOME_FA="${genome_fa}"
+    case "\$GENOME_FA" in
+        *.gz) echo "[INFO] Inflating compressed genome \$GENOME_FA"; pigz -dc "\$GENOME_FA" > genome_input.fa; GENOME_IN="\$(pwd)/genome_input.fa" ;;
+        *)    GENOME_IN="\$GENOME_FA" ;;
+    esac
+    funannotate mask -i "\$GENOME_IN" -o ${asmid}.masked.fasta -m tantan --cpus ${task.cpus}
+    # Deliver the soft-masked genome gzip-compressed to save space; consumers inflate it.
+    pigz -f ${asmid}.masked.fasta
     """
 
     stub:
     """
-    echo ">stub_${asmid}_masked" > ${asmid}.masked.fasta
+    echo ">stub_${asmid}_masked" | pigz -c > ${asmid}.masked.fasta.gz
     """
 }
 
@@ -246,10 +404,12 @@ process SRA_QUERY {
         efetch -format runinfo > _runinfo.tmp
 
     # col 1=Run, col 4=spots, col 13=LibraryStrategy, col 16=LibraryLayout, col 19=Platform
-    awk -F',' 'NR>1 && \$13=="RNA-Seq" && \$16=="PAIRED" && \$1~/^[SDE]RR/ && \$4+0>=250000 {printf "%s,%s,%s\\n", \$1, \$4, \$19}' _runinfo.tmp | \\
-        sort -t',' -k2 -rn | \\
+    # Prepend a platform rank (0=Illumina, 1=BGI/other) so the top 5 prefer Illumina,
+    # then by spot count desc; BGI/other only fill remaining slots when Illumina runs out.
+    awk -F',' 'NR>1 && \$13=="RNA-Seq" && \$16=="PAIRED" && \$1~/^[SDE]RR/ && \$4+0>=250000 {rank=(\$19~/[Ii]llumina/)?0:1; printf "%d,%s,%s,%s\\n", rank, \$1, \$4, \$19}' _runinfo.tmp | \\
+        sort -t',' -k1,1n -k3,3rn | \\
         head -n 5 | \\
-        while IFS=',' read -r acc spots platform; do
+        while IFS=',' read -r rank acc spots platform; do
             printf '%s,%s,%s,%s,%s,PAIRED\\n' "${species_tag}" "${taxonid}" "\$acc" "\$spots" "\$platform"
         done >> ${species_tag}.sra_query.csv
 
@@ -342,10 +502,12 @@ process SRA_QUERY_BATCH {
         if query_species "\${species_tag}" "\${taxonid}"; then
             printf 'species_tag,taxonid,sra_accession,spots,platform,layout\\n' > "\${species_tag}.sra_query.csv"
             # col 1=Run, col 4=spots, col 13=LibraryStrategy, col 16=LibraryLayout, col 19=Platform
-            awk -F',' 'NR>1 && \$13=="RNA-Seq" && \$16=="PAIRED" && \$1~/^[SDE]RR/ && \$4+0>=250000 {printf "%s,%s,%s\\n", \$1, \$4, \$19}' "_runinfo_\${species_tag}.tmp" | \\
-                sort -t',' -k2 -rn | \\
+            # Prepend a platform rank (0=Illumina, 1=BGI/other) so the top 5 prefer Illumina,
+            # then by spot count desc; BGI/other only fill remaining slots when Illumina runs out.
+            awk -F',' 'NR>1 && \$13=="RNA-Seq" && \$16=="PAIRED" && \$1~/^[SDE]RR/ && \$4+0>=250000 {rank=(\$19~/[Ii]llumina/)?0:1; printf "%d,%s,%s,%s\\n", rank, \$1, \$4, \$19}' "_runinfo_\${species_tag}.tmp" | \\
+                sort -t',' -k1,1n -k3,3rn | \\
                 head -n 5 | \\
-                while IFS=',' read -r acc spots platform; do
+                while IFS=',' read -r rank acc spots platform; do
                     printf '%s,%s,%s,%s,%s,PAIRED\\n' "\${species_tag}" "\${taxonid}" "\$acc" "\$spots" "\$platform"
                 done >> "\${species_tag}.sra_query.csv"
             rm -f "_runinfo_\${species_tag}.tmp"
@@ -481,6 +643,8 @@ process SRA_FETCH {
     output:
     tuple val(species_tag), path("${species_tag}_norm_R1.fastq.gz"), path("${species_tag}_norm_R2.fastq.gz"),
           path("${species_tag}_norm_SE.fastq.gz"), emit: reads
+    path("${species_tag}.se_candidates.csv"), optional: true, emit: se_candidates
+    path("${species_tag}.blacklist_candidates.csv"), optional: true, emit: blacklist_candidates
 
     script:
     """
@@ -500,6 +664,30 @@ process SRA_FETCH {
     BLACKLIST="${launchDir}/rnaseq_blacklist.csv"
     RAW_ACCESSIONS=\$(awk -F',' 'NR>1 {print \$3}' ${sra_query_csv} | head -n ${params.max_rnaseq_runs})
     TAXONID=\$(awk -F',' 'NR==2 {print \$2; exit}' ${sra_query_csv})
+
+    # Helper: record an accession that yielded a non-empty _1 but no _2 (single-end data
+    # mislabeled PAIRED in SRA). Writes a row in blacklist format so it can be pasted
+    # straight into rnaseq_blacklist.csv (acc,species_tag,taxonid,SE_trinity); a trailing
+    # spots column (SRA-reported, col 4 of the query CSV; empty if unknown) rides along as
+    # info and is ignored by the blacklist parser. Collected to rnaseq_se_candidates.csv.
+    flag_se_candidate() {
+        local acc="\$1" spots
+        spots=\$(awk -F',' -v a="\$acc" 'NR>1 && \$3==a {print \$4; exit}' ${sra_query_csv})
+        echo "[SE_CANDIDATE] \$acc ${species_tag} spots=\${spots:-NA} — add to rnaseq_blacklist.csv as SE_trinity"
+        echo "\$acc,${species_tag},\$TAXONID,SE_trinity,\${spots}" >> ${species_tag}.se_candidates.csv
+    }
+
+    # Helper: record an accession whose download failed outright (parallel-fastq-dump and the
+    # EBI FTP fallback both produced nothing usable). Writes a row in rnaseq_blacklist.csv
+    # column order (acc,species_tag,taxonid,skip) with action=skip so it can be pasted
+    # straight into the blacklist after review. Trailing spots column is info only and is
+    # ignored by the blacklist parser. Collected to rnaseq_blacklist_candidates.csv.
+    flag_blacklist_candidate() {
+        local acc="\$1" spots
+        spots=\$(awk -F',' -v a="\$acc" 'NR>1 && \$3==a {print \$4; exit}' ${sra_query_csv})
+        echo "[BLACKLIST_CANDIDATE] \$acc ${species_tag} spots=\${spots:-NA} — download failed; add to rnaseq_blacklist.csv as skip"
+        echo "\$acc,${species_tag},\$TAXONID,skip,\${spots}" >> ${species_tag}.blacklist_candidates.csv
+    }
 
     # Helper: look up the explicit override action for an accession from the blacklist
     # (col 4 = action: skip | rename_headers).  Returns empty string if not listed.
@@ -587,6 +775,7 @@ process SRA_FETCH {
                 parallel-fastq-dump --sra-id \$ACC --threads ${task.cpus} \
                     --outdir reads/ --split-files --gzip --tmpdir \$TMPDIR || {
                     echo "[WARN] Download failed for \$ACC (\$maxspot), skipping"
+                    flag_blacklist_candidate "\$ACC"
                     continue
                 }
                 if [ -f reads/\${ACC}_1.fastq.gz ] && [ -f reads/\${ACC}_2.fastq.gz ]; then
@@ -599,13 +788,18 @@ process SRA_FETCH {
                             --max-reads ${params.max_rnaseq_reads} \
                         | pigz -c >> \$TMPDIR/${species_tag}_R2.fastq.gz
                     rm reads/\${ACC}_[12].fastq.gz
+                elif [ -s reads/\${ACC}_1.fastq.gz ]; then
+                    flag_se_candidate "\$ACC"
+                    rm -f reads/\${ACC}_1.fastq.gz
                 else
                     echo "[WARN] Missing pair for \$ACC after download, skipping"
+                    flag_blacklist_candidate "\$ACC"
                 fi
             else
                 parallel-fastq-dump --sra-id \$ACC --threads ${task.cpus} \
                     --outdir reads/ --split-files \$maxspot --gzip --tmpdir \$TMPDIR || {
                     echo "[WARN] Download failed for \$ACC (\$maxspot), skipping"
+                    flag_blacklist_candidate "\$ACC"
                     continue
                 }
                 if [ -f reads/\${ACC}_1.fastq.gz ] && [ -f reads/\${ACC}_2.fastq.gz ]; then
@@ -613,8 +807,12 @@ process SRA_FETCH {
 		    --max-reads ${params.max_rnaseq_reads} \
 		    \\| pigz -c \\>\\> \$TMPDIR/${species_tag}_R{}.fastq.gz  ::: 1 2
                     rm reads/\${ACC}_[12].fastq.gz
+                elif [ -s reads/\${ACC}_1.fastq.gz ]; then
+                    flag_se_candidate "\$ACC"
+                    rm -f reads/\${ACC}_1.fastq.gz
                 else
                     echo "[WARN] Missing pair for \$ACC after download, skipping"
+                    flag_blacklist_candidate "\$ACC"
                 fi
             fi
         done
@@ -636,12 +834,19 @@ process SRA_FETCH {
                 aria2c --max-connection-per-server=4 --min-split-size=1M --max-tries=3 --retry-wait=5 \
                     "\${EBI_DIR}/\${ACC}_2.fastq.gz" -d reads_ebi/ -o "\${ACC}_2.fastq.gz" || true
                 if [ ! -s reads_ebi/\${ACC}_2.fastq.gz ]; then
-                    echo "[WARN] \$ACC: no paired-end R2 at EBI (single-end or accession absent); skipping"
+                    if [ -s reads_ebi/\${ACC}_1.fastq.gz ]; then
+                        echo "[WARN] \$ACC: no paired-end R2 at EBI but R1 present (single-end data)"
+                        flag_se_candidate "\$ACC"
+                    else
+                        echo "[WARN] \$ACC: no paired-end R2 at EBI (single-end or accession absent); skipping"
+                        flag_blacklist_candidate "\$ACC"
+                    fi
                     rm -f reads_ebi/\${ACC}_1.fastq.gz reads_ebi/\${ACC}_2.fastq.gz
                     continue
                 fi
                 if [ ! -s reads_ebi/\${ACC}_1.fastq.gz ]; then
                     echo "[WARN] \$ACC: R1 missing at EBI; skipping"
+                    flag_blacklist_candidate "\$ACC"
                     rm -f reads_ebi/\${ACC}_2.fastq.gz
                     continue
                 fi
@@ -891,8 +1096,16 @@ process RNASEQ_PREPARE {
     # intermediates land on fast local storage and don't consume project quota.
     echo "[INFO] RNASEQ_PREPARE: running funannotate train for representative ${out} (species: ${species_tag})"
 
+    # Inflate a gzipped clean genome to a local uncompressed copy; funannotate cannot
+    # read a gzipped FASTA via -i. Plain (uncompressed) genomes pass through unchanged.
+    GENOME_FA="${genome_fa}"
+    case "\$GENOME_FA" in
+        *.gz) echo "[INFO] Inflating compressed genome \$GENOME_FA"; pigz -dc "\$GENOME_FA" > genome_input.fa; GENOME_IN="\$(pwd)/genome_input.fa" ;;
+        *)    GENOME_IN="\$GENOME_FA" ;;
+    esac
+
     if [ -s "${r1}" ]; then
-        funannotate train -i ${genome_fa} -o \$SCRATCH/${out} \\
+        funannotate train -i "\$GENOME_IN" -o \$SCRATCH/${out} \\
             --left_norm ${r1} --right_norm ${r2} --aligners minimap2 \\
             --species "${species}" --strain "${strain}" \\
             --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
@@ -902,7 +1115,7 @@ process RNASEQ_PREPARE {
             --stop_after_trinity --no_trimmomatic
     else
         echo "[INFO] RNASEQ_PREPARE: using single-end reads for ${out}"
-        funannotate train -i ${genome_fa} -o \$SCRATCH/${out} \\
+        funannotate train -i "\$GENOME_IN" -o \$SCRATCH/${out} \\
             --single_norm ${se} --aligners minimap2 \\
             --species "${species}" --strain "${strain}" \\
             --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
@@ -967,8 +1180,10 @@ process FUNANNOTATE_TRAIN {
     fi
 
     # ── Skip if training output already present and rnaseq is not newer than GBK ──
+    # Accept a compressed prediction (.gbk.gz) as "done" so folders can be space-saved.
     TRAIN_GFF3="${params.training_target}/${out}/training/funannotate_train.pasa.gff3"
     PREDICT_GBK="${params.target}/${out}/predict_results/${out}.gbk"
+    [ -f "\$PREDICT_GBK" ] || PREDICT_GBK="${params.target}/${out}/predict_results/${out}.gbk.gz"
     if [ -f "\$TRAIN_GFF3" ]; then
         RETRAIN=0
         if [ -f "\$PREDICT_GBK" ]; then
@@ -1026,11 +1241,19 @@ process FUNANNOTATE_TRAIN {
         sleep 5
     fi
 
+    # Inflate a gzipped clean genome to a local uncompressed copy; funannotate cannot
+    # read a gzipped FASTA via -i. Plain (uncompressed) genomes pass through unchanged.
+    GENOME_FA="${genome_fa}"
+    case "\$GENOME_FA" in
+        *.gz) echo "[INFO] Inflating compressed genome \$GENOME_FA"; pigz -dc "\$GENOME_FA" > genome_input.fa; GENOME_IN="\$(pwd)/genome_input.fa" ;;
+        *)    GENOME_IN="\$GENOME_FA" ;;
+    esac
+
     # ── Use shared Trinity transcripts (PASA only) or run full train ──────────
     if [ -s "${trinity_fa}" ]; then
         if [ -s "${r1}" ]; then
             echo "[INFO] Running funannotate train (PASA+PE) for ${out} using shared Trinity"
-            funannotate train -i ${genome_fa} -o ${params.training_target}/${out} \\
+            funannotate train -i "\$GENOME_IN" -o ${params.training_target}/${out} \\
                 --trinity ${trinity_fa} --left_norm ${r1} --right_norm ${r2} \\
                 --species "${species}" --strain "${strain}" \\
                 --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
@@ -1040,7 +1263,7 @@ process FUNANNOTATE_TRAIN {
                 \$pasa_db_arg
         elif [ -s "${se}" ]; then
             echo "[INFO] Running funannotate train (PASA+SE) for ${out} using shared Trinity"
-            funannotate train -i ${genome_fa} -o ${params.training_target}/${out} \\
+            funannotate train -i "\$GENOME_IN" -o ${params.training_target}/${out} \\
                 --trinity ${trinity_fa} --single_norm ${se} \\
                 --species "${species}" --strain "${strain}" \\
                 --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
@@ -1050,7 +1273,7 @@ process FUNANNOTATE_TRAIN {
                 \$pasa_db_arg
         else
             echo "[INFO] Running funannotate train (PASA only, no reads) for ${out} using shared Trinity"
-            funannotate train -i ${genome_fa} -o ${params.training_target}/${out} \\
+            funannotate train -i "\$GENOME_IN" -o ${params.training_target}/${out} \\
                 --trinity ${trinity_fa} --left_norm ${r1} --right_norm ${r2} \\
                 --species "${species}" --strain "${strain}" \\
                 --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
@@ -1061,7 +1284,7 @@ process FUNANNOTATE_TRAIN {
         fi
     elif [ -s "${r1}" ]; then
         echo "[INFO] Running funannotate train (full PE, no shared Trinity) for ${out}"
-        funannotate train -i ${genome_fa} -o ${params.training_target}/${out} \\
+        funannotate train -i "\$GENOME_IN" -o ${params.training_target}/${out} \\
             --left_norm ${r1} --right_norm ${r2} --aligners minimap2 \\
             --species "${species}" --strain "${strain}" \\
             --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
@@ -1071,7 +1294,7 @@ process FUNANNOTATE_TRAIN {
             \$pasa_db_arg
     else
         echo "[INFO] Running funannotate train (full SE, no shared Trinity) for ${out}"
-        funannotate train -i ${genome_fa} -o ${params.training_target}/${out} \\
+        funannotate train -i "\$GENOME_IN" -o ${params.training_target}/${out} \\
             --single_norm ${se} --aligners minimap2 \\
             --species "${species}" --strain "${strain}" \\
             --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
@@ -1101,6 +1324,15 @@ process FUNANNOTATE_TRAIN {
     """
 }
 
+// Option B persistence model: funannotate predict computes DIRECTLY into the persistent
+// per-genome dir (${params.target}/${out}), symmetric with FUNANNOTATE_TRAIN writing to
+// training_target. funannotate checkpoints into predict_misc/, so a restart after an
+// OOM/timeout/orchestrator death resumes completed steps in place rather than starting
+// over. There is no publishDir copy and no work-dir<->target rsync: the durable output is
+// written where downstream steps already read it. Large intermediates still go to the
+// node-local --tmpdir. The Nextflow output is a small marker file (nothing consumes the
+// predict dir as a channel; downstream rebuilds metadata from the CSV and gates on the
+// on-disk GBK), so emitting a marker keeps the DAG edge without copying the result tree.
 process FUNANNOTATE_PREDICT {
     label 'funannotate'
     tag "$out"
@@ -1109,17 +1341,15 @@ process FUNANNOTATE_PREDICT {
     memory '32 GB'
     time   '32h'
 
-    publishDir "${params.target}", mode: 'copy', overwrite: true
-
     input:
     tuple val(out), val(asmid), val(species), val(strain), val(locustag),
           val(busco_lineage), val(header_length), val(transl_table),
           val(genome_fa)
 
     output:
-    path("${out}"), emit: dir
     tuple val(out), val(asmid), val(species), val(strain), val(locustag),
           val(busco_lineage), val(header_length), val(transl_table), emit: metadata
+    path("${out}.predict.done"), emit: done
 
     script:
     """
@@ -1128,85 +1358,146 @@ process FUNANNOTATE_PREDICT {
     export FUNANNOTATE_DB=${params.funannotate_db}
     TMPDIR=\${SCRATCH:-/tmp}
 
+    PREDICTDIR="${params.target}/${out}"
+    PREDICT_GBK="\$PREDICTDIR/predict_results/${out}.gbk"
+
     if [ "${params.debug.toBoolean()}" = "true" ]; then
-        echo "[DEBUG] out          = ${out}"
-        echo "[DEBUG] asmid        = ${asmid}"
-        echo "[DEBUG] species      = ${species}"
-        echo "[DEBUG] strain       = ${strain}"
-        echo "[DEBUG] locustag     = ${locustag}"
-        echo "[DEBUG] busco        = ${busco_lineage}"
-        echo "[DEBUG] transl_table = ${transl_table}"
-        echo "[DEBUG] proteins     = ${params.proteins}"
-        echo "[DEBUG] genome_fa    = ${genome_fa}"
-        echo "[DEBUG] TMPDIR       = \$TMPDIR"
-        echo "[DEBUG] pwd          = \$(pwd)"
+        echo "[DEBUG] out=${out} asmid=${asmid} species=${species} strain=${strain}"
+        echo "[DEBUG] locustag=${locustag} busco=${busco_lineage} transl_table=${transl_table}"
+        echo "[DEBUG] proteins=${params.proteins} genome_fa=${genome_fa}"
+        echo "[DEBUG] PREDICTDIR=\$PREDICTDIR TMPDIR=\$TMPDIR pwd=\$(pwd)"
     fi
 
-    # ── Skip if prediction already complete (e.g. orchestrator restarted after SLURM job finished) ──
-    PREDICT_GBK="${params.target}/${out}/predict_results/${out}.gbk"
-    if [ -f "\$PREDICT_GBK" ] && [ -s "\$PREDICT_GBK" ]; then
-        echo "[INFO] Prediction already complete for ${out}, syncing to work dir"
-        mkdir -p ${out}
-        rsync -a --exclude 'training' "${params.target}/${out}/" "${out}/"
-        exit 0
+    # ── Skip vs. refresh decision ─────────────────────────────────────────────
+    # The workflow schedules this process when the GBK is missing OR stale (rnaseq/trinity
+    # newer than the GBK, per staleRnaseq()). Re-derive staleness here from the same on-disk
+    # timestamps so a current GBK short-circuits, but a stale one forces a clean re-predict.
+    if [ -s "\$PREDICT_GBK" ]; then
+        SPECIES_TAG=\$(printf '%s' "${species}" | sed -E 's/[[:space:]]+/_/g')
+        STALE=0
+        for f in "${launchDir}/rnaseq_reads/\${SPECIES_TAG}_norm_R1.fastq.gz" \\
+                 "${launchDir}/rnaseq_reads/\${SPECIES_TAG}_norm_SE.fastq.gz" \\
+                 "${launchDir}/rnaseq_data/\${SPECIES_TAG}.trinity-GG.fasta"; do
+            if [ -s "\$f" ] && [ "\$f" -nt "\$PREDICT_GBK" ]; then STALE=1; fi
+        done
+        if [ "\$STALE" -eq 0 ]; then
+            echo "[INFO] Prediction already complete and current for ${out}; nothing to do"
+            touch ${out}.predict.done
+            exit 0
+        fi
+        echo "[INFO] Stale prediction for ${out}: rnaseq/trinity newer than GBK — clearing predict outputs for a fresh run"
+        rm -rf "\$PREDICTDIR/predict_results" "\$PREDICTDIR/predict_misc"
     fi
 
-    # ── Restore any partial state from a previous failed attempt ──────────────
-    if [ -d "${params.target}/${out}/predict_results" ]; then
-        echo "[INFO] Restoring partial predict state from ${params.target}/${out}"
-        mkdir -p ${out}
-        rsync -a --exclude 'training' "${params.target}/${out}/" "${out}/"
+    mkdir -p "\$PREDICTDIR"
+
+    # ── Guard against a corrupt partial from a previous attempt ───────────────
+    # funannotate resumes from predict_misc/. If predict_results/ exists without a
+    # predict_misc/ (a half-written tree with no checkpoints and no GBK), clear it so
+    # predict starts the consensus/output step from a clean state instead of choking on it.
+    if [ ! -d "\$PREDICTDIR/predict_misc" ] && [ -d "\$PREDICTDIR/predict_results" ]; then
+        echo "[WARN] predict_results/ present without predict_misc/ for ${out}; clearing stale partial"
+        rm -rf "\$PREDICTDIR/predict_results"
     fi
 
-    # ── Persist results to target even if orchestrator dies before publishDir ──
-    trap 'if [ -d "${out}" ]; then mkdir -p "${params.target}/${out}" && rsync -a --exclude "training" "${out}/" "${params.target}/${out}/" 2>/dev/null || true; fi' EXIT
-
-    # Link training data into work dir so funannotate predict finds it at the relative path it expects.
-    mkdir -p ${out}
+    # funannotate predict expects training data at <outdir>/training; point it at the
+    # persistent training dir. The symlink lives in the persistent project tree (no
+    # publishDir to recursively copy the target), so it is left in place.
     if [ -d "${params.training_target}/${out}/training" ]; then
-        ln -sfn "${params.training_target}/${out}/training" "${out}/training"
+        ln -sfn "${params.training_target}/${out}/training" "\$PREDICTDIR/training"
     fi
 
     TBL2ASN_PARAMS="-l paired-ends"
 
-    funannotate predict --name ${locustag} -i ${genome_fa} --strain "${strain}" \\
-        -o ${out} -s "${species}" --cpu ${task.cpus} --busco_db ${busco_lineage} \\
+    # Inflate a gzipped clean/masked genome to a local uncompressed copy; funannotate
+    # cannot read a gzipped FASTA via -i, and the pre-flight awk below also needs plain
+    # text. Plain (uncompressed) genomes pass through unchanged.
+    GENOME_FA="${genome_fa}"
+    case "\$GENOME_FA" in
+        *.gz) echo "[INFO] Inflating compressed genome \$GENOME_FA"; pigz -dc "\$GENOME_FA" > genome_input.fa; GENOME_IN="\$(pwd)/genome_input.fa" ;;
+        *)    GENOME_IN="\$GENOME_FA" ;;
+    esac
+
+    # ── Too-small-genome pre-flight guard ────────────────────────────────────
+    # Assemblies that are both small AND fragmented cannot yield funannotate's
+    # required 30 training models; predict would run for hours then abort with
+    # "Not enough gene models N to train Augustus (30 required), exiting". Detect
+    # that up front from cheap contig stats and skip cleanly (flag, no crash).
+    # Requires BOTH gates so complete small genomes (e.g. Malassezia) are unaffected.
+    # Disabled when predict_min_asm_bp=0.
+    SKIP_REPORT="${params.target}/predict_skipped_too_small.tsv"
+    if [ "${params.predict_min_asm_bp}" -gt 0 ]; then
+        # Per-contig lengths -> sort descending -> N50 (portable; no gawk asort).
+        read ASM_BP ASM_CTG ASM_N50 < <(
+            awk '/^>/{if(len)print len;len=0;next}{len+=length(\$0)}END{if(len)print len}' "\$GENOME_IN" \\
+            | sort -rn \\
+            | awk '{L[NR]=\$1;tot+=\$1}END{half=tot/2;run=0;n50=0;for(i=1;i<=NR;i++){run+=L[i];if(run>=half){n50=L[i];break}}print tot, NR, n50}')
+        echo "[INFO] Pre-flight assembly stats for ${out}: \${ASM_BP} bp, \${ASM_CTG} contigs, N50 \${ASM_N50}"
+        SMALL=0; FRAG=0
+        [ "\$ASM_BP" -lt "${params.predict_min_asm_bp}" ] && SMALL=1
+        { [ "\$ASM_N50" -lt "${params.predict_frag_max_n50}" ] || [ "\$ASM_CTG" -gt "${params.predict_frag_max_contigs}" ]; } && FRAG=1
+        if [ "\$SMALL" -eq 1 ] && [ "\$FRAG" -eq 1 ]; then
+            echo "[WARN] ${out} is too small/fragmented for funannotate training (\${ASM_BP} bp, \${ASM_CTG} contigs, N50 \${ASM_N50}); skipping predict" >&2
+            mkdir -p "${params.target}"
+            [ -s "\$SKIP_REPORT" ] || printf 'out\tasmid\tlocustag\treason\ttotal_bp\tcontigs\tN50\n' > "\$SKIP_REPORT"
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${out}" "${asmid}" "${locustag}" "preflight_small_fragmented" "\$ASM_BP" "\$ASM_CTG" "\$ASM_N50" >> "\$SKIP_REPORT"
+            touch "\$PREDICTDIR/${out}.predict.skipped_too_small"
+            touch ${out}.predict.done
+            exit 0
+        fi
+    fi
+
+    funannotate predict --name ${locustag} -i "\$GENOME_IN" --strain "${strain}" \\
+        -o "\$PREDICTDIR" -s "${species}" --cpu ${task.cpus} --busco_db ${busco_lineage} \\
         --AUGUSTUS_CONFIG_PATH \$AUGUSTUS_CONFIG_PATH -w codingquarry:0 glimmerhmm:0 \\
         --min_training_models 30 --tmpdir \$TMPDIR --SeqCenter ${params.seqcenter} \\
         --keep_no_stops --header_length ${header_length} --protein_evidence ${params.proteins} \\
         --max_intronlen ${params.max_intronlen} --min_intronlen ${params.min_intronlen} \\
-        --tbl2asn "\$TBL2ASN_PARAMS" --table ${transl_table} --auto-skip-genemark 
+        --tbl2asn "\$TBL2ASN_PARAMS" --table ${transl_table} --auto-skip-genemark || true
 
-    EXPECTED_GBK="${out}/predict_results/${out}.gbk"
-    if [ ! -f "\$EXPECTED_GBK" ]; then
-        echo "ERROR: funannotate predict did not produce expected GBK: \$EXPECTED_GBK" >&2
+    # ── Post-predict catch ────────────────────────────────────────────────────
+    # If predict produced no GBK, distinguish the known "too few training models"
+    # outcome (an unfixable property of the assembly) from a genuine error. The
+    # former is flagged and skipped so it does not abort the batch; anything else
+    # still hard-fails so real problems surface.
+    if [ ! -s "\$PREDICT_GBK" ]; then
+        PLOG="\$PREDICTDIR/logfiles/funannotate-predict.log"
+        if [ -f "\$PLOG" ] && grep -q "Not enough gene models .* to train Augustus" "\$PLOG"; then
+            NMODELS=\$(grep -oE "Not enough gene models [0-9]+" "\$PLOG" | grep -oE "[0-9]+" | tail -1)
+            echo "[WARN] ${out}: funannotate found only \${NMODELS:-<min} training models (needs 30); too small/fragmented to annotate — skipping" >&2
+            mkdir -p "${params.target}"
+            [ -s "\$SKIP_REPORT" ] || printf 'out\tasmid\tlocustag\treason\ttotal_bp\tcontigs\tN50\n' > "\$SKIP_REPORT"
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${out}" "${asmid}" "${locustag}" "funannotate_too_few_models:\${NMODELS:-NA}" "" "" "" >> "\$SKIP_REPORT"
+            touch "\$PREDICTDIR/${out}.predict.skipped_too_small"
+            touch ${out}.predict.done
+            exit 0
+        fi
+        echo "ERROR: funannotate predict did not produce expected GBK: \$PREDICT_GBK" >&2
         exit 1
     fi
-    if [ -d "${out}/predict_misc/ab_initio_parameters" ]; then
-        mv ${out}/predict_misc/ab_initio_parameters ${out}
-        mv ${out}/predict_misc/trnascan.no-overlaps.gff3 ${out}
-        rm -rf ${out}/predict_misc
-        mkdir -p ${out}/predict_misc
-        mv ${out}/ab_initio_parameters ${out}/trnascan.no-overlaps.gff3 ${out}/predict_misc
+    if [ -d "\$PREDICTDIR/predict_misc/ab_initio_parameters" ]; then
+        mv "\$PREDICTDIR/predict_misc/ab_initio_parameters" "\$PREDICTDIR"
+        mv "\$PREDICTDIR/predict_misc/trnascan.no-overlaps.gff3" "\$PREDICTDIR"
+        rm -rf "\$PREDICTDIR/predict_misc"
+        mkdir -p "\$PREDICTDIR/predict_misc"
+        mv "\$PREDICTDIR/ab_initio_parameters" "\$PREDICTDIR/trnascan.no-overlaps.gff3" "\$PREDICTDIR/predict_misc"
     fi
-    find ${out}/predict_results/ -maxdepth 1 \\( -name "*.txt" -o -name "*.mrna-transcripts.fa" \\) -print0 \
+    find "\$PREDICTDIR/predict_results/" -maxdepth 1 \\( -name "*.txt" -o -name "*.mrna-transcripts.fa" \\) -print0 \
         | xargs -0 --no-run-if-empty pigz
-    # Remove the training symlink so publishDir does not overwrite the real training dir.
-    # are we sure this is right thing, seems like something is still getting deleted
-    rm -f "${out}/training"
-    echo "[INFO] deleted ${out}/training"
     sync
-    echo "[INFO] did the syncing"
+    touch ${out}.predict.done
+    echo "[INFO] Prediction complete for ${out} at \$PREDICTDIR"
     """
 
     stub:
     """
     echo "[STUB] Would run funannotate predict for ${out} using ${genome_fa}"
-    [ -f "${genome_fa}" ] || { echo "ERROR: genome not found at ${genome_fa}" >&2; exit 1; }
-    mkdir -p ${out}/predict_results ${out}/predict_misc
+    [ -f "${genome_fa}" ] || [ -f "${genome_fa}.gz" ] || { echo "ERROR: genome not found at ${genome_fa}[.gz]" >&2; exit 1; }
+    mkdir -p ${params.target}/${out}/predict_results ${params.target}/${out}/predict_misc
     # non-empty so downstream size>0 gating (predict_ch / postpredict) is exercised
-    echo "LOCUS stub_${out}" > ${out}/predict_results/${out}.gbk
-    echo ">stub_${out}_p1" > ${out}/predict_results/${out}.proteins.fa
+    echo "LOCUS stub_${out}" > ${params.target}/${out}/predict_results/${out}.gbk
+    echo ">stub_${out}_p1" > ${params.target}/${out}/predict_results/${out}.proteins.fa
+    touch ${out}.predict.done
     """
 }
 
@@ -1230,8 +1521,15 @@ process ANTISMASH_RUN {
     script:
     def gbk = "${params.target}/${out}/predict_results/${out}.gbk"
     """
-    if [ ! -f "${gbk}" ]; then
-        echo "ERROR: predict GBK not found: ${gbk}" >&2
+    # Accept a compressed prediction (.gbk.gz); antismash needs it uncompressed, so
+    # inflate a local copy in the work dir when only the gzipped form is present.
+    GBK="${gbk}"
+    if [ ! -f "\$GBK" ] && [ -f "${gbk}.gz" ]; then
+        zcat "${gbk}.gz" > ${out}.predict.gbk
+        GBK=${out}.predict.gbk
+    fi
+    if [ ! -f "\$GBK" ]; then
+        echo "ERROR: predict GBK not found: ${gbk}[.gz]" >&2
         exit 1
     fi
     source /etc/profile.d/modules.sh 2>/dev/null || true
@@ -1241,7 +1539,7 @@ process ANTISMASH_RUN {
         --genefinding-tool none \\
         --fullhmmer --clusterhmmer --cb-general --pfam2go \\
         -c ${task.cpus} \\
-        ${gbk}
+        \$GBK
     pigz ${out}/antismash_local/*.json
     """
 
@@ -1475,10 +1773,33 @@ process FUNANNOTATE_UPDATE {
     """
 }
 
+// A funannotate step's GenBank output may be stored uncompressed (.gbk) or
+// gzip-compressed (.gbk.gz) so completed folders can be compressed to save space.
+// Returns the existing non-empty file (preferring .gbk), or null if neither exists.
+// Use this for completion/skip gating so a compressed result still counts as "done".
+def gbkResult(String dir, String out) {
+    def plain = file("${dir}/${out}.gbk")
+    if (plain.exists() && plain.size() > 0) return plain
+    def gz = file("${dir}/${out}.gbk.gz")
+    if (gz.exists() && gz.size() > 0) return gz
+    return null
+}
+
+// Clean/masked genomes in input_clean_genomes may be stored gzip-compressed (.gz) to
+// save space. Given the uncompressed base path (e.g. .../<asmid>.fa or
+// .../<asmid>.masked.fasta), returns the existing non-empty file, preferring the
+// compressed form. Falls back to the plain path object when neither exists, so callers'
+// .exists() checks still report missing.
+def genomeFile(String base) {
+    def gz = file("${base}.gz")
+    if (gz.exists() && gz.size() > 0) return gz
+    return file(base)
+}
+
 def staleRnaseq(String out, String species) {
     def species_tag = species.replaceAll(/\s+/, '_')
-    def gbk = file("${params.target}/${out}/predict_results/${out}.gbk")
-    if (!gbk.exists() || gbk.size() == 0) return false  // predict hasn't run yet; normal path handles it
+    def gbk = gbkResult("${params.target}/${out}/predict_results", out)
+    if (gbk == null) return false  // predict hasn't run yet; normal path handles it
     def r1      = file("${launchDir}/rnaseq_reads/${species_tag}_norm_R1.fastq.gz")
     def se      = file("${launchDir}/rnaseq_reads/${species_tag}_norm_SE.fastq.gz")
     def trinity = file("${launchDir}/rnaseq_data/${species_tag}.trinity-GG.fasta")
@@ -1580,12 +1901,67 @@ workflow {
     // SETUP_TAXONDB uses storeDir so it runs at most once across all pipeline runs.
     SETUP_TAXONDB()
     def taxondb_ch = SETUP_TAXONDB.out.ready.map { params.taxondb }
-    GENOME_CLEAN(jobs.combine(taxondb_ch))
+
+    // Only clean genomes whose cleaned .fa does not already exist. This keeps batches
+    // from being padded with finished genomes — a batch that is entirely cleaned is never
+    // scheduled, so it never pays the ~30-min /dev/shm staging cost. (GENOME_CLEAN_BATCH
+    // also re-checks per genome at runtime, which handles partial completion on retry.)
+    def jobs_to_clean = jobs.filter { tup ->
+        !genomeFile("${launchDir}/input_clean_genomes/${tup[1]}.fa").exists()
+    }
+
+    // Genome cleaning. The FCS-GX DB staging into /dev/shm costs ~30 min per task, so by
+    // default we batch genomes (clean_batch_size, default 1000) into single SLURM jobs that
+    // stage the DB once and then clean every genome in the batch. Set clean_batch_size = 0
+    // (or --skip_fcs, where there is no DB to amortize) to fall back to one SLURM job per
+    // genome via GENOME_CLEAN. clean_done_ch gates downstream on cleaning finishing;
+    // ifEmpty([]) ensures it still emits (so downstream runs) when every genome was already
+    // clean and nothing was scheduled.
+    def clean_done_ch
+    int clean_batch_size = params.clean_batch_size as int
+    if (clean_batch_size > 0 && !params.skip_fcs.toBoolean()) {
+        // Wrap each collated batch (a List of per-genome tuples) in a single-element list
+        // so .combine() appends taxondb as the 2nd tuple element instead of spreading the
+        // batch's rows into the tuple (which would break GENOME_CLEAN_BATCH's
+        // `tuple val(items), val(taxondb)` declaration).
+        def clean_batches = jobs_to_clean.collate(clean_batch_size).map { batch -> [ batch ] }
+        GENOME_CLEAN_BATCH(clean_batches.combine(taxondb_ch))
+        clean_done_ch = GENOME_CLEAN_BATCH.out.manifest.collect().ifEmpty([])
+    } else {
+        GENOME_CLEAN(jobs_to_clean.combine(taxondb_ch))
+        clean_done_ch = GENOME_CLEAN.out.genome.map { it[8] }.collect().ifEmpty([])
+    }
 
     if (!params.only_clean.toBoolean()) {
-        // Convert path output to absolute-path string so downstream val(genome_fa) processes
-        // can reference the file directly without Nextflow re-staging it per-process.
-        def clean_genome_ch = GENOME_CLEAN.out.genome
+        // Re-attach the cleaned genome to its full per-sample metadata. The cleaned genome
+        // lands at input_clean_genomes/<asmid>.fa.gz (or .fa for legacy runs); genomeFile()
+        // resolves whichever exists. We rebuild from the jobs channel and gate on
+        // clean_done_ch (combine waits until all cleaning is done). genome_fa is emitted as
+        // an absolute-path string so downstream val(genome_fa) processes reference the file
+        // directly without Nextflow re-staging it.
+        def clean_genome_ch = jobs
+            .map { out, asmid, species, strain, locustag, busco, hlen, ttable, _gz, taxonid ->
+                tuple(out, asmid, species, strain, locustag, busco, hlen, ttable, taxonid)
+            }
+            .combine(clean_done_ch)            // gate: blocks until all cleaning is done
+            .map { row -> row[0..8] }          // drop the clean_done sentinel element
+            // Resolve the cleaned genome AFTER the gate so the just-written <asmid>.fa.gz
+            // (or legacy .fa) is visible — genomeFile prefers the compressed form. Resolving
+            // before the combine would freeze the path at construction time (pre-clean), when
+            // neither file exists yet, and the .exists() filter below would drop every genome.
+            .map { out, asmid, species, strain, locustag, busco, hlen, ttable, taxonid ->
+                def g = genomeFile("${launchDir}/input_clean_genomes/${asmid}.fa")
+                tuple(out, asmid, species, strain, locustag, busco, hlen, ttable, g, taxonid)
+            }
+            .filter { tup ->
+                if (!tup[8].exists()) {
+                    log.warn "No cleaned genome for ${tup[0]} (asmid=${tup[1]}) — skipping downstream"
+                    return false
+                }
+                return true
+            }
+            // genome_fa as an absolute-path string so downstream val(genome_fa) processes
+            // reference the file directly without Nextflow re-staging it.
             .map { out, asmid, species, strain, locustag, busco, hlen, ttable, genome_fa, taxonid ->
                 tuple(out, asmid, species, strain, locustag, busco, hlen, ttable,
                       genome_fa.toAbsolutePath().toString(), taxonid)
@@ -1607,7 +1983,7 @@ workflow {
             // --run_repeatmasker false: use masked genome if a prior run produced it, else unmasked.
             predict_genome_ch = clean_genome_ch
                 .map { out, asmid, species, strain, locustag, busco, hlen, ttable, genome_fa, taxonid ->
-                    def masked = file("${launchDir}/input_clean_genomes/${asmid}.masked.fasta")
+                    def masked = genomeFile("${launchDir}/input_clean_genomes/${asmid}.masked.fasta")
                     def use_fa = masked.exists() ? masked.toString() : genome_fa
                     if (params.debug.toBoolean()) {
                         log.info "[DEBUG] ${asmid}: genome_fa=${use_fa} (masked=${masked.exists()})"
@@ -1733,6 +2109,19 @@ workflow {
             SRA_FETCH(branched_sra.has_pe)
             SRA_FETCH_SE(branched_sra.has_se)
             WRITE_EMPTY_READS(branched_sra.no_data.map { stag, _csv -> stag })
+
+            // Accessions found to be single-end (non-empty _1, no _2) during the PE fetch are
+            // recorded as blacklist-ready rows; merge all per-task notes into one reviewable
+            // file at the project root. Add these to rnaseq_blacklist.csv as SE_trinity and
+            // rerun to route them through SRA_FETCH_SE.
+            SRA_FETCH.out.se_candidates
+                .collectFile(name: 'rnaseq_se_candidates.csv', storeDir: launchDir, newLine: false)
+
+            // Accessions whose download failed outright (parallel-fastq-dump + EBI FTP both
+            // produced nothing) are recorded in rnaseq_blacklist.csv column order so they can be
+            // reviewed and pasted straight into the blacklist as skip entries; merged at root.
+            SRA_FETCH.out.blacklist_candidates
+                .collectFile(name: 'rnaseq_blacklist_candidates.csv', storeDir: launchDir, newLine: false)
             reads_ch = SRA_FETCH.out.reads
                 .mix(SRA_FETCH_SE.out.reads)
                 .mix(WRITE_EMPTY_READS.out.reads)
@@ -1835,8 +2224,7 @@ workflow {
         if ((!params.stop_after_sra_fetch.toBoolean() && !params.stop_after_sra_query.toBoolean()) || !params.run_sra_fetch.toBoolean()) {
         def predict_ch = predict_input_ch
             .filter { out, _asmid, sp, _st, _lt, _bl, _hl, _tt, _gfa ->
-                def f = file("${params.target}/${out}/predict_results/${out}.gbk")
-                !f.exists() || f.size() == 0 || staleRnaseq(out as String, sp as String)
+                gbkResult("${params.target}/${out}/predict_results", out as String) == null || staleRnaseq(out as String, sp as String)
             }
         FUNANNOTATE_PREDICT(predict_ch)
 
@@ -1862,18 +2250,30 @@ workflow {
             .filter { out, asmid, _sp, _st, _lt, _bl, _hl, _tt -> out && asmid }
             .take((params.n_test as int) > 0 ? params.n_test as int : -1)
             .filter { out, asmid, _sp, _st, _lt, _bl, _hl, _tt -> !suppressSet.contains(asmid) }
-            .filter { out, _asmid, _sp, _st, _lt, _bl, _hl, _tt ->
-                def f = file("${params.target}/${out}/predict_results/${out}.gbk")
-                f.exists() && f.size() > 0
+            // Only genomes whose prediction was already complete AND current in a PRIOR run.
+            // This is the exact logical complement of the predict_ch filter, so this set is
+            // disjoint from the genomes (re)predicted in THIS run (which arrive via
+            // FUNANNOTATE_PREDICT.out.metadata below). Keeping them disjoint means no genome
+            // is fed downstream twice and stale genomes correctly wait for the fresh predict.
+            .filter { out, _asmid, sp, _st, _lt, _bl, _hl, _tt ->
+                gbkResult("${params.target}/${out}/predict_results", out as String) != null && !staleRnaseq(out as String, sp as String)
             }
 
         // annotate_ready_ch threads through optional pre-annotate steps. Each optional
         // step splits the channel into "needs to run" vs "already done", processes the
         // former, then mixes the freshly-completed items back. FUNANNOTATE_ANNOTATE only
         // fires once all requested optional steps are complete for a given sample.
-        // Joining ANTISMASH/INTERPRO/SIGNALP output back through postpredict reconstructs
+        // Joining ANTISMASH/INTERPRO/SIGNALP output back through predict_meta reconstructs
         // the metadata tuple while encoding the dependency edge in the channel DAG.
-        def annotate_ready_ch = postpredict
+        //
+        // Same-run completion gate: genomes predicted in THIS run flow in via
+        // FUNANNOTATE_PREDICT.out.metadata (a real channel edge, so downstream waits for
+        // predict to finish), while prior-run genomes flow in via postpredict (available
+        // immediately). The two sets are disjoint by the filters above, so a plain mix
+        // needs no dedup. (The optional steps below are still each gated behind their
+        // params — run_antismash/interpro/signalp/update/annotate, all default false.)
+        def predict_meta = postpredict.mix(FUNANNOTATE_PREDICT.out.metadata)
+        def annotate_ready_ch = predict_meta
 
         if (params.run_antismash.toBoolean()) {
             def as_todo = annotate_ready_ch.filter { out, _a, _sp, _st, _lt, _bl, _hl, _tt ->
@@ -1887,7 +2287,7 @@ workflow {
             ANTISMASH_RUN(as_todo)
             def as_completed = ANTISMASH_RUN.out
                 .map { out, _files -> tuple(out, 'done') }
-                .join(postpredict)
+                .join(predict_meta)
                 .map { out, _flag, asmid, sp, st, lt, bl, hl, tt -> tuple(out, asmid, sp, st, lt, bl, hl, tt) }
             annotate_ready_ch = as_completed.mix(as_done)
         }
@@ -1902,7 +2302,7 @@ workflow {
             INTERPROSCAN_RUN(ipr_todo)
             def ipr_completed = INTERPROSCAN_RUN.out
                 .map { out, _xml -> tuple(out, 'done') }
-                .join(postpredict)
+                .join(predict_meta)
                 .map { out, _flag, asmid, sp, st, lt, bl, hl, tt -> tuple(out, asmid, sp, st, lt, bl, hl, tt) }
             annotate_ready_ch = ipr_completed.mix(ipr_done)
         }
@@ -1917,7 +2317,7 @@ workflow {
             SIGNALP_RUN(sp_todo)
             def sp_completed = SIGNALP_RUN.out
                 .map { out, _txt -> tuple(out, 'done') }
-                .join(postpredict)
+                .join(predict_meta)
                 .map { out, _flag, asmid, sp, st, lt, bl, hl, tt -> tuple(out, asmid, sp, st, lt, bl, hl, tt) }
             annotate_ready_ch = sp_completed.mix(sp_done)
         }
@@ -1927,7 +2327,7 @@ workflow {
                 // UPDATE runs from predict results in parallel with antismash/interpro/signalp.
                 // Reads are joined from SRA_FETCH (storeDir-cached, so prior-run reads are reused).
                 // The join on upd_signal gates annotate_ready_ch so ANNOTATE waits for UPDATE.
-                def upd_input = postpredict
+                def upd_input = predict_meta
                     .map { out, asmid, species, strain, locustag, busco, hlen, ttable ->
                         def species_tag = species.replaceAll(/\s+/, '_')
                         tuple(species_tag, out, asmid, species, strain, locustag, busco, hlen, ttable)
@@ -1937,11 +2337,11 @@ workflow {
                         tuple(out, asmid, species, strain, locustag, busco, hlen, ttable, r1, r2)
                     }
                 def upd_todo = upd_input.filter { out, _a, _sp, _st, _lt, _bl, _hl, _tt, _r1, _r2 ->
-                    !file("${params.target}/${out}/update_results/${out}.gbk").exists()
+                    gbkResult("${params.target}/${out}/update_results", out as String) == null
                 }
                 def upd_done_signal = upd_input
                     .filter { out, _a, _sp, _st, _lt, _bl, _hl, _tt, _r1, _r2 ->
-                        file("${params.target}/${out}/update_results/${out}.gbk").exists()
+                        gbkResult("${params.target}/${out}/update_results", out as String) != null
                     }
                     .map { out, _a, _sp, _st, _lt, _bl, _hl, _tt, _r1, _r2 -> tuple(out, 'upd') }
                 FUNANNOTATE_UPDATE(upd_todo)
@@ -1958,8 +2358,7 @@ workflow {
 
         if (params.run_annotate.toBoolean()) {
             FUNANNOTATE_ANNOTATE(annotate_ready_ch.filter { out, _a, _sp, _st, _lt, _bl, _hl, _tt ->
-                def f = file("${params.target}/${out}/annotate_results/${out}.gbk")
-                !f.exists() || f.size() == 0
+                gbkResult("${params.target}/${out}/annotate_results", out as String) == null
             })
         }
         } // end if (!params.stop_after_sra_fetch || !params.run_sra_fetch)
