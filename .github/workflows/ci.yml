@@ -1,0 +1,43 @@
+name: CI
+
+# Cheap, network-light validation: confirm the config parses and the workflow
+# graph executes end-to-end via the self-contained `test` profile under -stub-run
+# (no SLURM, no real tools). Heavy real runs happen on the HPCC, not in CI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  stub-run:
+    name: Parse config + stub-run (test profile)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        NXF_VER: ["24.04.0", "latest-stable"]
+    steps:
+      - name: Check out pipeline
+        uses: actions/checkout@v4
+
+      - name: Set up Java (required by Nextflow)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Nextflow
+        uses: nf-core/setup-nextflow@v2
+        with:
+          version: "${{ matrix.NXF_VER }}"
+
+      - name: Validate config parses
+        run: nextflow config . -profile test
+
+      - name: Stub-run the workflow (graph logic only)
+        run: nextflow run . -profile test -stub-run
+
+      - name: Schema-driven --help renders
+        run: nextflow run . --help
