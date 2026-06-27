@@ -1,4 +1,4 @@
-# nf_euk_genome_annotate
+# nf_funannotate1
 
 A Nextflow DSL2 framework for **eukaryotic genome annotation** (fungal defaults,
 generic-capable) on the UCR HPCC. It runs the full
@@ -8,17 +8,28 @@ antiSMASH/InterProScan/SignalP → annotate/update — plus a standalone
 [EarlGrey](https://github.com/TobyBaril/EarlGrey) curated repeat-masking pipeline
 ([see below](#earlgrey-repeat-masking)).
 
-The pipeline code lives under [`nextflow/`](nextflow/).
+The pipeline lives at the repo root (`funannotate.nf` + `nextflow.config`), so it
+runs directly from GitHub — no clone required:
+
+```bash
+nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,module -resume
+```
+
+Nextflow caches the repo under `~/.nextflow/assets/`; add `-r <branch|tag>` to pin
+a revision and `-latest` to pull updates. Outputs and the `samples.csv` /
+`lib/` assets are read from your **launch directory**, not the cached checkout.
 
 ## Quick start
 
 ```bash
 # graph/dry test (no SLURM, no tools needed)
-cd nextflow
-nextflow run funannotate.nf -c nextflow.config -profile test -stub-run
+nextflow run stajichlab/nf_funannotate1 -profile test -stub-run
 
-# real run on SLURM with environment modules (from the project root)
-sbatch nextflow/run_annotate.sh --n_test 1
+# real run on SLURM with environment modules (from your launch dir, with samples.csv)
+nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,module -resume --n_test 1
+
+# or, from a local checkout, use the sbatch launcher
+sbatch /path/to/nf_funannotate1/run_annotate.sh --n_test 1
 ```
 
 ## Orthogonal profiles
@@ -32,12 +43,15 @@ Compose one option from each of three axes: `-profile <pipeline>,<executor>,<pro
 | **provisioning** | `module` (default) · `pixi` · `singularity` |
 
 ```bash
-nextflow run funannotate.nf -c nextflow.config -profile annotate,slurm,module -resume
-nextflow run funannotate.nf -c nextflow.config -profile annotate,local,singularity -resume
+nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,module -resume
+nextflow run stajichlab/nf_funannotate1 -profile annotate,local,singularity -resume
 ```
 
-The `run_annotate.sh` launcher honours `EXECUTOR=` and `PROVISION=` env vars
-(default `slurm` / `module`).
+The `run_annotate.sh` launcher honours `EXECUTOR=` / `PROVISION=` (default
+`slurm` / `module`) and `PIPELINE=` / `REVISION=` env vars. It runs the pipeline
+**by project name** (`nextflow run stajichlab/nf_funannotate1`) rather than
+by file path, so it is safe under `sbatch` (which copies the script to a spool dir).
+For development, point it at a local checkout: `PIPELINE=$PWD sbatch run_annotate.sh`.
 
 Process scripts carry **no `module load`** — provisioning is supplied per process
 `label` by the provisioning profile (`conf/provision_*.config`): a `beforeScript`
@@ -146,12 +160,13 @@ Tune `--cutoff_mb`, `--repeat_taxon`, and `--n_test`.
 ### Rust helpers (built on deploy, not committed)
 
 Two Rust binaries used by the SRA/RNA-seq steps are **built from source** into
-`nextflow/tools/` (gitignored) rather than checked in (they are dynamically-linked,
-platform-specific ELFs):
+`tools/` (gitignored) rather than checked in (they are dynamically-linked,
+platform-specific ELFs). Build them inside the pipeline checkout — for a GitHub
+run that is the cached asset dir (`~/.nextflow/assets/stajichlab/nf_funannotate1`):
 
 ```bash
 module load rust            # Rust toolchain, edition 2024+ (rust >= 1.85)
-bash nextflow/scripts/build_tools.sh
+bash scripts/build_tools.sh
 ```
 
 | Tool | Source | Used as |
@@ -172,16 +187,16 @@ upstream `fix_fastq_headers.py`) if you can't build the Rust version.
 ## Layout
 
 ```
-nextflow/
-  nextflow.config                 # manifest, shared params, profiles map, singularity block
-  funannotate.nf                  # full annotation workflow (labeled processes)
+nf_funannotate1/           # repo root = pipeline root (runs from GitHub)
+  nextflow.config                 # manifest (mainScript=funannotate.nf), shared params, profiles map, singularity block
+  funannotate.nf                  # full annotation workflow (labeled processes) — default entry
   earlgrey_mask.nf                # standalone curated repeat masking (EarlGrey)
   conf/
     profile_annotate.config       # params + per-process resources
     provision_{module,pixi,singularity}.config
     profile_earlgrey.config
     test.config                   # self-contained stub profile
-  lib/SampleUtils.groovy
+  lib/SampleUtils.groovy          # auto-compiled by Nextflow (projectDir/lib)
   scripts/                        # clean_genome_fa.py, setup_fcs_shm.sh, build_tools.sh, *.py fallbacks
   pixi.toml                       # per-label conda envs for the pixi profile
   run_annotate.sh, run_earlgrey.sh

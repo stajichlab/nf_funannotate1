@@ -1876,7 +1876,19 @@ def staleRnaseq(String out, String species) {
     return false
 }
 
+include { validateParameters; paramsSummaryLog; paramsHelp } from 'plugin/nf-schema'
+
 workflow {
+    // `--help` prints schema-driven parameter help (grouped, with types/defaults) and exits.
+    if (params.help) {
+        log.info paramsHelp()
+        exit 0
+    }
+    // Type-check params against nextflow_schema.json and log the resolved set.
+    // (Unrecognised params warn rather than fail — see nextflow.config.)
+    validateParameters()
+    log.info paramsSummaryLog(workflow)
+
     // Fail fast with an actionable message when a pipeline profile was not selected
     // (these params come from conf/profile_annotate.config). Without it, downstream
     // file(params.funannotate_db) calls throw a cryptic "file() ... cannot be null".

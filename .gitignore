@@ -12,15 +12,20 @@ rnaseq_reads/
 rnaseq_data/
 results/
 # test-run artifacts (keep tests/data fixtures)
-nextflow/tests/work/
-nextflow/tests/output/
-nextflow/tests/data/*.rnaseq_sra.csv
+tests/work/
+tests/output/
+tests/data/*.rnaseq_sra.csv
 # scratch copies
 *.orig
 # python
 __pycache__/
 *.pyc
 # built Rust helper binaries (scripts/build_tools.sh)
-nextflow/tools/
-# run-time data assets (augustus config copy, protein evidence, sbt)
-/lib/
+tools/
+# stale launch artifacts left over from the pre-flatten nextflow/ subdir layout
+nextflow/
+# run-time data assets in the launch dir (augustus config copy, protein evidence,
+# sbt) — keep tracked code under lib/ (e.g. lib/*.groovy)
+/lib/augustus/
+/lib/*.faa
+/lib/template.sbt
