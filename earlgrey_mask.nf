@@ -30,7 +30,10 @@
 
 params.genome_dir          = "${launchDir}/input_clean_genomes"
 params.genome_suffix       = '.fa'                       // clean (unmasked) genome suffix
-params.asm_stats           = "${launchDir}/tables/asm_stats.tsv.gz"
+params.tables_dir          = "${launchDir}/tables"       // where asm_stats.tsv.gz lives
+params.asm_stats           = "${params.tables_dir}/asm_stats.tsv.gz"
+params.gen_asm_stats       = true                        // generate asm_stats if missing
+params.skip_select_reps    = false                       // skip SELECT_REPS step (just do EarlGrey on all)
 params.cutoff_mb           = 200                         // species qualifies if rep > this
 params.repeat_taxon        = 'fungi'                     // EarlGrey -r RepeatMasker search term
 params.earlgrey_version    = '7.2.6'
@@ -48,6 +51,12 @@ def genomeFile(String base) {
     if (gz.exists() && gz.size() > 0) return gz
     return file(base, glob: false)
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// INCLUDES
+// ════════════════════════════════════════════════════════════════════════════
+
+include { ASM_STATS } from './modules/asm_stats'
 
 // ════════════════════════════════════════════════════════════════════════════
 // PROCESSES
@@ -288,11 +297,48 @@ process DELIVER_MASK {
 
 workflow {
 
-    // ── Select representatives ────────────────────────────────────────────────
-    def reps = SELECT_REPS(
-        file(params.samples,   glob: false),
-        file(params.asm_stats, glob: false),
-    )
+    // ── Generate assembly statistics if needed ────────────────────────────────
+    // ASM_STATS generates asm_stats.tsv.gz from clean genomes (used by SELECT_REPS).
+    // Only runs if gen_asm_stats=true and the file doesn't already exist.
+    if (params.gen_asm_stats.toBoolean()) {
+        def asm_stats_path = file(params.tables_dir).toAbsolutePath()
+        def asm_stats_gz = file("${asm_stats_path}/asm_stats.tsv.gz")
+        if (!asm_stats_gz.exists()) {
+            log.info "Generating assembly statistics: ${asm_stats_gz}"
+            ASM_STATS(
+                file(params.samples, glob: false),
+                file(params.genome_dir, glob: false)
+            )
+        } else {
+            log.info "Assembly statistics already exist: ${asm_stats_gz}"
+        }
+    }
+
+    // ── Select representatives (skip with --skip_select_reps) ────────────────
+    // When skip_select_reps=true, all genomes are processed for EarlGrey
+    // without the size/N50 filtering applied by SELECT_REPS.
+    def reps
+    if (params.skip_select_reps.toBoolean()) {
+        log.info "Skipping SELECT_REPS; processing all genomes for EarlGrey"
+        reps = channel.fromPath(params.samples, glob: false)
+            .splitCsv(header: true)
+            .map { row ->
+                def species = (row.SPECIES?.trim() ?: '')
+                def asmid = (row.ASMID?.trim() ?: '')
+                if (species && asmid) {
+                    "SPECIES,REP_ASMID,REP_SIZE_MB,N_MEMBERS,MEMBER_ASMIDS\n${species},${asmid},0.0,0,"
+                } else {
+                    null
+                }
+            }
+            .filter { it != null }
+            .collectFile(name: "${launchDir}/misc/repeat_representatives.csv", newLine: false)
+    } else {
+        reps = SELECT_REPS(
+            file(params.samples,   glob: false),
+            file(params.asm_stats, glob: false),
+        )
+    }
 
     // ── Per-species records (n_test limits *species*) ─────────────────────────
     def records = reps

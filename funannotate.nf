@@ -1878,6 +1878,7 @@ def staleRnaseq(String out, String species) {
 }
 
 include { validateParameters; paramsSummaryLog; paramsHelp } from 'plugin/nf-schema'
+include { ASM_STATS } from './modules/asm_stats'
 
 workflow {
     // `--help` prints schema-driven parameter help (grouped, with types/defaults) and exits.
@@ -2048,6 +2049,23 @@ workflow {
                 tuple(out, asmid, species, strain, locustag, busco, hlen, ttable,
                       genome_fa.toAbsolutePath().toString(), taxonid)
             }
+
+        // ── Generate assembly statistics (for earlgrey_mask.nf SELECT_REPS) ────────
+        // Generate asm_stats.tsv if --gen_asm_stats is true and the file doesn't exist.
+        // This is used by earlgrey_mask.nf to select representative genomes per species.
+        if (params.gen_asm_stats.toBoolean()) {
+            def asm_stats_path = file(params.tables_dir).toAbsolutePath()
+            def asm_stats_gz = file("${asm_stats_path}/asm_stats.tsv.gz")
+            if (!asm_stats_gz.exists()) {
+                log.info "Generating assembly statistics: ${asm_stats_gz}"
+                ASM_STATS(
+                    file(params.samples),
+                    file(params.genome_dir)
+                )
+            } else {
+                log.info "Assembly statistics already exist: ${asm_stats_gz}"
+            }
+        }
 
         // ── Repeat masking ────────────────────────────────────────────────────────
         // predict_genome_ch carries the genome path to use for prediction — either
