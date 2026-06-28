@@ -1,6 +1,41 @@
 # Nextflow Pipeline Modularization Plan
 
-## Completed
+## Pipeline Workflow Structure
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    GENOME PREPROCESSING                          │
+├─────────────────────────────────────────────────────────────────┤
+│  CLEAN              │ MASK                  │ SUMMARY_STATS     │
+│  ─────              │ ────                  │ ─────────────     │
+│  • FCS_GX           │ • NONE                │ • ASM_STATS       │
+│  • sourpurge        │ • TANTAN              │                   │
+│  • vecscreen        │ • REPEATMODELER       │                   │
+│                     │ • REPEATMASKER        │                   │
+│                     │ • EARLGREY            │                   │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    GENE PREDICTION                               │
+├──────────────────────────────────┬──────────────────────────────┤
+│   RNA-seq Preparation             │  Funannotate Pipeline       │
+│   ─────────────────────           │  ──────────────────        │
+│   • SRA_QUERY                     │  • TRAIN                   │
+│   • SRA_FETCH (PE & SE)           │  • PREDICT                 │
+│   • RNASEQ_PREPARE (Trinity)      │  • UPDATE (optional)       │
+└──────────────────────────────────┴──────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    ANNOTATION                                    │
+├─────────────────────────────────────────────────────────────────┤
+│  • ANTISMASH (secondary metabolites)                            │
+│  • SIGNALP (signal peptides)                                    │
+│  • INTERPROSCAN (protein domains - when implemented)            │
+│  • FUNANNOTATE_ANNOTATE (final annotation)                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Completed ✅
 ✅ **ASM_STATS Module** (`modules/asm_stats.nf`)
 - Extracted assembly statistics generation into a separate reusable module
 - Used by both `funannotate.nf` and `earlgrey_mask.nf`
@@ -11,68 +46,126 @@
 - When enabled, all genomes are processed for EarlGrey masking without size filtering
 - Added `--gen_asm_stats` flag (default: true) to auto-generate assembly statistics
 
-## Proposed Modularization Structure
+✅ **Annotation Tools Module** (`modules/annotation_tools.nf`)
+- ANTISMASH_RUN (secondary metabolite detection)
+- INTERPROSCAN_RUN (protein domain annotation)
+- SIGNALP_RUN (signal peptide prediction)
 
-### Phase 1: Annotation Tools (Proposed)
-**File:** `modules/annotation_tools.nf`
-- ANTISMASH_RUN
-- INTERPROSCAN_RUN
-- SIGNALP_RUN
+## Proposed Modularization Structure (User-Approved)
 
-### Phase 2: Funannotate Core (Proposed)
-**Directory:** `modules/funannotate/`
+### Phase 1: Genome Preprocessing Modules
 
-#### predict.nf
-- FUNANNOTATE_PREDICT
+#### `modules/AAFTF/asm_stats.nf` (Refactor existing)
+**Summary Statistics Generation**
+- ASM_STATS: Compute assembly stats (total_length_bp, N50_bp, contig_count)
+- *Note: Move existing `modules/asm_stats.nf` here*
 
-#### annotate.nf
-- FUNANNOTATE_ANNOTATE
+#### `modules/AAFTF/FCS_GX.nf` (Extract from GENOME_CLEAN)
+**Contamination Screening & Removal**
+- FCS_GX contamination detection and removal
+- Phylum-aware filtering using NCBI taxonomy
 
-#### update.nf
-- FUNANNOTATE_UPDATE
+#### `modules/AAFTF/sourpurge.nf` (Extract from GENOME_CLEAN)
+**Sourpurge Contamination Detection**
+- Source organism contamination screening
 
-#### train.nf
-- FUNANNOTATE_TRAIN
+#### `modules/AAFTF/vecscreen.nf` (New)
+**Vector Contamination Screening**
+- NCBI VecScreen vector contamination detection
 
-### Phase 3: Genome Preparation (Proposed)
-**Directory:** `modules/genome_prep/`
+#### `modules/repeatmasking/masking.nf`
+**Repeat Masking Strategy Selection**
+- TANTAN: Soft masking (tantan algorithm)
+- REPEATMODELER: De novo TE discovery
+- REPEATMASKER: Library-based masking (existing library or species)
+- EARLGREY: De novo TE discovery + masking (currently in separate earlgrey_mask.nf)
+- NONE: Skip repeat masking entirely
 
-#### clean.nf
-- GENOME_CLEAN
-- GENOME_CLEAN_BATCH
-- MASKREPEAT_TANTAN_RUN
+### Phase 2: Gene Prediction Modules
 
-#### rnaseq.nf
-- SRA_QUERY
-- SRA_QUERY_BATCH
-- COLLECT_SRA_QUERY
-- WRITE_EMPTY_READS
-- SRA_FETCH
-- SRA_FETCH_SE
-- RNASEQ_PREPARE
+#### `modules/rnaseq_fetch/sra_query.nf`
+**SRA Discovery & Query**
+- SRA_QUERY: Query NCBI SRA for RNA-seq accessions per species
+- SRA_QUERY_BATCH: Batched SRA queries to NCBI
+- COLLECT_SRA_QUERY: Merge per-species results into manifest
 
-#### setup.nf
-- SETUP_TAXONDB
-- SETUP_FUNANNOTATE_DB
-- SETUP_AUGUSTUS_CONFIG
+#### `modules/rnaseq_fetch/sra_fetch.nf`
+**RNA-seq Download & Normalization**
+- SRA_FETCH: Download paired-end RNA-seq, normalize reads
+- SRA_FETCH_SE: Download single-end RNA-seq, normalize
+- WRITE_EMPTY_READS: Create placeholders for species with no SRA data
+
+#### `modules/rnaseq_fetch/prepare.nf`
+**RNA-seq Assembly & Preparation**
+- RNASEQ_PREPARE: Trinity assembly and normalization per species
+- Output shared Trinity-GG for all strains of a species
+
+#### `modules/funannotate/train.nf`
+**Gene Model Training**
+- FUNANNOTATE_TRAIN: PASA-based training on representative assembly
+- Full training (Trinity + HISAT2 + trimmomatic) for representatives
+- PASA-only for non-representative strains
+
+#### `modules/funannotate/predict.nf`
+**Gene Prediction**
+- FUNANNOTATE_PREDICT: Ab initio and evidence-based gene prediction
+- Pre-flight validation (assembly size/fragmentation checks)
+- Post-prediction filtering and formatting
+
+#### `modules/funannotate/update.nf` (Optional)
+**Prediction Update with RNA-seq**
+- FUNANNOTATE_UPDATE: Update predictions with mapped RNA-seq reads
+- Optional step for models with available transcriptomics data
+
+### Phase 3: Annotation Modules
+
+#### `modules/annotate/annotation_tools.nf` (Refactor existing)
+**Post-prediction Annotation Tools**
+- ANTISMASH_RUN: Secondary metabolite cluster detection
+- SIGNALP_RUN: Signal peptide prediction
+- INTERPROSCAN_RUN: Protein domain annotation (when implemented)
+
+#### `modules/annotate/funannotate.nf`
+**Final Funannotate Annotation**
+- FUNANNOTATE_ANNOTATE: Functional annotation merging
+
+### Phase 4: Setup & Utilities
+
+#### `modules/setup/databases.nf`
+**Database Initialization**
+- SETUP_TAXONDB: NCBI taxonomy database (for FCS-GX)
+- SETUP_FUNANNOTATE_DB: Funannotate databases (BUSCO, etc.)
+- SETUP_AUGUSTUS_CONFIG: Writable Augustus configuration
 
 ## Benefits of Modularization
 
-1. **Reusability**: Modules can be used independently or in different pipelines
-2. **Maintainability**: Smaller, focused files are easier to understand and modify
-3. **Testing**: Individual modules can be tested in isolation
-4. **Documentation**: Each module documents its inputs, outputs, and dependencies
-5. **Git History**: Smaller commits with clear intent
+1. **Reusability**: Modules can be composed into different pipelines
+2. **Flexibility**: Easy to swap masking strategies or annotation tools
+3. **Maintainability**: Smaller, focused files are easier to understand and modify
+4. **Testing**: Individual modules can be tested in isolation
+5. **Documentation**: Each module documents its inputs, outputs, and dependencies
+6. **Scalability**: Easier to add new tools (e.g., new masking strategies)
+7. **Git History**: Smaller commits with clear intent
 
-## Implementation Notes
+## Implementation Strategy
 
-- Each module should be standalone and include all required processes
-- Use `include` statements in the main workflow files
-- Maintain backward compatibility with existing scripts and workflows
-- Update documentation as modules are created
+### Priority Order
+1. **Phase 2.1 (RNA-seq Fetch)**: Least interdependent, high reusability
+2. **Phase 2.2 (Funannotate Modules)**: Core prediction pipeline
+3. **Phase 1 (Genome Preprocessing)**: More complex due to conditional branching
+4. **Phase 3 (Annotation)**: Depends on Phase 2 completion
+5. **Phase 4 (Setup)**: Last, as foundational
 
-## Recommended Rollout
+### Implementation Notes
+- Each module should be standalone with clear input/output contracts
+- Use `include` statements in main workflow files
+- Maintain backward compatibility with existing wrapper scripts
+- Update nextflow.config to support module-specific params
+- Create detailed header comments in each module file
+- Use consistent naming conventions: `modules/{category}/{function}.nf`
 
-1. Start with Phase 1 (annotation_tools) - simplest, least interdependent
-2. Move to Phase 2 (funannotate core) - incrementally extract predict, then annotate, then update
-3. Complete Phase 3 (genome_prep) - most complex due to many interdependencies
+### Testing & Validation
+- Test each module in isolation with stub runs: `-stub-run`
+- Verify module reuse works across different pipelines
+- Document module interdependencies
+- Create example usage in comments
