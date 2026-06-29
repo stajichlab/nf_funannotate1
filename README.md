@@ -12,7 +12,7 @@ The pipeline lives at the repo root (`funannotate.nf` + `nextflow.config`), so i
 runs directly from GitHub — no clone required:
 
 ```bash
-nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,module -resume
+nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,ucr_hpcc -resume
 ```
 
 Nextflow caches the repo under `~/.nextflow/assets/`; add `-r <branch|tag>` to pin
@@ -26,7 +26,7 @@ a revision and `-latest` to pull updates. Outputs and the `samples.csv` /
 nextflow run stajichlab/nf_funannotate1 -profile test -stub-run
 
 # real run on SLURM with environment modules (from your launch dir, with samples.csv)
-nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,module -resume --n_test 1
+nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,ucr_hpcc -resume --n_test 1
 
 # or, from a local checkout, use the sbatch launcher
 sbatch /path/to/nf_funannotate1/run_annotate.sh --n_test 1
@@ -43,7 +43,7 @@ Compose one option from each of three axes: `-profile <pipeline>,<executor>,<pro
 | **provisioning** | `module` (default) · `pixi` · `singularity` |
 
 ```bash
-nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,module -resume
+nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,ucr_hpcc -resume
 nextflow run stajichlab/nf_funannotate1 -profile annotate,local,singularity -resume
 ```
 

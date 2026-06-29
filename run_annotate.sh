@@ -16,8 +16,9 @@
 #              - or the current dir:                PIPELINE=$PWD
 #   REVISION   git branch / tag / commit to run (default: pipeline default branch)
 #
-# Default provisioning is Lmod modules on SLURM. Swap axes via env vars:
-#   PROVISION=singularity sbatch run_annotate.sh
+# Default provisioning is the UCR HPCC institutional profile (Lmod modules) on
+# SLURM. Swap axes via env vars:
+#   PROVISION=singularity sbatch run_annotate.sh   # portable containers
 #   EXECUTOR=local        sbatch run_annotate.sh   # head + tasks local
 #   REVISION=v0.1.0       sbatch run_annotate.sh   # pin a release
 #
@@ -34,7 +35,7 @@ module load nextflow
 PIPELINE="${PIPELINE:-stajichlab/nf_funannotate1}"
 REVISION="${REVISION:-}"
 EXECUTOR="${EXECUTOR:-slurm}"
-PROVISION="${PROVISION:-module}"
+PROVISION="${PROVISION:-ucr_hpcc}"
 
 mkdir -p logs/nextflow
 

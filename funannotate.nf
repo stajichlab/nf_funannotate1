@@ -10,7 +10,7 @@
  * params.taxondb / params.funannotate_db are null and parsing fails):
  *   sbatch nextflow/run_annotate.sh
  *   nextflow run nextflow/funannotate.nf -c nextflow/nextflow.config \
- *       -profile annotate,slurm,module -resume
+ *       -profile annotate,slurm,ucr_hpcc -resume
  */
 
 // Metadata tuple order used throughout:
