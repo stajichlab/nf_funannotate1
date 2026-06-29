@@ -21,9 +21,6 @@ include { SIGNALP_RUN      } from './../../modules/local/signalp_run'
 include { FUNANNOTATE_UPDATE  } from './../../modules/local/funannotate_update'
 include { FUNANNOTATE_ANNOTATE } from './../../modules/local/funannotate_annotate'
 
-// Delegating wrapper — implementation in lib/FunannotateUtils.groovy.
-def _gbkResult(String dir, String id) { FunannotateUtils.gbkResult(dir, id) }
-
 workflow ANNOTATE_GENOME {
 
     take:
@@ -82,11 +79,11 @@ workflow ANNOTATE_GENOME {
                 .combine(ch_reads, by: 0)
                 .map { _st, meta, r1, r2, _se -> tuple(meta, r1, r2) }
             def upd_todo = upd_input.filter { meta, _r1, _r2 ->
-                _gbkResult("${params.target}/${meta.id}/update_results", meta.id as String) == null
+                FunannotateUtils.gbkResult("${params.target}/${meta.id}/update_results", meta.id as String) == null
             }
             def upd_done_signal = upd_input
                 .filter { meta, _r1, _r2 ->
-                    _gbkResult("${params.target}/${meta.id}/update_results", meta.id as String) != null
+                    FunannotateUtils.gbkResult("${params.target}/${meta.id}/update_results", meta.id as String) != null
                 }
                 .map { meta, _r1, _r2 -> tuple(meta.id, 'upd') }
             FUNANNOTATE_UPDATE(upd_todo)
@@ -104,7 +101,7 @@ workflow ANNOTATE_GENOME {
 
     if (params.run_annotate.toBoolean()) {
         FUNANNOTATE_ANNOTATE(annotate_ready_ch.filter { meta ->
-            _gbkResult("${params.target}/${meta.id}/annotate_results", meta.id as String) == null
+            FunannotateUtils.gbkResult("${params.target}/${meta.id}/annotate_results", meta.id as String) == null
         })
     }
 

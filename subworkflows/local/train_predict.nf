@@ -22,10 +22,6 @@ include { RNASEQ_PREPARE    } from './../../modules/local/rnaseq_prepare'
 include { FUNANNOTATE_TRAIN } from './../../modules/local/funannotate_train'
 include { FUNANNOTATE_PREDICT } from './../../modules/local/funannotate_predict'
 
-// Delegating wrappers — implementations in lib/FunannotateUtils.groovy.
-def _gbkResult(String dir, String id)       { FunannotateUtils.gbkResult(dir, id) }
-def _staleRnaseq(String id, String species) { FunannotateUtils.staleRnaseq(id, species, params.target as String, launchDir.toString()) }
-
 workflow TRAIN_PREDICT {
 
     take:
@@ -94,12 +90,12 @@ workflow TRAIN_PREDICT {
         // Skip TRAIN when pasa.gff3 already exists and is not stale relative to reads.
         def train_todo = branched.has_rnaseq.filter { meta, _gfa, _r1, _r2, _se, _tf ->
             def gff3 = file("${params.training_target}/${meta.id}/training/funannotate_train.pasa.gff3")
-            !gff3.exists() || gff3.size() == 0 || _staleRnaseq(meta.id as String, meta.species as String)
+            !gff3.exists() || gff3.size() == 0 || FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString())
         }
         def train_done = branched.has_rnaseq
             .filter { meta, _gfa, _r1, _r2, _se, _tf ->
                 def gff3 = file("${params.training_target}/${meta.id}/training/funannotate_train.pasa.gff3")
-                gff3.exists() && gff3.size() > 0 && !_staleRnaseq(meta.id as String, meta.species as String)
+                gff3.exists() && gff3.size() > 0 && !FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString())
             }
             .map { meta, genome_fa, _r1, _r2, _se, _tf -> tuple(meta, genome_fa) }
 
@@ -113,8 +109,8 @@ workflow TRAIN_PREDICT {
     // ── FUNANNOTATE_PREDICT ─────────────────────────────────────────────────
     def predict_ch = predict_input_ch
         .filter { meta, _gfa ->
-            _gbkResult("${params.target}/${meta.id}/predict_results", meta.id as String) == null ||
-            _staleRnaseq(meta.id as String, meta.species as String)
+            FunannotateUtils.gbkResult("${params.target}/${meta.id}/predict_results", meta.id as String) == null ||
+            FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString())
         }
     FUNANNOTATE_PREDICT(predict_ch)
 

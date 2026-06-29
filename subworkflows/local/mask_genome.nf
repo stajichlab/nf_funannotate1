@@ -7,8 +7,8 @@
  *
  *   run_repeatmasker=true (default) → MASKREPEAT_TANTAN_RUN (storeDir-cached)
  *
- *   neither             → reuse pre-existing masked genome from params.masked_dir
- *                         if it exists, else fall through to the unmasked clean genome.
+ *   neither             → reuse pre-existing masked genome from params.masked_dir,
+ *                         else fall through to the unmasked clean genome.
  *
  * EarlGrey path notes:
  *   • First assembly per species (by channel arrival order) is the representative;

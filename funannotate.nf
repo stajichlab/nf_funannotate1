@@ -22,10 +22,7 @@
 
 
 
-// Delegating wrappers so call sites in the workflow block stay concise.
-// Implementations live in lib/FunannotateUtils.groovy (accessible from subworkflows too).
-def gbkResult(String dir, String out)       { FunannotateUtils.gbkResult(dir, out) }
-def genomeFile(String base)                 { FunannotateUtils.genomeFile(base) }
+// staleRnaseq wraps FunannotateUtils.staleRnaseq to add a log.info (requires DSL scope).
 def staleRnaseq(String out, String species) {
     if (FunannotateUtils.staleRnaseq(out, species, params.target as String, launchDir.toString())) {
         log.info "stale prediction for ${out}: rnaseq/trinity newer than GBK — scheduling retrain+repredict"
@@ -142,7 +139,7 @@ workflow {
         // Genomes predicted in a PRIOR run (complement of what TRAIN_PREDICT runs this run).
         def postpredict = INPUT_CHECK.out.samples
             .filter { meta ->
-                gbkResult("${params.target}/${meta.id}/predict_results", meta.id as String) != null &&
+                FunannotateUtils.gbkResult("${params.target}/${meta.id}/predict_results", meta.id as String) != null &&
                 !staleRnaseq(meta.id as String, meta.species as String)
             }
         // Merge prior-run and same-run predictions; feed into annotation chain.

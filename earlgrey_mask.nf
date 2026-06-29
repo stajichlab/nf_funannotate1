@@ -43,9 +43,6 @@ params.earlgrey_outdir     = "${params.outdir}"                    // alias used
 params.masked_dir          = "${launchDir}/input_clean_genomes"    // where <asmid>.masked.fasta.gz land
 params.earlgrey_workdir    = "${launchDir}/work/earlgrey_persist"  // persistent per-species EarlGrey output (enables resume)
 
-// genomeFile: see lib/FunannotateUtils.groovy (shared with funannotate.nf and subworkflows).
-def genomeFile(String base) { FunannotateUtils.genomeFile(base) }
-
 // ════════════════════════════════════════════════════════════════════════════
 // INCLUDES
 // ════════════════════════════════════════════════════════════════════════════
@@ -151,7 +148,7 @@ workflow {
 
     // ── EarlGrey library build on the representative ──────────────────────────
     def build_in = records.map { species, rep_asmid, _members ->
-        def g = genomeFile("${params.genome_dir}/${rep_asmid}${params.genome_suffix}")
+        def g = FunannotateUtils.genomeFile("${params.genome_dir}/${rep_asmid}${params.genome_suffix}")
         if (!g.exists() && !workflow.stubRun) {
             log.warn "Skipping ${species}: representative genome not found at ${g}"
             return null
@@ -174,7 +171,7 @@ workflow {
     def mask_in = members_ch
         .combine(lib_by_species, by: 0)     // tuple(species, asmid, library)
         .map { species, asmid, library ->
-            def g = genomeFile("${params.genome_dir}/${asmid}${params.genome_suffix}")
+            def g = FunannotateUtils.genomeFile("${params.genome_dir}/${asmid}${params.genome_suffix}")
             if (!g.exists() && !workflow.stubRun) {
                 log.warn "Skipping member ${asmid} (${species}): genome not found at ${g}"
                 return null
