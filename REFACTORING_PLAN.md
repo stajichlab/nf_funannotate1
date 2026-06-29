@@ -49,11 +49,47 @@ Rules:
 - `header_length` (constant 24) becomes `params.header_length`, **not** a meta field.
 - Build `meta` once, in the `INPUT_CHECK` subworkflow (below). No process
   re-parses the samplesheet.
-- A module's `input:` declares `tuple val(meta), path(x)` and never positionally
-  unpacks fields it doesn't use.
+- A module's `input:` declares `tuple val(meta), val(genome)` (genome is an
+  absolute-path **string**, kept as `val` so the networked FS isn't re-staged)
+  and never positionally unpacks fields it doesn't use.
 
 Until `meta` is adopted, **do not extract more modules** — every module written
 against the old tuple is rework.
+
+### Groundwork landed (this is the only safe sub-step)
+
+- `SampleUtils.makeMeta(row)` (`lib/SampleUtils.groovy`) is the **single
+  authoritative definition** of `meta`, reproducing the current `jobs`-channel
+  cleaning field-for-field so wiring it in is behaviour-preserving. Not yet called.
+- `params.header_length` (default 24) added to `nextflow.config` + schema. Still
+  threaded through the tuple for now; the conversion removes it from the tuple.
+
+### Conversion recipe (the atomic change, not yet done)
+
+The rest of #3 is **atomic** — source channel, ~40 workflow channel ops, and all
+10 carrying processes move together. Recipe:
+
+1. **Source channels** (`jobs` and `postpredict` maps): replace the per-field
+   `def`s with `def meta = SampleUtils.makeMeta(row)` and emit `tuple(meta, gz)`
+   (jobs) / `meta` (postpredict). `header_length` comes from `params`.
+2. **Processes** (shim to keep script bodies intact): change `input:`/`output:`
+   tuples to `tuple val(meta), val(genome)` (+ reads paths where present), add
+   `tag "${meta.id}"`, and at the top of `script:` add the alias block
+   `def out = meta.id; def asmid = meta.asmid; def species = meta.species; …`
+   so every existing `${out}`/`${asmid}` interpolation still resolves.
+3. **Workflow ops** — translate the position-coupled patterns:
+   - `.map { out, asmid, … -> tuple(out, asmid, …) }` re-threads → `.map { meta, genome -> … }`
+   - index access: `it[8].exists()` (genome) → `genome.exists()`; reads
+     `it[10]/it[12]` → name them in the destructure.
+   - slice sentinels: `row[0..8]` / `row[0..-3]` (drop combine/gate tails) →
+     destructure `(meta, genome, _sentinel)` explicitly.
+   - species-keyed `groupTuple`/`combine`/`join` for RNA-seq → key on
+     `meta.species` (compute `species_tag` from `meta.species`), carry `meta`.
+   - the reduced 8-tuple in the annotate phase collapses to a single `meta`.
+4. **Validate**: `‑profile test ‑stub-run` **and** `‑profile test ‑stub-run
+   --run_sra_fetch true` (the default stub skips the RNA-seq subgraph). Stub
+   proves graph wiring only — a real-data HPCC run confirms semantics (grouping
+   picks the right representative, reads join to the right strain).
 
 ---
 

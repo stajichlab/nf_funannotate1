@@ -267,6 +267,12 @@
                     "minimum": 0,
                     "description": "Contig count above this counts as 'fragmented' for the predict guard.",
                     "default": 1000
+                },
+                "header_length": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "GenBank/funannotate locus-tag header length cap (was a hardcoded per-sample constant).",
+                    "default": 24
                 }
             }
         },
