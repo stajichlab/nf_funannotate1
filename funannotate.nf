@@ -22,8 +22,6 @@
 //
 // GENOME_CLEAN receives: tuple val(meta), path(genome_gz), val(taxondb)
 //   → emits: tuple val(meta), path(genome_fa)   [storeDir writes input_clean_genomes/<asmid>.fa.gz]
-// MASKREPEAT_TANTAN_RUN receives: tuple val(meta), val(genome_fa)
-//   → emits: tuple val(meta), path(masked_fa)   [storeDir caches input_clean_genomes/<asmid>.masked.fasta.gz]
 // SRA_FETCH receives: val(species_tag), val(taxonid)   [only when --run_sra_fetch]
 //   → emits: val(species_tag), path(norm_R1.fastq.gz), path(norm_R2.fastq.gz), path(se)
 // RNASEQ_PREPARE receives: tuple val(species_tag), val(meta), val(genome_fa), path(r1), path(r2), path(se)
@@ -32,47 +30,6 @@
 //   → emits: tuple val(meta), val(genome_fa)
 // FUNANNOTATE_PREDICT receives: tuple val(meta), val(genome_fa)
 //   → emits metadata: tuple val(meta)
-
-// Soft-mask each assembly using funannotate mask with tantan.
-// storeDir caches the masked FASTA alongside the clean genome.
-process MASKREPEAT_TANTAN_RUN {
-    label 'funannotate'
-    tag "${meta.id}"
-
-    storeDir "${launchDir}/input_clean_genomes"
-
-    cpus   8
-    memory '16 GB'
-    time   '2h'
-
-    input:
-    tuple val(meta), val(genome_fa)
-
-    output:
-    tuple val(meta), path("${meta.asmid}.masked.fasta.gz"), emit: masked
-
-    script:
-    def asmid = meta.asmid
-    """
-    source /etc/profile.d/modules.sh 2>/dev/null || true
-    # Inflate a gzipped clean genome to a local uncompressed copy; funannotate cannot
-    # read a gzipped FASTA via -i. Plain (uncompressed) genomes pass through unchanged.
-    GENOME_FA="${genome_fa}"
-    case "\$GENOME_FA" in
-        *.gz) echo "[INFO] Inflating compressed genome \$GENOME_FA"; pigz -dc "\$GENOME_FA" > genome_input.fa; GENOME_IN="\$(pwd)/genome_input.fa" ;;
-        *)    GENOME_IN="\$GENOME_FA" ;;
-    esac
-    funannotate mask -i "\$GENOME_IN" -o ${asmid}.masked.fasta -m tantan --cpus ${task.cpus}
-    # Deliver the soft-masked genome gzip-compressed to save space; consumers inflate it.
-    pigz -f ${asmid}.masked.fasta
-    """
-
-    stub:
-    def asmid = meta.asmid
-    """
-    echo ">stub_${asmid}_masked" | pigz -c > ${asmid}.masked.fasta.gz
-    """
-}
 
 // Query NCBI SRA for available paired-end RNA-seq accessions per species.
 // Lightweight: runs the esearch/efetch query only — no downloading.
@@ -1416,6 +1373,7 @@ include { ASM_STATS }        from './modules/local/asm_stats'
 include { INPUT_CHECK }      from './subworkflows/local/input_check'
 include { SETUP_DBS }        from './subworkflows/local/setup_dbs'
 include { CLEAN_GENOMES }    from './subworkflows/local/clean_genomes'
+include { MASK_GENOME }      from './subworkflows/local/mask_genome'
 include { ANTISMASH_RUN }    from './modules/local/antismash_run'
 include { INTERPROSCAN_RUN } from './modules/local/interproscan_run'
 include { SIGNALP_RUN }      from './modules/local/signalp_run'
@@ -1479,28 +1437,10 @@ workflow {
         }
 
         // ── Repeat masking ────────────────────────────────────────────────────────
-        // predict_genome_ch carries the genome path to use for prediction — either
-        // the tantan soft-masked genome (default) or the clean unmasked genome
-        // (--run_repeatmasker false).
-        def predict_genome_ch
-        if (params.run_repeatmasker.toBoolean()) {
-            MASKREPEAT_TANTAN_RUN(clean_genome_ch)
-            predict_genome_ch = MASKREPEAT_TANTAN_RUN.out.masked
-                .map { meta, masked_fa ->
-                    tuple(meta, masked_fa.toAbsolutePath().toString())
-                }
-        } else {
-            // --run_repeatmasker false: use masked genome if a prior run produced it, else unmasked.
-            predict_genome_ch = clean_genome_ch
-                .map { meta, genome_fa ->
-                    def masked = genomeFile("${launchDir}/input_clean_genomes/${meta.asmid}.masked.fasta")
-                    def use_fa = masked.exists() ? masked.toString() : genome_fa
-                    if (params.debug.toBoolean()) {
-                        log.info "[DEBUG] ${meta.asmid}: genome_fa=${use_fa} (masked=${masked.exists()})"
-                    }
-                    tuple(meta, use_fa)
-                }
-        }
+        // predict_genome_ch: tantan soft-masked (default) or clean/prior-masked genome.
+        // MASK_GENOME handles the run_repeatmasker if/else and storeDir-cached masking.
+        MASK_GENOME(clean_genome_ch)
+        def predict_genome_ch = MASK_GENOME.out.genomes
 
         // Gate the predict chain on funannotate DB + augustus config being ready.
         // SETUP_DBS was already called above; its storeDir-cached outputs are free
