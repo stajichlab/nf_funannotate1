@@ -22,28 +22,9 @@ include { RNASEQ_PREPARE    } from './../../modules/local/rnaseq_prepare'
 include { FUNANNOTATE_TRAIN } from './../../modules/local/funannotate_train'
 include { FUNANNOTATE_PREDICT } from './../../modules/local/funannotate_predict'
 
-// GBK may be stored compressed to save space; return the first existing non-empty file.
-def _gbkResult(String dir, String id) {
-    def plain = file("${dir}/${id}.gbk")
-    if (plain.exists() && plain.size() > 0) return plain
-    def gz = file("${dir}/${id}.gbk.gz")
-    if (gz.exists() && gz.size() > 0) return gz
-    return null
-}
-
-// True when rnaseq reads or shared Trinity are newer than the existing prediction GBK.
-def _staleRnaseq(String id, String species) {
-    def species_tag = species.replaceAll(/\s+/, '_')
-    def gbk = _gbkResult("${params.target}/${id}/predict_results", id)
-    if (gbk == null) return false
-    def gbkMod = gbk.lastModified()
-    def r1      = file("${launchDir}/rnaseq_reads/${species_tag}_norm_R1.fastq.gz")
-    def se      = file("${launchDir}/rnaseq_reads/${species_tag}_norm_SE.fastq.gz")
-    def trinity = file("${launchDir}/rnaseq_data/${species_tag}.trinity-GG.fasta")
-    return (r1.exists() && r1.size() > 0 && r1.lastModified() > gbkMod) ||
-           (se.exists() && se.size() > 0 && se.lastModified() > gbkMod) ||
-           (trinity.exists() && trinity.size() > 0 && trinity.lastModified() > gbkMod)
-}
+// Delegating wrappers — implementations in lib/FunannotateUtils.groovy.
+def _gbkResult(String dir, String id)       { FunannotateUtils.gbkResult(dir, id) }
+def _staleRnaseq(String id, String species) { FunannotateUtils.staleRnaseq(id, species, params.target as String, launchDir.toString()) }
 
 workflow TRAIN_PREDICT {
 

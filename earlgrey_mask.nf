@@ -42,15 +42,8 @@ params.outdir              = "${launchDir}/results/repeatlibrary"
 params.masked_dir          = "${launchDir}/input_clean_genomes"   // where <asmid>.masked.fasta.gz land
 params.earlgrey_workdir    = "${launchDir}/work/earlgrey_persist"  // persistent per-species EarlGrey output (enables resume)
 
-// Clean genomes in input_clean_genomes are stored gzip-compressed (.fa.gz) to save space
-// (see funannotate.nf GENOME_CLEAN). Given the uncompressed base path, return the existing
-// file, preferring the compressed form, else the plain path (so .exists() still reports
-// missing when neither is present). Mirrors funannotate.nf's genomeFile().
-def genomeFile(String base) {
-    def gz = file("${base}.gz", glob: false)
-    if (gz.exists() && gz.size() > 0) return gz
-    return file(base, glob: false)
-}
+// genomeFile: see lib/FunannotateUtils.groovy (shared with funannotate.nf and subworkflows).
+def genomeFile(String base) { FunannotateUtils.genomeFile(base) }
 
 // ════════════════════════════════════════════════════════════════════════════
 // INCLUDES

@@ -21,14 +21,8 @@ include { SIGNALP_RUN      } from './../../modules/local/signalp_run'
 include { FUNANNOTATE_UPDATE  } from './../../modules/local/funannotate_update'
 include { FUNANNOTATE_ANNOTATE } from './../../modules/local/funannotate_annotate'
 
-// GBK may be stored compressed to save space; return the first non-empty file or null.
-def _gbkResult(String dir, String id) {
-    def plain = file("${dir}/${id}.gbk")
-    if (plain.exists() && plain.size() > 0) return plain
-    def gz = file("${dir}/${id}.gbk.gz")
-    if (gz.exists() && gz.size() > 0) return gz
-    return null
-}
+// Delegating wrapper — implementation in lib/FunannotateUtils.groovy.
+def _gbkResult(String dir, String id) { FunannotateUtils.gbkResult(dir, id) }
 
 workflow ANNOTATE_GENOME {
 
