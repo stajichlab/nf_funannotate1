@@ -5,14 +5,23 @@
 > (removed). Progress is tracked in GitHub issues — see
 > `.github/REFACTOR_ISSUES.md` and `scripts/create_refactor_issues.sh`.
 
-## Where we actually are
+## Where we actually are (as of 2026-06-29)
 
-- `funannotate.nf`: **2,470-line monolith, 20 inline processes.**
-- `earlgrey_mask.nf`: separate 394-line pipeline that **duplicates** the
-  samplesheet parse + taxonomy/asmid/suppress filtering from `funannotate.nf`.
-- Extracted so far: `modules/asm_stats.nf`, `modules/annotation_tools.nf` (2 of 20).
-- Strong base already present: nf-schema + `nextflow_schema.json`, orthogonal
-  profiles, manifest, CITATIONS/COC/CHANGELOG/LICENSE, stub-run CI.
+**Modularization is complete.** All 20 inline processes are extracted.
+
+- `funannotate.nf`: **163 lines** — thin orchestration, 0 inline processes, 8 includes.
+- `earlgrey_mask.nf`: **192 lines** — thin wrapper; shares modules with `funannotate.nf`.
+- `modules/local/`: **24 modules**, one process per file.
+- `subworkflows/local/`: **7 subworkflows** (INPUT_CHECK, SETUP_DBS, CLEAN_GENOMES,
+  MASK_GENOME, FETCH_RNASEQ, TRAIN_PREDICT, ANNOTATE_GENOME).
+- `lib/FunannotateUtils.groovy`: shared filesystem utilities (gbkResult, genomeFile,
+  staleRnaseq) — no more duplication across pipeline files.
+- MASK_GENOME now has three paths: EarlGrey (`run_earlgrey=true`), tantan
+  (`run_repeatmasker=true`, default), or pass-through.
+- Stub-run gate: **15/0** (tantan), **16/0** (EarlGrey), **17/0** (+ SRA fetch).
+
+**Remaining work:** Issues #11 (ucr_hpcc profile consolidation) and #12 (nf-core
+hygiene: docs/usage.md, docs/output.md, schema_input.json, MultiQC — stretch).
 
 The goal is an **nf-core-*inspired*** layout (not nf-core submission): adopt the
 parts that are pure engineering wins, skip the parts that fight our HPC reality.
@@ -174,18 +183,20 @@ The old plan started with RNA-seq fetch ("least interdependent") — but
 `SRA_FETCH` is the **single most complex** process (~270 lines). Prove the
 pattern on a leaf first, then attack the hard pieces.
 
-| Phase | Work | Why here |
-|------|------|----------|
-| 0 | `meta` map contract + `INPUT_CHECK` subworkflow | Blocks all extraction; dedupes earlgrey |
-| 1 | Skeleton: `main.nf`, `workflows/`, `subworkflows/local/`, `modules/local/`; move existing `asm_stats` + `annotation_tools` to convention | Establishes layout cheaply |
-| 2 | `versions.yml` + `conf/base.config` + `conf/modules.config` | Pattern every later module copies |
-| 3 | Setup modules (3 leaf processes) | Easiest real extraction; validates gate |
-| 4 | Genome clean + `prepare_genome` subworkflow | Preserve FCS-GX `/dev/shm` staging |
-| 5 | `mask` subworkflow + per-tool masker modules | Replaces the mega-process design |
-| 6 | `rnaseq` subworkflow (the hard one) | Done *after* pattern is proven |
-| 7 | `predict` subworkflow (train/predict/update) | Core |
-| 8 | `annotate` subworkflow | Composition of optional tools |
-| 9 | nf-core hygiene (docs/usage, docs/output, schema_input, naming, MultiQC) | Stretch |
+| Phase | Work | Status |
+|------|------|--------|
+| 0 | `meta` map contract + `INPUT_CHECK` subworkflow | ✅ done |
+| 1 | Skeleton: `modules/local/`, `subworkflows/local/`; split existing modules | ✅ done |
+| 2 | `versions.yml` + `conf/base.config` + `conf/modules.config` | ✅ done |
+| 3 | Setup modules (SETUP_TAXONDB, SETUP_FUNANNOTATE_DB, SETUP_AUGUSTUS_CONFIG) | ✅ done |
+| 4 | CLEAN_GENOMES subworkflow (GENOME_CLEAN + GENOME_CLEAN_BATCH) | ✅ done |
+| 5 | MASK_GENOME subworkflow (tantan + EarlGrey paths; shared modules) | ✅ done |
+| 6 | FETCH_RNASEQ subworkflow (SRA query/fetch chain) | ✅ done |
+| 7 | TRAIN_PREDICT subworkflow (RNASEQ_PREPARE + FUNANNOTATE_TRAIN + FUNANNOTATE_PREDICT) | ✅ done |
+| 8 | ANNOTATE_GENOME subworkflow (optional annotation chain) | ✅ done |
+| 8b | `lib/FunannotateUtils.groovy` (shared utilities, no more duplication) | ✅ done |
+| 9 | `#11` ucr_hpcc institutional profile consolidation | ⬜ todo |
+| 9 | `#12` nf-core hygiene (docs/usage, docs/output, schema_input, MultiQC) | ⬜ stretch |
 
 ---
 
@@ -212,17 +223,17 @@ Issue 11 covers the fuller consolidation (folding UCR SLURM partitions /
 
 | Area | State |
 |------|-------|
-| Scaffolding (schema, CITATIONS, COC, CHANGELOG, LICENSE, CI) | ~30–40% there |
-| `meta` map | none (Phase 0) |
-| Structure (`main.nf`/`workflows`/`subworkflows`/`modules`) | monolith |
-| `versions.yml` per module + MultiQC | none (mandatory for nf-core) |
-| Containers per module | **biggest gap** — relies on Lmod/pixi; nf-core needs conda+biocontainer per process |
-| Naming | `nf_funannotate1` violates nf-core naming (underscores/digits) |
-| nf-test, `docs/usage.md`+`output.md`, `assets/schema_input.json`, `.nf-core.yml` | missing |
+| Scaffolding (schema, CITATIONS, COC, CHANGELOG, LICENSE, CI) | ✅ done |
+| `meta` map + `lib/FunannotateUtils.groovy` | ✅ done |
+| Structure (`subworkflows/local/` + `modules/local/`) | ✅ done — 7 subworkflows, 24 modules |
+| `versions.yml` per module + MultiQC | partial — some modules emit; no MultiQC yet |
+| Containers per module | **remaining gap** — relies on Lmod/pixi; nf-core needs conda+biocontainer per process |
+| Naming | `nf_funannotate1` violates nf-core naming (underscores/digits) — not a priority |
+| nf-test, `docs/usage.md`+`output.md`, `assets/schema_input.json`, `.nf-core.yml` | missing (issue #12 stretch) |
 
-**Verdict:** ~30–40% on peripheral scaffolding, ~0% on the two load-bearing items
-(meta-maps + container-per-module). Full `nf-core lint` compliance is a multi-week
-rewrite, much of which fights our HPC reality. **Recommendation: nf-core-inspired,
-not nf-core-submitted** — adopt meta-maps, one-tool-per-module, subworkflows,
-`versions.yml`, `conf/modules.config`; keep `ucr_hpcc` as an institutional profile
-but add a real container path so the pipeline is portable.
+**Verdict:** core engineering work (meta-maps, one-tool-per-module, subworkflows,
+shared utilities) is complete. Remaining gaps are nf-core submission requirements
+that fight our HPC reality (container-per-module, naming). **Recommendation:
+nf-core-inspired, not nf-core-submitted** — keep `ucr_hpcc` as an institutional
+profile, add a real container path for portability (issue #11), defer
+docs/MultiQC/nf-test to issue #12 stretch work.

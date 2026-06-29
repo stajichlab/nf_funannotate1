@@ -22,7 +22,7 @@ workflow CLEAN_GENOMES {
 
     main:
     // Only submit cleaning jobs for genomes not already in input_clean_genomes/.
-    // Mirrors genomeFile() from funannotate.nf: prefer .fa.gz if non-empty, else .fa.
+    // Same logic as FunannotateUtils.genomeFile(): prefer .fa.gz if non-empty, else .fa.
     // GENOME_CLEAN_BATCH also re-checks per genome at runtime for partial retry.
     def jobs_to_clean = jobs.filter { meta, gz ->
         def fgz = file("${launchDir}/input_clean_genomes/${meta.asmid}.fa.gz")
@@ -48,7 +48,7 @@ workflow CLEAN_GENOMES {
     // Use it[0] index access (not fixed-arity destructuring) because combine with
     // ifEmpty([]) produces a variable-length tuple (2 elements when the sentinel is
     // empty, 3+ when it carries collected paths).
-    // Mirrors genomeFile() from funannotate.nf: prefer .fa.gz if non-empty, else .fa.
+    // Same logic as FunannotateUtils.genomeFile(): prefer .fa.gz if non-empty, else .fa.
     def ch_genomes = jobs
         .combine(clean_done_ch)
         .map { row ->

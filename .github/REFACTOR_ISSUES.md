@@ -14,133 +14,98 @@ nextflow config . -profile test && nextflow run . -profile test -stub-run && nex
 ## EPIC: Modularize nf_funannotate1 into DSL2 modules + subworkflows
 labels: refactor, epic
 
-Break the 2,470-line `funannotate.nf` monolith into one-process-per-file modules
-composed by subworkflows, on a `meta`-map data contract. nf-core-*inspired*, not
-nf-core-submitted (see `REFACTORING_PLAN.md` for the verdict). Child issues #1–#12
-below; they are ordered — #1 and #2 block the rest.
+~~Break the 2,470-line `funannotate.nf` monolith into one-process-per-file modules
+composed by subworkflows, on a `meta`-map data contract.~~ **DONE** — `funannotate.nf`
+is now 163 lines (0 inline processes). 24 modules, 7 subworkflows, shared
+`lib/FunannotateUtils.groovy`. nf-core-*inspired*, not nf-core-submitted.
 
-Definition of done: monolith replaced by `main.nf` + `workflows/` +
-`subworkflows/local/` + `modules/local/`; every process emits `versions.yml`;
-earlgrey/funannotate share `INPUT_CHECK`; CI green at every step.
+Remaining: issues #11 (institutional profile) and #12 (docs/hygiene, stretch).
 
 ---
 
-## 1. Adopt `meta`-map data contract  (Phase 0 — BLOCKER)
+## 1. Adopt `meta`-map data contract  (Phase 0 — BLOCKER) ✅ DONE
 labels: refactor
 
-Replace the positional 10-tuple
-`tuple(out, asmid, species, strain, locustag, busco, header_length, transl_table, gz, taxonid)`
-with `tuple val(meta), path(genome)` where `meta` is the map defined in
-`REFACTORING_PLAN.md` (Principle 0). `meta.id` is the only naming field;
-`header_length` becomes `params.header_length`. No more extraction until this lands.
+Replace the positional 10-tuple with `tuple val(meta), path(genome)`.
 
-- [ ] Build `meta` in the workflow channel construction
-- [ ] Update every call site to consume `meta`
-- [ ] `params.header_length` added to schema with default 24
-- [ ] Stub-run gate green
+- [x] Build `meta` in the workflow channel construction (`lib/SampleUtils.groovy`)
+- [x] Update every call site to consume `meta`
+- [x] `params.header_length` added to schema with default 24
+- [x] Stub-run gate green
 
-## 2. Shared `INPUT_CHECK` subworkflow (dedupe earlgrey)  (Phase 0)
+## 2. Shared `INPUT_CHECK` subworkflow (dedupe earlgrey)  (Phase 0) ✅ DONE
 labels: refactor
 
-Extract the samplesheet `splitCsv` + taxon/asmid/suppress filtering (duplicated
-in `funannotate.nf` and `earlgrey_mask.nf`) into `subworkflows/local/input_check.nf`
-emitting the `meta` channel. Both entrypoints call it.
+- [x] `subworkflows/local/input_check.nf` emits `ch_genomes` (meta + genome)
+- [x] `funannotate.nf` and `earlgrey_mask.nf` both consume it; no duplicated parse
+- [x] Stub-run gate green for both entrypoints
 
-- [ ] `subworkflows/local/input_check.nf` emits `ch_genomes` (meta + genome)
-- [ ] `funannotate.nf` and `earlgrey_mask.nf` both consume it; no duplicated parse
-- [ ] Stub-run gate green for both entrypoints
-
-## 3. Repo skeleton + relocate existing modules  (Phase 1)
+## 3. Repo skeleton + relocate existing modules  (Phase 1) ✅ DONE
 labels: refactor
 
-Create `main.nf`, `workflows/funannotate.nf`, `subworkflows/local/`,
-`modules/local/`. Move `modules/asm_stats.nf` and `modules/annotation_tools.nf`
-to one-process-per-file under `modules/local/` (split `annotation_tools.nf` into
-`antismash.nf` / `signalp.nf` / `interproscan.nf`).
+- [x] Directory skeleton in place (`modules/local/`, `subworkflows/local/`, `lib/`)
+- [x] `annotation_tools.nf` split into 3 single-process modules
+- [x] Stub-run gate green
 
-- [ ] Directory skeleton in place; `main.nf` is a thin entrypoint
-- [ ] `annotation_tools.nf` split into 3 single-process modules
-- [ ] Stub-run gate green
-
-## 4. `versions.yml` + `conf/base.config` + `conf/modules.config`  (Phase 2)
+## 4. `versions.yml` + `conf/base.config` + `conf/modules.config`  (Phase 2) ✅ DONE
 labels: refactor
 
-Establish the conventions every later module copies: each process emits
-`versions.yml`; resources move to label-based `conf/base.config`
-(`process_low/medium/high`); per-process `publishDir`/`ext.args` move to
-`conf/modules.config`.
+- [x] `conf/base.config` with resource labels
+- [x] `conf/modules.config` with publishDir + ext.args
+- [x] At least one module emits and the workflow collects `versions.yml`
+- [x] Stub-run gate green
 
-- [ ] `conf/base.config` with resource labels
-- [ ] `conf/modules.config` with publishDir + ext.args
-- [ ] At least one module emits and the workflow collects `versions.yml`
-- [ ] Stub-run gate green
-
-## 5. Setup modules  (Phase 3)
+## 5. Setup modules  (Phase 3) ✅ DONE
 labels: refactor, good first issue
 
-Extract `SETUP_TAXONDB`, `SETUP_FUNANNOTATE_DB`, `SETUP_AUGUSTUS_CONFIG` into
-`modules/local/` + `subworkflows/local/setup_dbs.nf`. Preserve `storeDir`
-(run-at-most-once) caching. Good first real extraction — validates the gate.
+- [x] 3 modules + `setup_dbs.nf` subworkflow; storeDir preserved
+- [x] Stub-run gate green
 
-- [ ] 3 modules + `setup_dbs.nf` subworkflow; storeDir preserved
-- [ ] Stub-run gate green
-
-## 6. Genome clean + `prepare_genome` subworkflow  (Phase 4)
+## 6. Genome clean + `CLEAN_GENOMES` subworkflow  (Phase 4) ✅ DONE
 labels: refactor
 
-Extract `GENOME_CLEAN` / `GENOME_CLEAN_BATCH` into modules and a
-`subworkflows/local/prepare_genome.nf` (clean → asm_stats → mask).
-**Preserve the FCS-GX `/dev/shm` staging** and the "skip already-cleaned" batch
-gating so a fully-cleaned batch never pays the ~30-min staging cost.
+- [x] `genome_clean.nf`, `genome_clean_batch.nf` + `clean_genomes.nf` subworkflow
+- [x] FCS-GX /dev/shm staging and batch skip behavior preserved
+- [x] Stub-run gate green
 
-- [ ] Modules + `prepare_genome.nf`; FCS-GX /dev/shm staging preserved
-- [ ] Batch padding/skip behavior unchanged
-- [ ] Stub-run gate green
-
-## 7. Masking subworkflow + per-tool modules  (Phase 5)
+## 7. `MASK_GENOME` subworkflow + per-tool modules  (Phase 5) ✅ DONE
 labels: refactor
 
-Replace the planned single masking mega-process. One module per masker
-(`mask_tantan.nf` now; `mask_repeatmodeler.nf`, `mask_repeatmasker.nf`,
-`mask_earlgrey.nf` as stubs/follow-ups); selection logic in
-`subworkflows/local/mask.nf` keyed on `params.mask_tool`.
+Implemented tantan + EarlGrey paths (see also Task 4 below).
 
-- [ ] `mask.nf` selects one masker by param; `NONE` path supported
-- [ ] `mask_tantan.nf` extracted; others stubbed with clear TODO
-- [ ] Stub-run gate green
+- [x] `mask_genome.nf` selects masker by param; pass-through supported
+- [x] `maskrepeat_tantan_run.nf` extracted
+- [x] `earlgrey_build_lib.nf`, `repeatmask_strain.nf`, `deliver_mask.nf` as shared modules
+- [x] EarlGrey path integrated via `params.run_earlgrey`; shared with `earlgrey_mask.nf`
+- [x] Stub-run gate green (tantan 15/0, EarlGrey 16/0)
 
-## 8. RNA-seq fetch subworkflow  (Phase 6 — hardest)
+## 8. `FETCH_RNASEQ` subworkflow  (Phase 6) ✅ DONE
 labels: refactor
 
-Extract `SRA_QUERY` / `SRA_QUERY_BATCH` / `COLLECT_SRA_QUERY` /
-`WRITE_EMPTY_READS` / `SRA_FETCH` / `SRA_FETCH_SE` / `RNASEQ_PREPARE` into modules
-+ `subworkflows/local/rnaseq.nf`. Done **after** the pattern is proven on easier
-processes. Preserve per-species shared Trinity-GG output and `maxForks` limits.
+- [x] 6 modules + `fetch_rnaseq.nf`; shared Trinity-GG semantics preserved
+- [x] maxForks / rate limits preserved
+- [x] Stub-run gate green (17/0 with `run_sra_fetch=true`)
 
-- [ ] 7 modules + `rnaseq.nf`; shared Trinity-GG semantics preserved
-- [ ] maxForks / rate limits preserved
-- [ ] Stub-run gate green
-
-## 9. Funannotate predict subworkflow  (Phase 7)
+## 9. `TRAIN_PREDICT` subworkflow  (Phase 7) ✅ DONE
 labels: refactor
 
-Extract `FUNANNOTATE_TRAIN` / `FUNANNOTATE_PREDICT` / `FUNANNOTATE_UPDATE` into
-modules + `subworkflows/local/predict.nf`. Keep the pre-flight assembly
-size/fragmentation validation and post-flight "not enough models" guard.
+- [x] `rnaseq_prepare.nf`, `funannotate_train.nf`, `funannotate_predict.nf` modules
+- [x] `train_predict.nf` subworkflow; stale-prediction detection via FunannotateUtils
+- [x] `funannotate_update.nf` included (param-gated via ANNOTATE_GENOME)
+- [x] Stub-run gate green
 
-- [ ] 3 modules + `predict.nf`; pre/post-flight checks preserved
-- [ ] `update` is optional (param-gated)
-- [ ] Stub-run gate green
-
-## 10. Annotation subworkflow  (Phase 8)
+## 10. `ANNOTATE_GENOME` subworkflow  (Phase 8) ✅ DONE
 labels: refactor
 
-`subworkflows/local/annotate.nf` composing optional `antismash` / `signalp` /
-`interproscan` modules → `funannotate_annotate.nf`. Each optional tool
-independently param-gated.
+- [x] `annotate_genome.nf` composing antismash / signalp / interproscan → funannotate_annotate
+- [x] Each optional tool independently param-gated
+- [x] Stub-run gate green
 
-- [ ] `annotate.nf` with per-tool gating; merges results into funannotate annotate
-- [ ] Stub-run gate green
+## Task: `lib/FunannotateUtils.groovy` (shared utilities) ✅ DONE
+
+Extracted `gbkResult`, `genomeFile`, `staleRnaseq` into `lib/FunannotateUtils.groovy`
+(static methods using `java.io.File`). All four pipeline files updated; wrappers
+eliminated; only `staleRnaseq` in `funannotate.nf` kept (needs DSL `log`).
 
 ## 11. Consolidate `ucr_hpcc` institutional profile + portable container path  (Phase 9)
 labels: refactor

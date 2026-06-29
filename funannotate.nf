@@ -22,40 +22,9 @@
 
 
 
-// A funannotate step's GenBank output may be stored uncompressed (.gbk) or
-// gzip-compressed (.gbk.gz) so completed folders can be compressed to save space.
-// Returns the existing non-empty file (preferring .gbk), or null if neither exists.
-// Use this for completion/skip gating so a compressed result still counts as "done".
-def gbkResult(String dir, String out) {
-    def plain = file("${dir}/${out}.gbk")
-    if (plain.exists() && plain.size() > 0) return plain
-    def gz = file("${dir}/${out}.gbk.gz")
-    if (gz.exists() && gz.size() > 0) return gz
-    return null
-}
-
-// Clean/masked genomes in input_clean_genomes may be stored gzip-compressed (.gz) to
-// save space. Given the uncompressed base path (e.g. .../<asmid>.fa or
-// .../<asmid>.masked.fasta), returns the existing non-empty file, preferring the
-// compressed form. Falls back to the plain path object when neither exists, so callers'
-// .exists() checks still report missing.
-def genomeFile(String base) {
-    def gz = file("${base}.gz")
-    if (gz.exists() && gz.size() > 0) return gz
-    return file(base)
-}
-
+// staleRnaseq wraps FunannotateUtils.staleRnaseq to add a log.info (requires DSL scope).
 def staleRnaseq(String out, String species) {
-    def species_tag = species.replaceAll(/\s+/, '_')
-    def gbk = gbkResult("${params.target}/${out}/predict_results", out)
-    if (gbk == null) return false  // predict hasn't run yet; normal path handles it
-    def r1      = file("${launchDir}/rnaseq_reads/${species_tag}_norm_R1.fastq.gz")
-    def se      = file("${launchDir}/rnaseq_reads/${species_tag}_norm_SE.fastq.gz")
-    def trinity = file("${launchDir}/rnaseq_data/${species_tag}.trinity-GG.fasta")
-    def r1_newer      = r1.exists()      && r1.size() > 0      && r1.lastModified()      > gbk.lastModified()
-    def se_newer      = se.exists()      && se.size() > 0      && se.lastModified()      > gbk.lastModified()
-    def trinity_newer = trinity.exists() && trinity.size() > 0 && trinity.lastModified() > gbk.lastModified()
-    if (r1_newer || se_newer || trinity_newer) {
+    if (FunannotateUtils.staleRnaseq(out, species, params.target as String, launchDir.toString())) {
         log.info "stale prediction for ${out}: rnaseq/trinity newer than GBK — scheduling retrain+repredict"
         return true
     }
@@ -170,7 +139,7 @@ workflow {
         // Genomes predicted in a PRIOR run (complement of what TRAIN_PREDICT runs this run).
         def postpredict = INPUT_CHECK.out.samples
             .filter { meta ->
-                gbkResult("${params.target}/${meta.id}/predict_results", meta.id as String) != null &&
+                FunannotateUtils.gbkResult("${params.target}/${meta.id}/predict_results", meta.id as String) != null &&
                 !staleRnaseq(meta.id as String, meta.species as String)
             }
         // Merge prior-run and same-run predictions; feed into annotation chain.
