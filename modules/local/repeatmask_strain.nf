@@ -17,9 +17,6 @@ process REPEATMASK_STRAIN {
 
     script:
     """
-    source /etc/profile.d/modules.sh 2>/dev/null || true
-    module load RepeatMasker/${params.repeatmasker_version}
-
     GENOME_IN="${genome}"
     case "${genome}" in
         *.gz) echo "[INFO] Inflating ${genome}"; gzip -dc "${genome}" > genome_input.fa; GENOME_IN=genome_input.fa ;;

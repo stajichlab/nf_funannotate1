@@ -25,9 +25,6 @@ process EARLGREY_BUILD_LIB {
     def mem_mb  = task.memory ? (task.memory.toMega() * 0.9) as long : 3200
     def egdir   = "${params.earlgrey_workdir}/${sp_safe}"
     """
-    source /etc/profile.d/modules.sh 2>/dev/null || true
-    module load earlgrey/${params.earlgrey_version}
-
     # Inflate gzipped genome — EarlGrey cannot read gzip directly.
     GENOME_IN="${genome}"
     case "${genome}" in
