@@ -1,0 +1,7 @@
+{
+  "run_repeatmasker": false,
+  "run_earlgrey": true,
+  "earlgrey_outdir": "tests/work/repeatlibrary",
+  "earlgrey_workdir": "tests/work/earlgrey_persist",
+  "masked_dir": "tests/work/stub_masked"
+}
