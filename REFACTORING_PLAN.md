@@ -20,8 +20,8 @@
   (`run_repeatmasker=true`, default), or pass-through.
 - Stub-run gate: **15/0** (tantan), **16/0** (EarlGrey), **17/0** (+ SRA fetch).
 
-**Remaining work:** Issues #11 (ucr_hpcc profile consolidation) and #12 (nf-core
-hygiene: docs/usage.md, docs/output.md, schema_input.json, MultiQC — stretch).
+**All refactoring issues complete.** Issues #11 (ucr_hpcc profile consolidation)
+and #12 (nf-core hygiene: docs/usage.md, docs/output.md, assets/schema_input.json) done.
 
 The goal is an **nf-core-*inspired*** layout (not nf-core submission): adopt the
 parts that are pure engineering wins, skip the parts that fight our HPC reality.
@@ -195,8 +195,8 @@ pattern on a leaf first, then attack the hard pieces.
 | 7 | TRAIN_PREDICT subworkflow (RNASEQ_PREPARE + FUNANNOTATE_TRAIN + FUNANNOTATE_PREDICT) | ✅ done |
 | 8 | ANNOTATE_GENOME subworkflow (optional annotation chain) | ✅ done |
 | 8b | `lib/FunannotateUtils.groovy` (shared utilities, no more duplication) | ✅ done |
-| 9 | `#11` ucr_hpcc institutional profile consolidation | ⬜ todo |
-| 9 | `#12` nf-core hygiene (docs/usage, docs/output, schema_input, MultiQC) | ⬜ stretch |
+| 9 | `#11` ucr_hpcc institutional profile consolidation | ✅ done |
+| 9 | `#12` nf-core hygiene (docs/usage, docs/output, schema_input) | ✅ done |
 
 ---
 
@@ -229,11 +229,16 @@ Issue 11 covers the fuller consolidation (folding UCR SLURM partitions /
 | `versions.yml` per module + MultiQC | partial — some modules emit; no MultiQC yet |
 | Containers per module | **remaining gap** — relies on Lmod/pixi; nf-core needs conda+biocontainer per process |
 | Naming | `nf_funannotate1` violates nf-core naming (underscores/digits) — not a priority |
-| nf-test, `docs/usage.md`+`output.md`, `assets/schema_input.json`, `.nf-core.yml` | missing (issue #12 stretch) |
+| `docs/usage.md`, `docs/output.md`, `assets/schema_input.json` | ✅ done (issue #12) |
+| `.nf-core.yml`, nf-test, MultiQC | not pursued — see naming decision below |
 
-**Verdict:** core engineering work (meta-maps, one-tool-per-module, subworkflows,
-shared utilities) is complete. Remaining gaps are nf-core submission requirements
-that fight our HPC reality (container-per-module, naming). **Recommendation:
-nf-core-inspired, not nf-core-submitted** — keep `ucr_hpcc` as an institutional
-profile, add a real container path for portability (issue #11), defer
-docs/MultiQC/nf-test to issue #12 stretch work.
+**Naming decision (recorded):** `nf_funannotate1` violates nf-core naming rules
+(underscores, trailing digit). Renaming is not worth the disruption: the pipeline
+is HPC-first, the Lmod/UCR HPCC provisioning model does not fit the
+container-per-module requirement, and nf-core submission is not a goal. The
+repository stays `nf_funannotate1` with an nf-core-*inspired* structure (meta-map,
+subworkflows/local, modules/local, schema, CI) but is not submitted.
+
+**Verdict:** all planned refactoring is complete. Remaining gaps (nf-test,
+MultiQC, container-per-module) are nf-core *submission* requirements that do not
+improve the pipeline for its intended HPC use.

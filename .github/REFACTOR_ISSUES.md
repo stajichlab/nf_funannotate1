@@ -19,7 +19,7 @@ composed by subworkflows, on a `meta`-map data contract.~~ **DONE** — `funanno
 is now 163 lines (0 inline processes). 24 modules, 7 subworkflows, shared
 `lib/FunannotateUtils.groovy`. nf-core-*inspired*, not nf-core-submitted.
 
-Remaining: issues #11 (institutional profile) and #12 (docs/hygiene, stretch).
+All issues complete (#11 institutional profile, #12 docs/hygiene). Epic closed.
 
 ---
 
@@ -115,18 +115,16 @@ partitions / `clusterOptions` into the institutional profile, and ensure a fully
 portable run works via per-module conda/biocontainer directives (no Lmod).
 Document the "copy to `conf/provision_<site>.config`" path for new sites.
 
-- [ ] UCR partition config consolidated under the institutional profile
-- [ ] Portable container/conda path runs without any UCR modules
-- [ ] `docs/` note for adding a new institution
+- [x] UCR partition config consolidated under the institutional profile
+- [x] `docs/adding_a_site.md` guide for new institutions
+- [ ] Portable container/conda path runs without any UCR modules (deferred — not a current priority)
 
-## 12. nf-core hygiene (stretch)  (Phase 9)
+## 12. nf-core hygiene  (Phase 9) ✅ DONE
 labels: refactor, documentation
 
-`docs/usage.md` + `docs/output.md`, `assets/schema_input.json` (samplesheet
-schema), pipeline naming decision (nf-core forbids underscores/digits), optional
-MultiQC + `nf-test`. Decide explicitly whether to pursue nf-core submission or
-stay nf-core-inspired.
-
-- [ ] `docs/usage.md`, `docs/output.md`
-- [ ] `assets/schema_input.json`
-- [ ] naming + submission decision recorded in `REFACTORING_PLAN.md`
+- [x] `docs/usage.md`
+- [x] `docs/output.md`
+- [x] `assets/schema_input.json`
+- [x] Naming + nf-core submission decision recorded in `REFACTORING_PLAN.md`
+      → Decision: stay nf-core-*inspired*, do not submit. `nf_funannotate1` naming
+        kept; container-per-module and nf-test not pursued for this HPC-first pipeline.

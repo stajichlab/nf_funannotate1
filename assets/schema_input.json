@@ -1,0 +1,85 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/stajichlab/nf_funannotate1/main/assets/schema_input.json",
+    "title": "stajichlab/nf_funannotate1 — samplesheet schema",
+    "description": "Schema for the samples.csv samplesheet passed to --samples.",
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "SPECIES": {
+                "type": "string",
+                "description": "Binomial species name, e.g. 'Aspergillus fumigatus'. Used to derive the sample tag and to look up RNA-seq data.",
+                "errorMessage": "SPECIES is required and must be a non-empty string"
+            },
+            "STRAIN": {
+                "type": "string",
+                "description": "Strain / isolate identifier, e.g. 'Af293'. May be blank; the first semicolon-delimited token is used.",
+                "default": ""
+            },
+            "ASMID": {
+                "type": "string",
+                "description": "Assembly identifier, e.g. 'GCA_000002655.1' or a local slug. Used as the primary sample key and output directory name.",
+                "errorMessage": "ASMID is required and must be a non-empty string"
+            },
+            "LOCUSTAG": {
+                "type": "string",
+                "description": "GenBank locus-tag prefix assigned to this assembly, e.g. 'AFUA'.",
+                "errorMessage": "LOCUSTAG is required"
+            },
+            "BUSCO_LINEAGE": {
+                "type": "string",
+                "description": "BUSCO lineage dataset name, e.g. 'fungi_odb10' or 'saccharomycetes_odb12'. Must match a dataset available in the local BUSCO downloads.",
+                "errorMessage": "BUSCO_LINEAGE is required"
+            },
+            "TRANSL_TABLE": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "NCBI genetic code translation table number (1 = standard, 4 = Mycoplasma/Spiroplasma, 12 = alt-yeast). Defaults to 1 if blank.",
+                "default": 1
+            },
+            "NCBI_TAXONID": {
+                "type": "string",
+                "description": "NCBI Taxonomy ID for the species (used for SRA queries). May be blank if run_sra_fetch=false.",
+                "default": ""
+            },
+            "GENOME": {
+                "type": "string",
+                "description": "Path to the input genome FASTA (.fa, .fna, .fasta, or .gz). Absolute path or relative to launchDir. If blank, the genome is resolved from params.source as <source>/<ASMID>/<ASMID>_genomic.fna.gz.",
+                "default": ""
+            },
+            "PHYLUM": {
+                "type": "string",
+                "description": "Phylum name (optional). Used by --taxon PHYLUM:Ascomycota to filter samples.",
+                "default": ""
+            },
+            "SUBPHYLUM": {
+                "type": "string",
+                "description": "Subphylum name (optional). Used by --taxon SUBPHYLUM:Pezizomycotina.",
+                "default": ""
+            },
+            "CLASS": {
+                "type": "string",
+                "description": "Class name (optional). Used by --taxon CLASS:Eurotiomycetes.",
+                "default": ""
+            },
+            "ORDER": {
+                "type": "string",
+                "description": "Order name (optional). Used by --taxon ORDER:Eurotiales.",
+                "default": ""
+            },
+            "FAMILY": {
+                "type": "string",
+                "description": "Family name (optional). Used by --taxon FAMILY:Aspergillaceae.",
+                "default": ""
+            },
+            "GENUS": {
+                "type": "string",
+                "description": "Genus name (optional). Used by --taxon GENUS:Aspergillus.",
+                "default": ""
+            }
+        },
+        "required": ["SPECIES", "ASMID", "LOCUSTAG", "BUSCO_LINEAGE"],
+        "dependentRequired": {}
+    }
+}
