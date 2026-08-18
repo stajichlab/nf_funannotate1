@@ -11,6 +11,7 @@ input_clean_genomes/
 rnaseq_reads/
 rnaseq_data/
 results/
+tables/
 # test-run artifacts (keep tests/data fixtures)
 tests/work/
 tests/output/
@@ -29,3 +30,4 @@ nextflow/
 /lib/augustus/
 /lib/*.faa
 /lib/template.sbt
+tables/

@@ -38,6 +38,12 @@ antismash = "*"
 # InterProScan is large and often run from a site install; this is best-effort.
 interproscan = "*"
 
+[feature.skani.dependencies]
+skani = "*"
+
+[feature.busco.dependencies]
+busco = "*"
+
 [feature.funannotate.dependencies]
 # Heavy — pins many tools. Best-effort; module/singularity preferred.
 funannotate = "*"
@@ -56,5 +62,7 @@ edirect      = ["edirect"]
 sra          = ["sra"]
 antismash    = ["antismash"]
 interproscan = ["interproscan"]
+skani        = ["skani"]
+busco        = ["busco"]
 funannotate  = ["funannotate"]
 signalp      = ["signalp"]

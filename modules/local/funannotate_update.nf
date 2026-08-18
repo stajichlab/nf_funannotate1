@@ -28,6 +28,7 @@ process FUNANNOTATE_UPDATE {
     fi
 
     source /etc/profile.d/modules.sh 2>/dev/null || true
+    module load funannotate
 
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}

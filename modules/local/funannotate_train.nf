@@ -52,7 +52,7 @@ process FUNANNOTATE_TRAIN {
     fi
 
     source /etc/profile.d/modules.sh 2>/dev/null || true
-    module load funannotate/dev-1.8.18
+    module load funannotate
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}
     TMPDIR=\${SCRATCH:-/tmp}

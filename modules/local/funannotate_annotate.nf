@@ -22,9 +22,13 @@ process FUNANNOTATE_ANNOTATE {
     def antiSmArg = antiSm.exists() ? "--antismash ${antiSm}" : ""
     """
     source /etc/profile.d/modules.sh 2>/dev/null || true
-
+    module load funannotate
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}
+    # eggNOG-mapper DB: bound to the container-internal path by
+    # provision_singularity.config; echoed here so the export is idempotent
+    # whichever image build is in play.
+    export EGGNOG_DATA_DIR=/opt/databases/eggnog_db
     TMPDIR=\${SCRATCH:-/tmp}
 
     funannotate annotate -i ${params.target}/${out} -o ${params.target}/${out} \\

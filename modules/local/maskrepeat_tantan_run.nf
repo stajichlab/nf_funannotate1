@@ -20,7 +20,8 @@ process MASKREPEAT_TANTAN_RUN {
     script:
     def asmid = meta.asmid
     """
-    source /etc/profile.d/modules.sh 2>/dev/null || true
+    module load funannotate
+    which funannotate
     # Inflate a gzipped clean genome to a local uncompressed copy; funannotate cannot
     # read a gzipped FASTA via -i. Plain (uncompressed) genomes pass through unchanged.
     GENOME_FA="${genome_fa}"

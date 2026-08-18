@@ -1,430 +1,590 @@
 {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://raw.githubusercontent.com/stajichlab/nf_funannotate1/main/nextflow_schema.json",
-    "title": "stajichlab/nf_funannotate1 pipeline parameters",
-    "description": "Eukaryotic (fungal-default) genome annotation: clean, mask, RNA-seq train, funannotate predict/annotate/update, antismash/interpro/signalp",
-    "type": "object",
-    "$defs": {
-        "input_output_options": {
-            "title": "Input/output options",
-            "type": "object",
-            "description": "Sample sheet, run scoping, and output locations.",
-            "properties": {
-                "samples": {
-                    "type": "string",
-                    "description": "Path to the sample sheet CSV (SPECIES, STRAIN, ASMID, LOCUSTAG, BUSCO_LINEAGE, TRANSL_TABLE, NCBI_TAXONID, GENOME).",
-                    "default": "${launchDir}/samples.csv"
-                },
-                "n_test": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "Process only the first N samples (0 = all). Useful for smoke tests.",
-                    "default": 0
-                },
-                "taxon": {
-                    "type": "string",
-                    "description": "Restrict to a taxonomic group as RANK:VALUE, e.g. PHYLUM:Ascomycota. Ranks come from sample-sheet columns.",
-                    "default": "",
-                    "pattern": "^$|^[A-Za-z]+:.+$"
-                },
-                "asmid": {
-                    "type": "string",
-                    "description": "Restrict to a single assembly by ASMID, e.g. GCA_000001405.15.",
-                    "default": ""
-                },
-                "suppress": {
-                    "type": "string",
-                    "description": "Optional newline/CSV list of ASMIDs to skip. Missing file is treated as empty.",
-                    "default": "${launchDir}/suppress.txt"
-                },
-                "target": {
-                    "type": "string",
-                    "description": "Output directory for final genome annotations.",
-                    "default": "${launchDir}/genome_annotation"
-                },
-                "training_target": {
-                    "type": "string",
-                    "description": "Output directory for funannotate training artifacts.",
-                    "default": "${launchDir}/genome_annotation_training"
-                },
-                "rnaseq_data": {
-                    "type": "string",
-                    "description": "Output directory for assembled/normalized RNA-seq evidence.",
-                    "default": "${launchDir}/rnaseq_data"
-                },
-                "seqcenter": {
-                    "type": "string",
-                    "description": "Sequencing center label embedded in funannotate output.",
-                    "default": "NCBI"
-                },
-                "debug": {
-                    "type": "boolean",
-                    "description": "Enable extra debug logging.",
-                    "default": false
-                }
-            }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/stajichlab/nf_funannotate1/main/nextflow_schema.json",
+  "title": "stajichlab/nf_funannotate1 pipeline parameters",
+  "description": "Eukaryotic (fungal-default) genome annotation: clean, mask, RNA-seq train, funannotate predict/annotate/update, antismash/interpro/signalp",
+  "type": "object",
+  "$defs": {
+    "input_output_options": {
+      "title": "Input/output options",
+      "type": "object",
+      "description": "Sample sheet, run scoping, and output locations.",
+      "properties": {
+        "samples": {
+          "type": "string",
+          "description": "Path to the sample sheet CSV (SPECIES, STRAIN, ASMID, LOCUSTAG, BUSCO_LINEAGE, TRANSL_TABLE, NCBI_TAXONID, GENOME).",
+          "default": "${launchDir}/samples.csv"
         },
-        "reference_databases": {
-            "title": "Reference databases & evidence",
-            "type": "object",
-            "description": "External databases, protein evidence, and config seeds. Built-once dirs are storeDir-cached.",
-            "properties": {
-                "source": {
-                    "type": "string",
-                    "description": "NCBI_ASM source dir; genomes resolved as <source>/<ASMID>/<ASMID>_genomic.fna.gz for rows without a GENOME column.",
-                    "default": "/bigdata/stajichlab/shared/projects/1KFG/2026/NCBI_fungi/source/NCBI_ASM"
-                },
-                "taxondb": {
-                    "type": "string",
-                    "description": "Local taxonkit/NCBI taxonomy database directory.",
-                    "default": "/bigdata/stajichlab/shared/projects/1KFG/2026/NCBI_fungi/tmp/taxa/"
-                },
-                "proteins": {
-                    "type": "string",
-                    "description": "Protein evidence FASTA passed to funannotate (default: swissprot fungi).",
-                    "default": "${launchDir}/lib/swissprot_fungi.faa"
-                },
-                "funannotate_db": {
-                    "type": "string",
-                    "description": "Local funannotate database dir; built once by SETUP_FUNANNOTATE_DB. Point at a prebuilt shared DB to skip the build.",
-                    "default": "${launchDir}/funannotate_db"
-                },
-                "augustus_config": {
-                    "type": "string",
-                    "description": "Writable AUGUSTUS_CONFIG copy seeded once by SETUP_AUGUSTUS_CONFIG.",
-                    "default": "${launchDir}/lib/augustus/3.5/config"
-                },
-                "augustus_config_source": {
-                    "type": ["string", "null"],
-                    "description": "Source augustus config to copy from. null = autodetect from the provisioning env / augustus binary.",
-                    "default": null
-                },
-                "sbt_template": {
-                    "type": "string",
-                    "description": "NCBI submission template (.sbt) used by funannotate.",
-                    "default": "${launchDir}/lib/template.sbt"
-                }
-            }
+        "n_test": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Process only the first N samples (0 = all). Useful for smoke tests.",
+          "default": 0
         },
-        "genome_cleaning_masking": {
-            "title": "Genome cleaning & masking",
-            "type": "object",
-            "description": "Assembly length-filter, FCS-GX contaminant purge, repeat masking, and TE library construction.",
-            "properties": {
-                "min_contig_len": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "Drop contigs shorter than this (bp).",
-                    "default": 2000
-                },
-                "clean_script": {
-                    "type": "string",
-                    "description": "Helper that length-filters the assembly.",
-                    "default": "${projectDir}/scripts/clean_genome_fa.py"
-                },
-                "fcs_shm_script": {
-                    "type": "string",
-                    "description": "Helper that stages the FCS-GX db into /dev/shm.",
-                    "default": "${projectDir}/scripts/setup_fcs_shm.sh"
-                },
-                "skip_fcs": {
-                    "type": "boolean",
-                    "description": "Bypass the AAFTF FCS-GX contaminant purge (no ~470 GB gxdb / highmem); length-filter only.",
-                    "default": false
-                },
-                "clean_batch_size": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "Batch this many genomes into one GENOME_CLEAN_BATCH job (stages FCS-GX db once). 0 (or skip_fcs) = one job per genome.",
-                    "default": 1000
-                },
-                "genome_dir": {
-                    "type": "string",
-                    "description": "Directory containing cleaned genome FASTAs (written by GENOME_CLEAN, read by ASM_STATS and earlgrey_mask.nf).",
-                    "default": "${launchDir}/input_clean_genomes"
-                },
-                "run_repeatmasker": {
-                    "type": "boolean",
-                    "description": "Run tantan soft-masking before prediction.",
-                    "default": true
-                },
-                "run_earlgrey": {
-                    "type": "boolean",
-                    "description": "Use EarlGrey TE-discovery masking instead of tantan. Builds a curated TE library per species, then applies it with RepeatMasker to every conspecific assembly.",
-                    "default": false
-                },
-                "earlgrey_outdir": {
-                    "type": "string",
-                    "description": "Directory for EarlGrey TE libraries and masked outputs (storeDir-cached per species).",
-                    "default": "${launchDir}/results/repeatlibrary"
-                },
-                "earlgrey_workdir": {
-                    "type": "string",
-                    "description": "Scratch directory for EarlGrey intermediate files.",
-                    "default": "${launchDir}/work/earlgrey_persist"
-                },
-                "earlgrey_version": {
-                    "type": "string",
-                    "description": "EarlGrey module version to load (UCR HPCC Lmod; ignored under other provisioning profiles).",
-                    "default": "7.2.6"
-                },
-                "repeatmasker_version": {
-                    "type": "string",
-                    "description": "RepeatMasker module version to load for per-strain masking (UCR HPCC Lmod).",
-                    "default": "4.1.8"
-                },
-                "repeat_taxon": {
-                    "type": "string",
-                    "description": "Taxonomic group passed to EarlGrey -r (e.g. fungi, insects, vertebrates).",
-                    "default": "fungi"
-                },
-                "masked_dir": {
-                    "type": "string",
-                    "description": "Destination for DELIVER_MASK output (finished masked FASTAs read by funannotate predict).",
-                    "default": "${launchDir}/input_clean_genomes"
-                },
-                "only_clean": {
-                    "type": "boolean",
-                    "description": "Stop after genome cleaning (no masking/prediction).",
-                    "default": false
-                },
-                "gen_asm_stats": {
-                    "type": "boolean",
-                    "description": "Generate asm_stats.tsv.gz from cleaned genomes (used by earlgrey_mask.nf SELECT_REPS to pick the most contiguous representative per species).",
-                    "default": true
-                },
-                "tables_dir": {
-                    "type": "string",
-                    "description": "Directory where asm_stats.tsv.gz is written and read.",
-                    "default": "${launchDir}/tables"
-                }
-            }
+        "taxon": {
+          "type": "string",
+          "description": "Restrict to a taxonomic group as RANK:VALUE, e.g. PHYLUM:Ascomycota. Ranks come from sample-sheet columns.",
+          "default": "",
+          "pattern": "^$|^[A-Za-z]+:.+$"
         },
-        "rnaseq_sra": {
-            "title": "RNA-seq / SRA",
-            "type": "object",
-            "description": "SRA discovery, fetch, trimming, and limits for RNA-seq training evidence.",
-            "properties": {
-                "fastq_hdr_script": {
-                    "type": "string",
-                    "description": "Rust helper (or Python fallback) to fix FASTQ headers for Trinity.",
-                    "default": "${projectDir}/tools/bin/fix_fastq_header_trinity"
-                },
-                "readlen_script": {
-                    "type": "string",
-                    "description": "Rust helper (or Python fallback) to enforce paired-read length matching.",
-                    "default": "${projectDir}/tools/bin/enforce_seqpair_readlen"
-                },
-                "run_sra_fetch": {
-                    "type": "boolean",
-                    "description": "Fetch RNA-seq from SRA for training.",
-                    "default": true
-                },
-                "skip_sra_query": {
-                    "type": "boolean",
-                    "description": "Skip the SRA discovery query step.",
-                    "default": false
-                },
-                "stop_after_sra_query": {
-                    "type": "boolean",
-                    "description": "Halt after SRA discovery (no fetch/train).",
-                    "default": false
-                },
-                "stop_after_sra_fetch": {
-                    "type": "boolean",
-                    "description": "Halt after SRA fetch (no train/predict).",
-                    "default": false
-                },
-                "sra_query_batch_size": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "Species per batched SRA query job.",
-                    "default": 10
-                },
-                "max_rnaseq_runs": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "Max paired-end SRA runs to use per species.",
-                    "default": 2
-                },
-                "max_rnaseq_spot": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "Max spots to download per run (0 = unlimited).",
-                    "default": 0
-                },
-                "max_rnaseq_reads": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "Max reads to retain per species after normalization.",
-                    "default": 40000000
-                },
-                "enable_single_end": {
-                    "type": "boolean",
-                    "description": "Also use single-end SRA runs when paired-end is insufficient.",
-                    "default": false
-                },
-                "max_rnaseq_se_runs": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "Max single-end SRA runs per species (when enable_single_end).",
-                    "default": 3
-                },
-                "rnaseq_trimmer": {
-                    "type": "string",
-                    "description": "Adapter/quality trimmer for RNA-seq reads.",
-                    "default": "fastp"
-                }
-            }
+        "asmid": {
+          "type": "string",
+          "description": "Restrict to a single assembly by ASMID, e.g. GCA_000001405.15.",
+          "default": ""
         },
-        "prediction_training": {
-            "title": "Prediction & training",
-            "type": "object",
-            "description": "funannotate predict/train tuning and the small-and-fragmented pre-flight guard.",
-            "properties": {
-                "max_cpus": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "Upper bound on CPUs handed to multithreaded tools.",
-                    "default": 64
-                },
-                "max_intronlen": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "Maximum intron length for prediction.",
-                    "default": 3000
-                },
-                "min_intronlen": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "Minimum intron length for prediction.",
-                    "default": 10
-                },
-                "predict_min_asm_bp": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "Assembled bp below this counts as 'small' for the predict guard (0 = disable guard).",
-                    "default": 8000000
-                },
-                "predict_frag_max_n50": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "N50 below this counts as 'fragmented' for the predict guard.",
-                    "default": 10000
-                },
-                "predict_frag_max_contigs": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "description": "Contig count above this counts as 'fragmented' for the predict guard.",
-                    "default": 1000
-                },
-                "header_length": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "GenBank/funannotate locus-tag header length cap (was a hardcoded per-sample constant).",
-                    "default": 24
-                }
-            }
+        "suppress": {
+          "type": "string",
+          "description": "Optional newline/CSV list of ASMIDs to skip. Missing file is treated as empty.",
+          "default": "${launchDir}/suppress.txt"
         },
-        "pasa_mysql": {
-            "title": "PASA / MariaDB",
-            "type": "object",
-            "description": "MariaDB singularity service used by funannotate train/update via PASA.",
-            "properties": {
-                "pasa_mysql": {
-                    "type": "boolean",
-                    "description": "Run the MariaDB service for PASA-backed train/update.",
-                    "default": true
-                },
-                "mariadb_sif": {
-                    "type": "string",
-                    "description": "MariaDB singularity image.",
-                    "default": "/bigdata/stajichlab/shared/lib/mariadb/mariadb.sif"
-                },
-                "mysql_datadir": {
-                    "type": "string",
-                    "description": "MariaDB data directory (writable).",
-                    "default": "/bigdata/stajichlab/jstajich/mysql/db"
-                },
-                "pasa_conf_dir": {
-                    "type": "string",
-                    "description": "PASA configuration directory.",
-                    "default": "/rhome/jstajich/.pasa/pasa_conf/"
-                }
-            }
+        "target": {
+          "type": "string",
+          "description": "Output directory for final genome annotations.",
+          "default": "${launchDir}/genome_annotation"
         },
-        "annotation_steps": {
-            "title": "Optional annotation steps",
-            "type": "object",
-            "description": "Toggle downstream functional-annotation steps.",
-            "properties": {
-                "run_update": {
-                    "type": "boolean",
-                    "description": "Run funannotate update (requires RNA-seq evidence).",
-                    "default": false
-                },
-                "run_annotate": {
-                    "type": "boolean",
-                    "description": "Run funannotate annotate (functional annotation).",
-                    "default": false
-                },
-                "run_antismash": {
-                    "type": "boolean",
-                    "description": "Run antiSMASH secondary-metabolite cluster prediction.",
-                    "default": false
-                },
-                "run_interpro": {
-                    "type": "boolean",
-                    "description": "Run InterProScan.",
-                    "default": false
-                },
-                "run_signalp": {
-                    "type": "boolean",
-                    "description": "Run SignalP (GPU).",
-                    "default": false
-                },
-                "antismash_taxon": {
-                    "type": "string",
-                    "description": "antiSMASH taxon model.",
-                    "default": "fungi",
-                    "enum": ["fungi", "plants", "bacteria"]
-                }
-            }
+        "training_target": {
+          "type": "string",
+          "description": "Output directory for funannotate training artifacts.",
+          "default": "${launchDir}/genome_annotation_training"
         },
-        "provisioning": {
-            "title": "Provisioning (containers / pixi)",
-            "type": "object",
-            "description": "Software-provisioning settings; active only under the matching provisioning profile.",
-            "properties": {
-                "sif_dir": {
-                    "type": "string",
-                    "description": "Directory of cached singularity images.",
-                    "default": "/bigdata/stajichlab/shared/lib/singularity_cache"
-                },
-                "container_edirect": { "type": "string", "description": "edirect (entrez-direct) image." },
-                "container_antismash": { "type": "string", "description": "antiSMASH image." },
-                "container_interproscan": { "type": "string", "description": "InterProScan image." },
-                "container_setup": { "type": "string", "description": "Setup/wget image." },
-                "container_funannotate": { "type": "string", "description": "funannotate image." },
-                "container_genome_clean": { "type": "string", "description": "AAFTF + taxonkit + FCS-GX image." },
-                "container_sra": { "type": "string", "description": "SRA multi-tool image." },
-                "container_signalp": { "type": "string", "description": "SignalP6 (GPU) image." },
-                "pixi_manifest": {
-                    "type": "string",
-                    "description": "pixi.toml used by the pixi provisioning profile.",
-                    "default": "${projectDir}/pixi.toml"
-                }
-            }
+        "rnaseq_data": {
+          "type": "string",
+          "description": "Output directory for assembled/normalized RNA-seq evidence.",
+          "default": "${launchDir}/rnaseq_data"
+        },
+        "seqcenter": {
+          "type": "string",
+          "description": "Sequencing center label embedded in funannotate output.",
+          "default": "NCBI"
+        },
+        "debug": {
+          "type": "boolean",
+          "description": "Enable extra debug logging.",
+          "default": false
         }
+      }
     },
-    "allOf": [
-        { "$ref": "#/$defs/input_output_options" },
-        { "$ref": "#/$defs/reference_databases" },
-        { "$ref": "#/$defs/genome_cleaning_masking" },
-        { "$ref": "#/$defs/rnaseq_sra" },
-        { "$ref": "#/$defs/prediction_training" },
-        { "$ref": "#/$defs/pasa_mysql" },
-        { "$ref": "#/$defs/annotation_steps" },
-        { "$ref": "#/$defs/provisioning" }
-    ]
+    "reference_databases": {
+      "title": "Reference databases & evidence",
+      "type": "object",
+      "description": "External databases, protein evidence, and config seeds. Built-once dirs are storeDir-cached.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "NCBI_ASM source dir; genomes resolved as <source>/<ASMID>/<ASMID>_genomic.fna.gz for rows without a GENOME column.",
+          "default": "/bigdata/stajichlab/shared/projects/1KFG/2026/NCBI_fungi/source/NCBI_ASM"
+        },
+        "taxondb": {
+          "type": "string",
+          "description": "Local taxonkit/NCBI taxonomy database directory.",
+          "default": "/bigdata/stajichlab/shared/projects/1KFG/2026/NCBI_fungi/tmp/taxa/"
+        },
+        "proteins": {
+          "type": "string",
+          "description": "Protein evidence FASTA passed to funannotate (default: swissprot fungi).",
+          "default": "${launchDir}/lib/swissprot_fungi.faa"
+        },
+        "funannotate_db": {
+          "type": "string",
+          "description": "Local funannotate database dir; built once by SETUP_FUNANNOTATE_DB. Point at a prebuilt shared DB to skip the build.",
+          "default": "${launchDir}/funannotate_db"
+        },
+        "eggnog_db": {
+          "type": "string",
+          "description": "eggNOG-mapper database directory used by funannotate annotate (EGGNOG_DATA_DIR). Bound into the funannotate container as /opt/databases/eggnog_db; the image sets EGGNOG_DATA_DIR to that path. Must contain eggnog.db, eggnog_proteins.dmnd and the eggnog.taxa.db files.",
+          "default": "/srv/projects/db/eggNOG/LATEST"
+        },
+        "augustus_config": {
+          "type": "string",
+          "description": "Writable AUGUSTUS_CONFIG copy seeded once by SETUP_AUGUSTUS_CONFIG.",
+          "default": "${launchDir}/lib/augustus/3.5/config"
+        },
+        "augustus_config_source": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Source augustus config to copy from. null = autodetect from the provisioning env / augustus binary.",
+          "default": null
+        },
+        "sbt_template": {
+          "type": "string",
+          "description": "NCBI submission template (.sbt) used by funannotate.",
+          "default": "${launchDir}/lib/template.sbt"
+        }
+      }
+    },
+    "genome_cleaning_masking": {
+      "title": "Genome cleaning & masking",
+      "type": "object",
+      "description": "Assembly length-filter, FCS-GX contaminant purge, repeat masking, and TE library construction.",
+      "properties": {
+        "min_contig_len": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Drop contigs shorter than this (bp).",
+          "default": 2000
+        },
+        "clean_script": {
+          "type": "string",
+          "description": "Helper that length-filters the assembly.",
+          "default": "${projectDir}/scripts/clean_genome_fa.py"
+        },
+        "fcs_shm_script": {
+          "type": "string",
+          "description": "Helper that stages the FCS-GX db into /dev/shm.",
+          "default": "${projectDir}/scripts/setup_fcs_shm.sh"
+        },
+        "skip_fcs": {
+          "type": "boolean",
+          "description": "Bypass the AAFTF FCS-GX contaminant purge (no ~470 GB gxdb / highmem); length-filter only.",
+          "default": false
+        },
+        "clean_batch_size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Batch this many genomes into one GENOME_CLEAN_BATCH job (stages FCS-GX db once). 0 (or skip_fcs) = one job per genome.",
+          "default": 1000
+        },
+        "genome_dir": {
+          "type": "string",
+          "description": "Directory containing cleaned genome FASTAs (written by GENOME_CLEAN, read by ASM_STATS and earlgrey_mask.nf).",
+          "default": "${launchDir}/input_clean_genomes"
+        },
+        "run_repeatmasker": {
+          "type": "boolean",
+          "description": "Run tantan soft-masking before prediction.",
+          "default": true
+        },
+        "run_earlgrey": {
+          "type": "boolean",
+          "description": "Use EarlGrey TE-discovery masking instead of tantan. Builds a curated TE library per species, then applies it with RepeatMasker to every conspecific assembly.",
+          "default": false
+        },
+        "earlgrey_outdir": {
+          "type": "string",
+          "description": "Directory for EarlGrey TE libraries and masked outputs (storeDir-cached per species).",
+          "default": "${launchDir}/results/repeatlibrary"
+        },
+        "earlgrey_workdir": {
+          "type": "string",
+          "description": "Scratch directory for EarlGrey intermediate files.",
+          "default": "${launchDir}/work/earlgrey_persist"
+        },
+        "earlgrey_version": {
+          "type": "string",
+          "description": "EarlGrey module version to load (UCR HPCC Lmod; ignored under other provisioning profiles).",
+          "default": "7.2.6"
+        },
+        "repeatmasker_version": {
+          "type": "string",
+          "description": "RepeatMasker module version to load for per-strain masking (UCR HPCC Lmod).",
+          "default": "4.1.8"
+        },
+        "repeat_taxon": {
+          "type": "string",
+          "description": "Taxonomic group passed to EarlGrey -r (e.g. fungi, insects, vertebrates).",
+          "default": "fungi"
+        },
+        "masked_dir": {
+          "type": "string",
+          "description": "Destination for DELIVER_MASK output (finished masked FASTAs read by funannotate predict).",
+          "default": "${launchDir}/input_clean_genomes"
+        },
+        "only_clean": {
+          "type": "boolean",
+          "description": "Stop after genome cleaning (no masking/prediction).",
+          "default": false
+        },
+        "gen_asm_stats": {
+          "type": "boolean",
+          "description": "Generate asm_stats.tsv.gz from cleaned genomes (used by earlgrey_mask.nf SELECT_REPS to pick the most contiguous representative per species).",
+          "default": true
+        },
+        "tables_dir": {
+          "type": "string",
+          "description": "Directory where asm_stats.tsv.gz is written and read.",
+          "default": "${launchDir}/tables"
+        }
+      }
+    },
+    "rnaseq_sra": {
+      "title": "RNA-seq / SRA",
+      "type": "object",
+      "description": "SRA discovery, fetch, trimming, and limits for RNA-seq training evidence.",
+      "properties": {
+        "fastq_hdr_script": {
+          "type": "string",
+          "description": "Rust helper (or Python fallback) to fix FASTQ headers for Trinity.",
+          "default": "${projectDir}/tools/bin/fix_fastq_header_trinity"
+        },
+        "readlen_script": {
+          "type": "string",
+          "description": "Rust helper (or Python fallback) to enforce paired-read length matching.",
+          "default": "${projectDir}/tools/bin/enforce_seqpair_readlen"
+        },
+        "run_sra_fetch": {
+          "type": "boolean",
+          "description": "Fetch RNA-seq from SRA for training.",
+          "default": true
+        },
+        "skip_sra_query": {
+          "type": "boolean",
+          "description": "Skip the SRA discovery query step.",
+          "default": false
+        },
+        "stop_after_sra_query": {
+          "type": "boolean",
+          "description": "Halt after SRA discovery (no fetch/train).",
+          "default": false
+        },
+        "stop_after_sra_fetch": {
+          "type": "boolean",
+          "description": "Halt after SRA fetch (no train/predict).",
+          "default": false
+        },
+        "sra_query_batch_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Species per batched SRA query job.",
+          "default": 10
+        },
+        "max_rnaseq_runs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Max paired-end SRA runs to use per species.",
+          "default": 2
+        },
+        "max_rnaseq_spot": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Max spots to download per run (0 = unlimited).",
+          "default": 0
+        },
+        "max_rnaseq_reads": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Max reads to retain per species after normalization.",
+          "default": 40000000
+        },
+        "enable_single_end": {
+          "type": "boolean",
+          "description": "Also use single-end SRA runs when paired-end is insufficient.",
+          "default": false
+        },
+        "max_rnaseq_se_runs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Max single-end SRA runs per species (when enable_single_end).",
+          "default": 3
+        },
+        "rnaseq_trimmer": {
+          "type": "string",
+          "description": "Adapter/quality trimmer for RNA-seq reads.",
+          "default": "fastp"
+        }
+      }
+    },
+    "prediction_training": {
+      "title": "Prediction & training",
+      "type": "object",
+      "description": "funannotate predict/train tuning and the small-and-fragmented pre-flight guard.",
+      "properties": {
+        "ani_reuse_threshold": {
+          "type": "number",
+          "default": 99.0,
+          "description": "ANI similarity (%) threshold for assigning strains as reuse-eligible representatives for ab-initio parameter sharing."
+        },
+        "force_independent": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, ignore any shared/reused GeneMark model and do a fresh ES/ET self-training for every assembly (never gmes_petap.pl --predict_with fast-reuse)."
+        },
+        "gene_prediction_shared_abinitio": {
+          "type": "string",
+          "default": "",
+          "description": "Shared per-species ab-initio parameter store (parameters.json + <species_tag>.genemark.mod) populated by BACKFILL_ABINITIO_PARAMS and consumed by GENEMARK_RUN (--predict_with fast-reuse) plus ANI-based reuse. Empty = disabled, every assembly trains independently."
+        },
+        "genemark_mode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "ES",
+            "ET"
+          ],
+          "default": "auto",
+          "description": "GeneMark-ES/ET self-training mode. 'auto' = ES, or ET when a training BAM is available for that assembly; 'ES' = always fresh ES self-training; 'ET' = always ET (requires training BAM, else falls back to ES)."
+        },
+        "run_genemark": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the standalone GeneMark-ES/ET step (GENEMARK_RUN) to train/reuse ab-initio models ahead of funannotate predict. false = skip it and let predict use --auto-skip-genemark (no ab-initio models)."
+        },
+        "genemark_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Path to a user-local licensed GeneMark-ES/ET install directory containing gmes_petap.pl (licensed, so never containerized/conda). null = resolve via $GENEMARK_PATH (module load genemarkESET) then PATH. Mandatory under pixi/singularity provisioning."
+        },
+        "header_length": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "GenBank/funannotate locus-tag header length cap (was a hardcoded per-sample constant).",
+          "default": 24
+        },
+        "max_cpus": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Upper bound on CPUs handed to multithreaded tools.",
+          "default": 64
+        },
+        "max_intronlen": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum intron length for prediction.",
+          "default": 3000
+        },
+        "min_intronlen": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minimum intron length for prediction.",
+          "default": 10
+        },
+        "predict_frag_max_contigs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Contig count above this counts as 'fragmented' for the predict guard.",
+          "default": 1000
+        },
+        "predict_frag_max_n50": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "N50 below this counts as 'fragmented' for the predict guard.",
+          "default": 10000
+        },
+        "predict_min_asm_bp": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Assembled bp below this counts as 'small' for the predict guard (0 = disable guard).",
+          "default": 8000000
+        }
+      }
+    },
+    "pasa_mysql": {
+      "title": "PASA / MariaDB",
+      "type": "object",
+      "description": "MariaDB singularity service used by funannotate train/update via PASA.",
+      "properties": {
+        "pasa_mysql": {
+          "type": "boolean",
+          "description": "Run the MariaDB service for PASA-backed train/update.",
+          "default": true
+        },
+        "mariadb_sif": {
+          "type": "string",
+          "description": "MariaDB singularity image.",
+          "default": "/bigdata/stajichlab/shared/lib/mariadb/mariadb.sif"
+        },
+        "mysql_datadir": {
+          "type": "string",
+          "description": "MariaDB data directory (writable).",
+          "default": "/bigdata/stajichlab/jstajich/mysql/db"
+        },
+        "pasa_conf_dir": {
+          "type": "string",
+          "description": "PASA configuration directory.",
+          "default": "/rhome/jstajich/.pasa/pasa_conf/"
+        }
+      }
+    },
+    "annotation_steps": {
+      "title": "Optional annotation steps",
+      "type": "object",
+      "description": "Toggle downstream functional-annotation steps.",
+      "properties": {
+        "run_update": {
+          "type": "boolean",
+          "description": "Run funannotate update (requires RNA-seq evidence).",
+          "default": false
+        },
+        "run_annotate": {
+          "type": "boolean",
+          "description": "Run funannotate annotate (functional annotation).",
+          "default": false
+        },
+        "run_antismash": {
+          "type": "boolean",
+          "description": "Run antiSMASH secondary-metabolite cluster prediction.",
+          "default": false
+        },
+        "run_interpro": {
+          "type": "boolean",
+          "description": "Run InterProScan.",
+          "default": false
+        },
+        "run_signalp": {
+          "type": "boolean",
+          "description": "Run SignalP (GPU).",
+          "default": false
+        },
+        "antismash_taxon": {
+          "type": "string",
+          "description": "antiSMASH taxon model.",
+          "default": "fungi",
+          "enum": [
+            "fungi",
+            "plants",
+            "bacteria"
+          ]
+        }
+      }
+    },
+    "ani_reuse": {
+      "title": "ANI-based ab-initio reuse",
+      "type": "object",
+      "description": "In-run ANI front-end (BUSCO genome completeness + skani all-vs-all + representative-strain picking) and representative gating of gene prediction.",
+      "properties": {
+        "run_ani_reuse": {
+          "type": "boolean",
+          "default": false,
+          "description": "Compute BUSCO + skani ANI in-run and gate prediction on per-species representatives (eligible siblings fast-reuse the shared GeneMark .mod when available)."
+        },
+        "ani_outdir": {
+          "type": "string",
+          "default": "${launchDir}/results/ani",
+          "description": "Output directory for ANI tables and representative-strain reuse assignments."
+        },
+        "ani_method": {
+          "type": "string",
+          "default": "skani",
+          "description": "ANI comparison method (skani | mash | sourmash | fastani)."
+        },
+        "compare": {
+          "type": "string",
+          "default": "SPECIES",
+          "description": "ANI comparison grouping rank (in-run groups per species)."
+        },
+        "skani_preset": {
+          "type": "string",
+          "enum": [
+            "fast",
+            "medium",
+            "slow"
+          ],
+          "default": "medium",
+          "description": "skani sketch/triangle preset."
+        },
+        "skani_min_af": {
+          "type": "number",
+          "default": 15,
+          "description": "skani --min-af minimum aligned fraction (%) to report a pair."
+        },
+        "skani_compression": {
+          "type": "integer",
+          "default": 0,
+          "description": "skani -c sketch compression override; 0 = preset default."
+        },
+        "busco_lineages": {
+          "type": "string",
+          "default": "/srv/projects/db/BUSCO/v12/",
+          "description": "BUSCO lineages tree (--download_path / BUSCO_LINEAGES) for BUSCO_GENOME."
+        },
+        "genome_stats_outdir": {
+          "type": "string",
+          "default": "${launchDir}/results/genome_stats",
+          "description": "Output directory for genome statistics (BUSCO_GENOME storeDir)."
+        },
+        "predict_scope": {
+          "type": "string",
+          "default": "all",
+          "description": "Prediction scope. 'all' (currently the only honored value) predicts every strain with representative gating."
+        },
+        "allow_independent_fallback": {
+          "type": "boolean",
+          "default": false,
+          "description": "When a species' shared ab-initio store is unavailable, its eligible siblings are excluded from prediction and reported to predict_blocked_awaiting_representative.tsv; true instead lets them train independently."
+        }
+      }
+    },
+    "provisioning": {
+      "title": "Provisioning (containers / pixi)",
+      "type": "object",
+      "description": "Software-provisioning settings; active only under the matching provisioning profile.",
+      "properties": {
+        "sif_dir": {
+          "type": "string",
+          "description": "Directory of cached singularity images.",
+          "default": "/bigdata/stajichlab/shared/lib/singularity_cache"
+        },
+        "container_edirect": {
+          "type": "string",
+          "description": "edirect (entrez-direct) image."
+        },
+        "container_antismash": {
+          "type": "string",
+          "description": "antiSMASH image."
+        },
+        "container_interproscan": {
+          "type": "string",
+          "description": "InterProScan image."
+        },
+        "container_setup": {
+          "type": "string",
+          "description": "Setup/wget image."
+        },
+        "container_funannotate": {
+          "type": "string",
+          "description": "funannotate image."
+        },
+        "container_genome_clean": {
+          "type": "string",
+          "description": "AAFTF + taxonkit + FCS-GX image."
+        },
+        "container_sra": {
+          "type": "string",
+          "description": "SRA multi-tool image."
+        },
+        "container_signalp": {
+          "type": "string",
+          "description": "SignalP6 (GPU) image."
+        },
+        "pixi_manifest": {
+          "type": "string",
+          "description": "pixi.toml used by the pixi provisioning profile.",
+          "default": "${projectDir}/pixi.toml"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/$defs/input_output_options"
+    },
+    {
+      "$ref": "#/$defs/reference_databases"
+    },
+    {
+      "$ref": "#/$defs/genome_cleaning_masking"
+    },
+    {
+      "$ref": "#/$defs/rnaseq_sra"
+    },
+    {
+      "$ref": "#/$defs/prediction_training"
+    },
+    {
+      "$ref": "#/$defs/pasa_mysql"
+    },
+    {
+      "$ref": "#/$defs/annotation_steps"
+    },
+    {
+      "$ref": "#/$defs/ani_reuse"
+    },
+    {
+      "$ref": "#/$defs/provisioning"
+    }
+  ]
 }

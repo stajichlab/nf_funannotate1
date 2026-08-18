@@ -40,6 +40,7 @@ include { MASK_GENOME }      from './subworkflows/local/mask_genome'
 include { FETCH_RNASEQ }     from './subworkflows/local/fetch_rnaseq'
 include { TRAIN_PREDICT }    from './subworkflows/local/train_predict'
 include { ANNOTATE_GENOME }  from './subworkflows/local/annotate_genome'
+include { ANI_REUSE }        from './subworkflows/local/ani_reuse'
 
 workflow {
     // `--help` prints schema-driven parameter help (grouped, with types/defaults) and exits.
@@ -87,6 +88,20 @@ workflow {
 
     if (!params.only_clean.toBoolean()) {
         def clean_genome_ch = CLEAN_GENOMES.out.genomes
+
+        // ── ANI-driven representative-strain ab-initio reuse (in-run front-end) ──
+        // When --run_ani_reuse=true, compute per-species BUSCO completeness + skani
+        // all-vs-all ANI + PICK_REPRESENTATIVE_STRAIN IN THIS RUN from the cleaned
+        // genomes — before prediction starts — and hand TRAIN_PREDICT the resulting
+        // abinitio_reuse_assignments.csv to gate sibling reuse of the shared
+        // per-species store (PREDICT_REUSE / BFD FUNANNOTATE_PREDICTION).
+        def reuse_map_ch = Channel.value('')
+        if (params.run_ani_reuse.toBoolean()) {
+            if (!params.gene_prediction_shared_abinitio)
+                error "run_ani_reuse=true requires --gene_prediction_shared_abinitio (path to the shared per-species ab-initio store) — PREDICT_REUSE gates sibling reuse against it"
+            ANI_REUSE(clean_genome_ch, file(params.samples))
+            reuse_map_ch = ANI_REUSE.out.reuse_map
+        }
 
         // ── Generate assembly statistics (for earlgrey_mask.nf SELECT_REPS) ────────
         // Generate asm_stats.tsv if --gen_asm_stats is true and the file doesn't exist.
@@ -141,7 +156,7 @@ workflow {
         }
 
         if (!params.run_sra_fetch.toBoolean() || (!params.stop_after_sra_fetch.toBoolean() && !params.stop_after_sra_query.toBoolean())) {
-        TRAIN_PREDICT(predict_genome_ch, reads_ch)
+        TRAIN_PREDICT(predict_genome_ch, reads_ch, reuse_map_ch)
 
         // Genomes predicted in a PRIOR run (complement of what TRAIN_PREDICT runs this run).
         def postpredict = INPUT_CHECK.out.samples

@@ -8,7 +8,7 @@ process FUNANNOTATE_PREDICT {
     tag "${meta.id}"
 
     input:
-    tuple val(meta), val(genome_fa)
+    tuple val(meta), val(genome_fa), val(genemark_gtf)
 
     output:
     val meta, emit: metadata
@@ -23,9 +23,12 @@ process FUNANNOTATE_PREDICT {
     def busco_lineage = meta.busco
     def header_length = params.header_length
     def transl_table  = meta.transl_table
+    // GeneMark GTF supplied by the standalone GENEMARK_RUN step; empty string
+    // means "let funannotate run GeneMark internally (or auto-skip it)".
+    def genemark_cli  = genemark_gtf ? "--genemark_gtf ${genemark_gtf}" : "--auto-skip-genemark"
     """
     source /etc/profile.d/modules.sh 2>/dev/null || true
-    module load funannotate/dev-1.8.18
+    module load funannotate
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}
     TMPDIR=\${SCRATCH:-/tmp}
@@ -108,7 +111,7 @@ process FUNANNOTATE_PREDICT {
         --min_training_models 30 --tmpdir \$TMPDIR --SeqCenter ${params.seqcenter} \\
         --keep_no_stops --header_length ${header_length} --protein_evidence ${params.proteins} \\
         --max_intronlen ${params.max_intronlen} --min_intronlen ${params.min_intronlen} \\
-        --tbl2asn "\$TBL2ASN_PARAMS" --table ${transl_table} --auto-skip-genemark || true
+        --tbl2asn "\$TBL2ASN_PARAMS" --table ${transl_table} ${genemark_cli} || true
 
     # ── Post-predict catch ────────────────────────────────────────────────────
     if [ ! -s "\$PREDICT_GBK" ]; then
