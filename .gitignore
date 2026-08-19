@@ -1,6 +1,7 @@
 # Nextflow run artifacts
 work/
 work.*/
+funannotate_db/
 .nextflow/
 .nextflow.log*
 logs/
@@ -16,6 +17,9 @@ tables/
 tests/work/
 tests/output/
 tests/data/*.rnaseq_sra.csv
+# ad-hoc real-genome smoke test scaffolding (not a repo fixture)
+/realtest/
+/realtest_run.log
 # scratch copies
 *.orig
 # python
