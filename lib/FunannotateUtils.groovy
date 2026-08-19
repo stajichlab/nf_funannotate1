@@ -37,6 +37,25 @@ class FunannotateUtils {
                (trinity.exists() && trinity.size() > 0 && trinity.lastModified() > gbkMod)
     }
 
+    // Returns true when the genome's source assembly archive (as resolved by
+    // input_check.nf's default params.source/<asmid>/<asmid>_genomic.fna.gz
+    // convention) is newer than the existing predict GBK, indicating a
+    // re-assembled/updated genome that needs retraining and repredicting --
+    // otherwise a swapped assembly would silently keep a GBK annotated against
+    // stale coordinates. Mirrors staleRnaseq's shape/purpose, keyed off the
+    // source assembly file instead of the rnaseq inputs. Port of BFD
+    // funannotate/utils.nf's staleGenome(). Caveat: only covers the
+    // asmid-derived default path -- a per-row `GENOME=` override (see
+    // input_check.nf) isn't visible here since this class has no row-level
+    // context, so a locally-overridden genome path's own staleness isn't
+    // detected by this check.
+    static boolean staleGenome(String id, String asmid, String source, String target) {
+        def gbk = gbkResult("${target}/${id}/predict_results", id)
+        if (gbk == null) return false
+        def gfa = new File("${source}/${asmid}/${asmid}_genomic.fna.gz")
+        return gfa.exists() && gfa.size() > 0 && gfa.lastModified() > gbk.lastModified()
+    }
+
     // ── Species-level ab-initio parameter reuse (port of BFD funannotate/utils.nf) ──
     // The shared store lives at <sharedRoot>/<species_tag>/ (writes:
     // parameters.json + <species_tag>.genemark.mod), a top-level sibling of

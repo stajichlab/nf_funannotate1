@@ -102,7 +102,8 @@ workflow PREDICT_REUSE {
 
     def fresh_todo = rep_and_indep.filter { meta, _gfa ->
         FunannotateUtils.gbkResult("${params.target}/${meta.id}/predict_results", meta.id as String) == null ||
-            FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString())
+            FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString()) ||
+            FunannotateUtils.staleGenome(meta.id as String, meta.asmid as String, params.source as String, params.target as String)
     }
 
     def fresh_with_gtf
@@ -220,6 +221,7 @@ workflow PREDICT_REUSE {
             def sharedJson = FunannotateUtils.sharedParamsJsonFor(sp as String, sharedRoot as String)
             FunannotateUtils.gbkResult("${params.target}/${meta.id}/predict_results", meta.id as String) == null ||
                 FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString()) ||
+                FunannotateUtils.staleGenome(meta.id as String, meta.asmid as String, params.source as String, params.target as String) ||
                 FunannotateUtils.staleSharedParams(meta.id as String, sharedJson ? sharedJson.toString() : '', params.target as String)
         }
 

@@ -134,7 +134,8 @@ workflow TRAIN_PREDICT {
     def predict_ch = predict_input_ch
         .filter { meta, _gfa ->
             FunannotateUtils.gbkResult("${params.target}/${meta.id}/predict_results", meta.id as String) == null ||
-            FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString())
+            FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString()) ||
+            FunannotateUtils.staleGenome(meta.id as String, meta.asmid as String, params.source as String, params.target as String)
         }
 
     // ── GENEMARK_RUN (standalone, host-side) ────────────────────────────────
