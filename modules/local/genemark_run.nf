@@ -57,9 +57,14 @@ process GENEMARK_RUN {
     def out            = meta.id
     def transl_table   = meta.transl_table
     def filterIntronsFindStrand = "${workflow.projectDir}/bin/vendor/filterIntronsFindStrand.pl"
+    // params.genemark_path defaults to null; Groovy string interpolation would
+    // render that as the literal text "null" below, which is non-empty and so
+    // defeats the GENEMARK_PATH/command -v fallback chain entirely -- coalesce
+    // to '' first so `[ -z "$GM" ]` actually trips when unset.
+    def genemarkPath   = params.genemark_path ?: ''
     """
     # ── Locate GeneMark: params.genemark_path > \$GENEMARK_PATH > command -v ────
-    GM="${params.genemark_path}"
+    GM="${genemarkPath}"
     if [ -z "\$GM" ] && [ -n "\$GENEMARK_PATH" ] && [ -x "\$GENEMARK_PATH/gmes_petap.pl" ]; then
         GM="\$GENEMARK_PATH"
     fi
@@ -68,7 +73,7 @@ process GENEMARK_RUN {
     fi
     if [ -z "\$GM" ] || [ ! -x "\$GM/gmes_petap.pl" ]; then
         echo "ERROR: GeneMark-ES/ET not found. Set params.genemark_path to your licensed install, or ensure a host module/PATH provides gmes_petap.pl (e.g. 'module load genemarkESET' on UCR HPCC)." >&2
-        echo "       Resolved: GENEMARK_PATH=\$GENEMARK_PATH, GENEMARK_PATH param='${params.genemark_path}', gm=\$GM" >&2
+        echo "       Resolved: GENEMARK_PATH=\$GENEMARK_PATH, GENEMARK_PATH param='${genemarkPath}', gm=\$GM" >&2
         exit 1
     fi
     export GENEMARK_PATH="\$GM"
