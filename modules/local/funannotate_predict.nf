@@ -27,8 +27,6 @@ process FUNANNOTATE_PREDICT {
     // means "let funannotate run GeneMark internally (or auto-skip it)".
     def genemark_cli  = genemark_gtf ? "--genemark_gtf ${genemark_gtf}" : "--auto-skip-genemark"
     """
-    source /etc/profile.d/modules.sh 2>/dev/null || true
-    module load funannotate
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}
     TMPDIR=\${SCRATCH:-/tmp}
