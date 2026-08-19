@@ -20,9 +20,9 @@ process FUNANNOTATE_ANNOTATE {
     def header_length = params.header_length
     def antiSm    = file("${params.target}/${meta.id}/antismash_local/${meta.id}.gbk")
     def antiSmArg = antiSm.exists() ? "--antismash ${antiSm}" : ""
+    def tmhmm     = file("${params.target}/${meta.id}/annotate_misc/TMRs.gff3")
+    def tmhmmArg  = tmhmm.exists() ? "--tmhmm ${tmhmm}" : ""
     """
-    source /etc/profile.d/modules.sh 2>/dev/null || true
-    module load funannotate
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}
     # eggNOG-mapper DB: bound to the container-internal path by
@@ -37,6 +37,7 @@ process FUNANNOTATE_ANNOTATE {
         --sbt ${params.sbt_template} \\
         --header_length ${header_length} \\
         ${antiSmArg} \\
+        ${tmhmmArg} \\
         --cpu ${task.cpus} --tmpdir \$TMPDIR
 
     EXPECTED_GBK="${params.target}/${out}/annotate_results/${out}.gbk"
