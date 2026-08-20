@@ -95,5 +95,5 @@ provisioning profiles:
 | `singularity` | Container image per process label (see `provision_singularity.config`) |
 | `pixi` | Project-local pixi environments (see `provision_pixi.config`) |
 
-Note: `funannotate` and `signalp6-gpu` lack public biocontainers; the singularity
+Note: `funannotate` and `signalp` lack public biocontainers; the singularity
 profile points at locally-built `.sif` images (paths in `params.sif_dir`).

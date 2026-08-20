@@ -81,7 +81,7 @@ process GENEMARK_RUN {
 
     GENOME_GZ="${genome_fa}"
     case "\$GENOME_GZ" in
-        *.gz) pigz -dc "\$GENOME_GZ" > genome.fa ;;
+        *.gz) gzip -dc "\$GENOME_GZ" > genome.fa ;;
         *)    cp "\$GENOME_GZ" genome.fa ;;
     esac
 

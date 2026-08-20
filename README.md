@@ -63,7 +63,7 @@ Public biocontainers are used for edirect/antismash/interproscan/setup. Build
 these and point at them with `--container_*` (defaults under
 `/bigdata/stajichlab/shared/lib/singularity_cache`):
 `funannotate`, `AAFTF` (genome_clean), the SRA multi-tool image, and
-`signalp6-gpu`. `mariadb.sif` (PASA) already exists in shared lib.
+`signalp` (fast mode). `mariadb.sif` (PASA) already exists in shared lib.
 
 ## Input model (`samples.csv`)
 

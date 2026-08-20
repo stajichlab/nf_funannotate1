@@ -5,7 +5,7 @@
 #   pixi install            # from this directory
 #
 # NOTE: funannotate and signalp are best-effort. funannotate is heavy and pulls
-# many pins; signalp6-gpu is licensed and NOT on conda — prefer the `module` or
+# many pins; signalp is licensed and NOT on conda — prefer the `module` or
 # `singularity` profile for those until validated here.
 
 [workspace]
@@ -50,7 +50,7 @@ funannotate = "*"
 fastp       = "*"
 
 [feature.signalp.dependencies]
-# signalp6-gpu is licensed and not redistributable via conda.
+# signalp is licensed and not redistributable via conda.
 # Placeholder feature so the env name resolves; provide signalp yourself or use
 # the module/singularity profile. pigz keeps the env non-empty.
 pigz = "*"

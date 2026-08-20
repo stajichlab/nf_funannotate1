@@ -20,8 +20,6 @@ process SETUP_FUNANNOTATE_DB {
     db_dir = file(params.funannotate_db).name
     """
     set -euo pipefail
-    source /etc/profile.d/modules.sh 2>/dev/null || true
-    module load funannotate
     export FUNANNOTATE_DB=\$(readlink -f ${db_dir})
     funannotate setup -d ${db_dir} -b all -i busco
     funannotate setup -d ${db_dir} -i all

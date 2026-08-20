@@ -426,8 +426,23 @@
         },
         "run_signalp": {
           "type": "boolean",
-          "description": "Run SignalP (GPU).",
+          "description": "Run SignalP (fast mode).",
           "default": false
+        },
+        "signalp_gpu": {
+          "type": "boolean",
+          "description": "Run SignalP on a GPU queue with --nv passthrough plus a converted model checkpoint (vs CPU-only).",
+          "default": true
+        },
+        "run_deeptmhmm": {
+          "type": "boolean",
+          "description": "Run DeepTMHMM transmembrane-region prediction (feeds funannotate annotate --tmhmm).",
+          "default": false
+        },
+        "deeptmhmm_gpu": {
+          "type": "boolean",
+          "description": "Run DeepTMHMM on a GPU queue with --nv passthrough (vs CPU-only).",
+          "default": true
         },
         "antismash_taxon": {
           "type": "string",

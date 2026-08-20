@@ -15,10 +15,11 @@
  *   versions — mixed versions.yml paths from ANTISMASH / INTERPRO / SIGNALP
  */
 
-include { ANTISMASH_RUN    } from './../../modules/local/antismash_run'
-include { INTERPROSCAN_RUN } from './../../modules/local/interproscan_run'
-include { SIGNALP_RUN      } from './../../modules/local/signalp_run'
-include { FUNANNOTATE_UPDATE  } from './../../modules/local/funannotate_update'
+include { ANTISMASH_RUN        } from './../../modules/local/antismash_run'
+include { INTERPROSCAN_RUN     } from './../../modules/local/interproscan_run'
+include { SIGNALP_RUN          } from './../../modules/local/signalp_run'
+include { DEEPTMHMM_ANNOTATION } from './../../modules/local/deeptmhmm_annotation'
+include { FUNANNOTATE_UPDATE   } from './../../modules/local/funannotate_update'
 include { FUNANNOTATE_ANNOTATE } from './../../modules/local/funannotate_annotate'
 
 workflow ANNOTATE_GENOME {
@@ -67,6 +68,18 @@ workflow ANNOTATE_GENOME {
         SIGNALP_RUN(sp_todo)
         ch_versions = ch_versions.mix(SIGNALP_RUN.out.versions)
         annotate_ready_ch = SIGNALP_RUN.out.results.map { meta, _txt -> meta }.mix(sp_done)
+    }
+
+    if (params.run_deeptmhmm.toBoolean()) {
+        def tmhmm_todo = annotate_ready_ch.filter { meta ->
+            !file("${params.target}/${meta.id}/annotate_misc/TMRs.gff3").exists()
+        }
+        def tmhmm_done = annotate_ready_ch.filter { meta ->
+            file("${params.target}/${meta.id}/annotate_misc/TMRs.gff3").exists()
+        }
+        DEEPTMHMM_ANNOTATION(tmhmm_todo)
+        ch_versions = ch_versions.mix(DEEPTMHMM_ANNOTATION.out.versions)
+        annotate_ready_ch = DEEPTMHMM_ANNOTATION.out.results.map { meta, _gff3 -> meta }.mix(tmhmm_done)
     }
 
     if (params.run_update.toBoolean()) {
