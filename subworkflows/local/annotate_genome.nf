@@ -16,6 +16,7 @@
  */
 
 include { ANTISMASH_RUN        } from './../../modules/local/antismash_run'
+include { SETUP_ANTISMASH_DB   } from './../../modules/local/setup_antismash_db'
 include { INTERPROSCAN_RUN     } from './../../modules/local/interproscan_run'
 include { SIGNALP_RUN          } from './../../modules/local/signalp_run'
 include { DEEPTMHMM_ANNOTATION } from './../../modules/local/deeptmhmm_annotation'
@@ -33,6 +34,7 @@ workflow ANNOTATE_GENOME {
     def annotate_ready_ch = ch_predict_meta
 
     if (params.run_antismash.toBoolean()) {
+        SETUP_ANTISMASH_DB()
         def as_todo = annotate_ready_ch.filter { meta ->
             def asDir = file("${params.target}/${meta.id}/antismash_local")
             !(asDir.isDirectory() && asDir.list()?.any { it.endsWith('.json') || it.endsWith('.json.gz') })
@@ -41,7 +43,11 @@ workflow ANNOTATE_GENOME {
             def asDir = file("${params.target}/${meta.id}/antismash_local")
             asDir.isDirectory() && asDir.list()?.any { it.endsWith('.json') || it.endsWith('.json.gz') }
         }
-        ANTISMASH_RUN(as_todo)
+        // Gate on the DB being ready (storeDir means this is a no-op after the
+        // first run) -- .combine() forces ANTISMASH_RUN to wait rather than
+        // racing SETUP_ANTISMASH_DB on a cold cache.
+        def as_todo_gated = as_todo.combine(SETUP_ANTISMASH_DB.out.db).map { meta, _db -> meta }
+        ANTISMASH_RUN(as_todo_gated)
         ch_versions = ch_versions.mix(ANTISMASH_RUN.out.versions)
         annotate_ready_ch = ANTISMASH_RUN.out.results.map { meta, _files -> meta }.mix(as_done)
     }

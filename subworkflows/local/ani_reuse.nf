@@ -68,7 +68,7 @@ workflow ANI_REUSE {
     // would fold a real Path into the collector by filename instead of writing
     // its path as a line; see BFD .living/learnings.md CONCAT reuse-0 bug).
     def ani_manifest = ani_tsv_ch
-        .map { _group, tsv -> tsv }
+        .map { _group, tsv -> tsv.toString() }
         .collectFile(name: 'tsv_manifest.txt', newLine: true, sort: true)
 
     // ── Companion asmid manifest (deduped, sorted) for CONCAT's staleness file.

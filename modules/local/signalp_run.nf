@@ -7,12 +7,18 @@ process SIGNALP_RUN {
     val(meta)
 
     output:
-    tuple val(meta), path("${meta.id}/annotate_misc/signalp.results.txt"), emit: results
-    path 'versions.yml',                                                    emit: versions
+    tuple val(meta), path("${meta.id}.signalp.done"), emit: results
+    path 'versions.yml',                              emit: versions
 
     script:
     def out      = meta.id
     def proteins = "${params.target}/${out}/predict_results/${out}.proteins.fa"
+    // Option B persistence (like FUNANNOTATE_PREDICT): write directly to the
+    // persistent target dir, not a task-workdir-relative path -- annotate_genome.nf's
+    // done-check and FUNANNOTATE_ANNOTATE both look for
+    // params.target/${out}/annotate_misc/signalp.results.txt, which a relative
+    // `${out}/annotate_misc` here would never actually reach.
+    def miscdir  = "${params.target}/${out}/annotate_misc"
     """
     if [ ! -f "${proteins}" ]; then
         echo "ERROR: protein FASTA not found: ${proteins}" >&2
@@ -53,9 +59,10 @@ process SIGNALP_RUN {
         -org euk --mode fast -format txt \\
         -fasta ${proteins} \\
         --write_procs ${task.cpus} -bs 16 "\${MODEL_DIR_ARG[@]}"
-    mkdir -p ${out}/annotate_misc
-    cp \$TMPDIR/${out}_signalp/prediction_results.txt ${out}/annotate_misc/signalp.results.txt
+    mkdir -p ${miscdir}
+    cp \$TMPDIR/${out}_signalp/prediction_results.txt ${miscdir}/signalp.results.txt
     rm -rf \$TMPDIR/${out}_signalp
+    touch ${out}.signalp.done
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -64,10 +71,12 @@ process SIGNALP_RUN {
     """
 
     stub:
-    def out = meta.id
+    def out     = meta.id
+    def miscdir = "${params.target}/${out}/annotate_misc"
     """
-    mkdir -p ${out}/annotate_misc
-    touch ${out}/annotate_misc/signalp.results.txt
+    mkdir -p ${miscdir}
+    touch ${miscdir}/signalp.results.txt
+    touch ${out}.signalp.done
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         signalp: 6.0g

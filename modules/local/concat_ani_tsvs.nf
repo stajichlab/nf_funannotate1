@@ -22,7 +22,7 @@ process CONCAT_ANI_TSVS {
     script:
     """
     printf 'query\\tref\\tANI\\n' > all_pairs_merged.tsv
-    xargs -a "${manifest}" -I{} sh -c '[ -s "{}" ] && cat "{}"' >> all_pairs_merged.tsv
+    xargs -a "${manifest}" -I{} sh -c '[ -s "{}" ] && cat "{}" || true' >> all_pairs_merged.tsv
 
     cp "${asmid_file}" all_pairs_merged.asmid_manifest.txt
     """

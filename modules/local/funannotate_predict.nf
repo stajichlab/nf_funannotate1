@@ -25,7 +25,28 @@ process FUNANNOTATE_PREDICT {
     def transl_table  = meta.transl_table
     // GeneMark GTF supplied by the standalone GENEMARK_RUN step; empty string
     // means "let funannotate run GeneMark internally (or auto-skip it)".
-    def genemark_cli  = genemark_gtf ? "--genemark_gtf ${genemark_gtf}" : "--auto-skip-genemark"
+    // Checked by actual file size, not by Groovy truthiness on genemark_gtf
+    // itself: GENEMARK_RUN's too-small-genome skip path emits a real but
+    // deliberately empty ${out}.genemark.gtf (see genemark_run.nf), and a
+    // non-null Path is always truthy in Groovy regardless of its size --
+    // without this check every skip would still pass --genemark_gtf
+    // <0-byte file> to funannotate.
+    def genemark_gtf_file = genemark_gtf ? file(genemark_gtf as String) : null
+    def genemark_gtf_ok   = genemark_gtf_file && genemark_gtf_file.exists() && genemark_gtf_file.size() > 0
+    def genemark_cli      = genemark_gtf_ok ? "--genemark_gtf ${genemark_gtf}" : "--auto-skip-genemark"
+    // -w genemark:1 MUST be passed explicitly whenever genemark_gtf is used,
+    // in the SAME -w group as codingquarry:0/glimmerhmm:0 (funannotate's
+    // argparse -w/--weights is nargs='+' without action='append', so a
+    // second -w occurrence replaces the whole list rather than merging it --
+    // ported from BFD's FUNANNOTATE_PREDICT/main.nf, which hit this).
+    // Needed because none of this pipeline's funannotate provisioning modes
+    // (module/pixi/singularity funannotate env -- see conf/provision_*.config)
+    // put gmes_petap.pl on PATH inside this task's environment: GeneMark now
+    // runs standalone in GENEMARK_RUN, so funannotate predict's own
+    // genemarkcheck is always False here, and predict.py unconditionally
+    // zeroes StartWeights["genemark"] when that's the case -- with NO check
+    // for whether --genemark_gtf was supplied as an alternative.
+    def weight_args = genemark_gtf_ok ? 'codingquarry:0 glimmerhmm:0 genemark:1' : 'codingquarry:0 glimmerhmm:0'
     """
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}
@@ -82,30 +103,27 @@ process FUNANNOTATE_PREDICT {
     esac
 
     # ── Too-small-genome pre-flight guard ────────────────────────────────────
+    # Shared with GENEMARK_RUN, which needs the identical policy upstream of
+    # this process (see genemark_run.nf, bin/asm_preflight_stats.py).
     SKIP_REPORT="${params.target}/predict_skipped_too_small.tsv"
-    if [ "${params.predict_min_asm_bp}" -gt 0 ]; then
-        read ASM_BP ASM_CTG ASM_N50 < <(
-            awk '/^>/{if(len)print len;len=0;next}{len+=length(\$0)}END{if(len)print len}' "\$GENOME_IN" \\
-            | sort -rn \\
-            | awk '{L[NR]=\$1;tot+=\$1}END{half=tot/2;run=0;n50=0;for(i=1;i<=NR;i++){run+=L[i];if(run>=half){n50=L[i];break}}print tot, NR, n50}')
-        echo "[INFO] Pre-flight assembly stats for ${out}: \${ASM_BP} bp, \${ASM_CTG} contigs, N50 \${ASM_N50}"
-        SMALL=0; FRAG=0
-        [ "\$ASM_BP" -lt "${params.predict_min_asm_bp}" ] && SMALL=1
-        { [ "\$ASM_N50" -lt "${params.predict_frag_max_n50}" ] || [ "\$ASM_CTG" -gt "${params.predict_frag_max_contigs}" ]; } && FRAG=1
-        if [ "\$SMALL" -eq 1 ] && [ "\$FRAG" -eq 1 ]; then
-            echo "[WARN] ${out} is too small/fragmented for funannotate training (\${ASM_BP} bp, \${ASM_CTG} contigs, N50 \${ASM_N50}); skipping predict" >&2
-            mkdir -p "${params.target}"
-            [ -s "\$SKIP_REPORT" ] || printf 'out\tasmid\tlocustag\treason\ttotal_bp\tcontigs\tN50\n' > "\$SKIP_REPORT"
-            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${out}" "${asmid}" "${locustag}" "preflight_small_fragmented" "\$ASM_BP" "\$ASM_CTG" "\$ASM_N50" >> "\$SKIP_REPORT"
-            touch "\$PREDICTDIR/${out}.predict.skipped_too_small"
-            touch ${out}.predict.done
-            exit 0
-        fi
+    read ASM_BP ASM_CTG ASM_N50 ASM_VERDICT < <(
+        python "${workflow.projectDir}/bin/asm_preflight_stats.py" "\$GENOME_IN" \\
+            --min-bp ${params.predict_min_asm_bp} --max-n50 ${params.predict_frag_max_n50} \\
+            --max-contigs ${params.predict_frag_max_contigs})
+    echo "[INFO] Pre-flight assembly stats for ${out}: \${ASM_BP} bp, \${ASM_CTG} contigs, N50 \${ASM_N50}"
+    if [ "\$ASM_VERDICT" = "small_fragmented" ]; then
+        echo "[WARN] ${out} is too small/fragmented for funannotate training (\${ASM_BP} bp, \${ASM_CTG} contigs, N50 \${ASM_N50}); skipping predict" >&2
+        mkdir -p "${params.target}"
+        [ -s "\$SKIP_REPORT" ] || printf 'out\tasmid\tlocustag\treason\ttotal_bp\tcontigs\tN50\n' > "\$SKIP_REPORT"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${out}" "${asmid}" "${locustag}" "preflight_small_fragmented" "\$ASM_BP" "\$ASM_CTG" "\$ASM_N50" >> "\$SKIP_REPORT"
+        touch "\$PREDICTDIR/${out}.predict.skipped_too_small"
+        touch ${out}.predict.done
+        exit 0
     fi
 
     funannotate predict --name ${locustag} -i "\$GENOME_IN" --strain "${strain}" \\
         -o "\$PREDICTDIR" -s "${species}" --cpu ${task.cpus} --busco_db ${busco_lineage} \\
-        --AUGUSTUS_CONFIG_PATH \$AUGUSTUS_CONFIG_PATH -w codingquarry:0 glimmerhmm:0 \\
+        --AUGUSTUS_CONFIG_PATH \$AUGUSTUS_CONFIG_PATH -w ${weight_args} \\
         --min_training_models 30 --tmpdir \$TMPDIR --SeqCenter ${params.seqcenter} \\
         --keep_no_stops --header_length ${header_length} --protein_evidence ${params.proteins} \\
         --max_intronlen ${params.max_intronlen} --min_intronlen ${params.min_intronlen} \\
