@@ -34,6 +34,8 @@ include { FUNANNOTATE_PREDICT }                 from './../../modules/local/funa
 include { FUNANNOTATE_PREDICT as FUNANNOTATE_PREDICT_SIB } from './../../modules/local/funannotate_predict'
 include { GENEMARK_RUN }                        from './../../modules/local/genemark_run'
 include { GENEMARK_RUN as GENEMARK_RUN_SIB }    from './../../modules/local/genemark_run'
+include { PRODIGAL_RUN }                        from './../../modules/local/prodigal_run'
+include { PRODIGAL_RUN as PRODIGAL_RUN_SIB }    from './../../modules/local/prodigal_run'
 include { BACKFILL_ABINITIO_PARAMS }            from './../../modules/local/backfill_abinitio_params'
 
 workflow PREDICT_REUSE {
@@ -119,7 +121,20 @@ workflow PREDICT_REUSE {
     } else {
         fresh_with_gtf = fresh_todo.map { meta, gfa -> tuple(meta, gfa, '') }
     }
-    FUNANNOTATE_PREDICT(fresh_with_gtf)
+    // Optional prodigal pass-through (--other_gff <gff>:<weight>), same as the
+    // TRAIN_PREDICT non-reuse path. PRODIGAL_RUN runs on the same fresh_todo
+    // that FUNANNOTATE_PREDICT consumes, so joins are 1:1.
+    def runProdigal = (params.run_prodigal ?: false).toString().toBoolean()
+    def fresh_final
+    if (runProdigal) {
+        PRODIGAL_RUN(fresh_todo)
+        fresh_final = fresh_with_gtf.join(PRODIGAL_RUN.out.gff3, by: 0)
+            .map { meta, gfa, gtf, other_gff -> tuple(meta, gfa, gtf, other_gff) }
+    } else {
+        fresh_final = fresh_with_gtf
+            .map { meta, gfa, gtf -> tuple(meta, gfa, gtf, '') }
+    }
+    FUNANNOTATE_PREDICT(fresh_final)
 
     // ── Backfill every representative predicted this run into the shared store.
     // Batched (~100/batch); join by `out` with GENEMARK_RUN's fresh .mod (1:1,
@@ -245,7 +260,20 @@ workflow PREDICT_REUSE {
         sibling_predict_todo = sibling_predict_todo.map { meta, gfa, sp -> tuple(meta, gfa, '') }
     }
 
-    FUNANNOTATE_PREDICT_SIB(sibling_predict_todo)
+    // Optional prodigal pass-through for reusing siblings, mirroring the fresh
+    // path above (PRODIGAL_RUN_SIB on the same gated sibling_predict_todo).
+    def runProdigalSib = (params.run_prodigal ?: false).toString().toBoolean()
+    def sibling_final
+    if (runProdigalSib) {
+        PRODIGAL_RUN_SIB(sibling_predict_todo.map { meta, gfa, sp -> tuple(meta, gfa) })
+        sibling_final = sibling_predict_todo.join(PRODIGAL_RUN_SIB.out.gff3, by: 0)
+            .map { meta, gfa, gtf, other_gff -> tuple(meta, gfa, gtf, other_gff) }
+    } else {
+        sibling_final = sibling_predict_todo
+            .map { meta, gfa, gtf -> tuple(meta, gfa, gtf, '') }
+    }
+
+    FUNANNOTATE_PREDICT_SIB(sibling_final)
 
     emit:
     metadata = FUNANNOTATE_PREDICT.out.metadata.mix(FUNANNOTATE_PREDICT_SIB.out.metadata)

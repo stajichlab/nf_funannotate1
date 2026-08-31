@@ -8,7 +8,7 @@ process FUNANNOTATE_PREDICT {
     tag "${meta.id}"
 
     input:
-    tuple val(meta), val(genome_fa), val(genemark_gtf)
+    tuple val(meta), val(genome_fa), val(genemark_gtf), val(other_gff)
 
     output:
     val meta, emit: metadata
@@ -47,6 +47,14 @@ process FUNANNOTATE_PREDICT {
     // zeroes StartWeights["genemark"] when that's the case -- with NO check
     // for whether --genemark_gtf was supplied as an alternative.
     def weight_args = genemark_gtf_ok ? 'codingquarry:0 glimmerhmm:0 genemark:1' : 'codingquarry:0 glimmerhmm:0'
+    // Optional external gene-model pass-through (PRODIGAL_RUN output). Passed as
+    // --other_gff <gff>:<weight>; funannotate renames the source to
+    // 'other_pred1', EVM-validates it, and applies the weight as
+    // StartWeights['other_pred1'] (see predict.py --other_gff parsing). Empty
+    // string -> omitted entirely.
+    def other_gff_file = other_gff ? file(other_gff as String) : null
+    def other_gff_ok   = other_gff_file && other_gff_file.exists() && other_gff_file.size() > 0
+    def other_gff_cli  = other_gff_ok ? "--other_gff ${other_gff}:${params.prodigal_weight}" : ''
     """
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}
@@ -127,7 +135,7 @@ process FUNANNOTATE_PREDICT {
         --min_training_models 30 --tmpdir \$TMPDIR --SeqCenter ${params.seqcenter} \\
         --keep_no_stops --header_length ${header_length} --protein_evidence ${params.proteins} \\
         --max_intronlen ${params.max_intronlen} --min_intronlen ${params.min_intronlen} \\
-        --tbl2asn "\$TBL2ASN_PARAMS" --table ${transl_table} ${genemark_cli} || true
+        --tbl2asn "\$TBL2ASN_PARAMS" --table ${transl_table} ${genemark_cli} ${other_gff_cli} || true
 
     # ── Post-predict catch ────────────────────────────────────────────────────
     if [ ! -s "\$PREDICT_GBK" ]; then

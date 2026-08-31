@@ -30,6 +30,7 @@ include { RNASEQ_PREPARE    } from './../../modules/local/rnaseq_prepare'
 include { FUNANNOTATE_TRAIN } from './../../modules/local/funannotate_train'
 include { FUNANNOTATE_PREDICT } from './../../modules/local/funannotate_predict'
 include { GENEMARK_RUN      } from './../../modules/local/genemark_run'
+include { PRODIGAL_RUN      } from './../../modules/local/prodigal_run'
 include { BACKFILL_ABINITIO_PARAMS } from './../../modules/local/backfill_abinitio_params'
 include { PREDICT_REUSE     } from './predict_reuse'
 
@@ -155,11 +156,21 @@ workflow TRAIN_PREDICT {
 
     // Join the stand-alone GTF back to each predict task. FUNANNOTATE_PREDICT
     // passes it as --genemark_gtf (empty string -> --auto-skip-genemark).
-    def predict_with_gtf = predict_ch
-        .join(GENEMARK_RUN.out.gtf, by: 0)
-        .map { meta, genome_fa, genemark_gtf -> tuple(meta, genome_fa, genemark_gtf) }
+    // PRODIGAL_RUN (optional, params.run_prodigal) runs on the same predict_ch
+    // and its GFF is passed as --other_gff <gff>:<weight> (empty when disabled).
+    def runProdigal = (params.run_prodigal ?: false).toString().toBoolean()
+    def gtf_ch = predict_ch.join(GENEMARK_RUN.out.gtf, by: 0)
+    def predict_final
+    if (runProdigal) {
+        PRODIGAL_RUN(predict_ch)
+        predict_final = gtf_ch.join(PRODIGAL_RUN.out.gff3, by: 0)
+            .map { meta, genome_fa, genemark_gtf, other_gff -> tuple(meta, genome_fa, genemark_gtf, other_gff) }
+    } else {
+        predict_final = gtf_ch
+            .map { meta, genome_fa, genemark_gtf -> tuple(meta, genome_fa, genemark_gtf, '') }
+    }
 
-    FUNANNOTATE_PREDICT(predict_with_gtf)
+    FUNANNOTATE_PREDICT(predict_final)
 
     // ── BACKFILL_ABINITIO_PARAMS (fresh .mod -> shared per-species store) ─────
     // Only when a shared ab-initio store is configured. Every species freshly

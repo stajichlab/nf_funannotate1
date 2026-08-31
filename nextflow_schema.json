@@ -325,6 +325,26 @@
           "default": true,
           "description": "Run the standalone GeneMark-ES/ET step (GENEMARK_RUN) to train/reuse ab-initio models ahead of funannotate predict. false = skip it and let predict use --auto-skip-genemark (no ab-initio models)."
         },
+        "run_prodigal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run Prodigal (PRODIGAL_RUN) ahead of funannotate predict and pass its gene models as --other_gff <gff>:<weight> (EVM source 'other_pred1'). For short-ORF/intron-poor special cases (microsporidia; Saccharomycotina follow-up) where Augustus/GeneMark recover too few training genes."
+        },
+        "prodigal_weight": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1,
+          "description": "EVM weight given to Prodigal models (StartWeights['other_pred1']) when run_prodigal is true. Default 1 = equal EVM peer with Augustus."
+        },
+        "prodigal_mode": {
+          "type": "string",
+          "enum": [
+            "single",
+            "meta"
+          ],
+          "default": "single",
+          "description": "Prodigal run mode: 'single' (complete genomes, default) or 'meta' (fragmented/short contigs, prefers ORF recovery over single-genome training quality). Uses the assembly's transl_table via -g."
+        },
         "genemark_path": {
           "type": [
             "string",

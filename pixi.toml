@@ -44,6 +44,9 @@ skani = "*"
 [feature.busco.dependencies]
 busco = "*"
 
+[feature.prodigal.dependencies]
+prodigal = "*"
+
 [feature.funannotate.dependencies]
 # Heavy — pins many tools. Best-effort; module/singularity preferred.
 funannotate = "*"
@@ -64,5 +67,6 @@ antismash    = ["antismash"]
 interproscan = ["interproscan"]
 skani        = ["skani"]
 busco        = ["busco"]
+prodigal     = ["prodigal"]
 funannotate  = ["funannotate"]
 signalp      = ["signalp"]
