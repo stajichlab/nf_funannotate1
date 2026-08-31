@@ -3,6 +3,37 @@
 // Per-species esearch/efetch is retried up to 3 times inline with exponential
 // backoff before writing an empty CSV. Existing per-species CSVs already
 // present in rnaseq_reads/sra_query/ are reused without re-querying.
+//
+// The runinfo fetch is capped to the first 250 UIDs (efetch -start 1 -stop
+// 250 -- esearch itself has no -retmax flag) and given a 300s timeout per
+// attempt. Without the cap, a heavily-sequenced species (e.g.
+// Cryptococcus neoformans, Fusarium graminearum, Neurospora crassa -- each
+// with 900+ matching SRA records) makes the runinfo fetch take well over the
+// timeout, so all 3 attempts fail and an empty CSV gets written and cached
+// forever via publishDir -- silently starving that species of RNA-seq even
+// though real data exists (confirmed 2026-08-30: SRP609911 alone has 30+
+// usable Cryptococcus neoformans PE runs that a capped query now finds).
+//
+// Candidates are ranked Illumina-over-BGI first, then most-recent ReleaseDate
+// first, then spot count as a final tiebreaker -- so within whatever the
+// 250-UID window returns, the newest runs win. esearch/sra has no -sort
+// option for date order (checked 2026-08-30: only gene/geoprofiles/pubmed/
+// sequences/snp dbs list sort choices), so this date-ranking happens after
+// the fetch, over whatever subset of UIDs esearch's default ordering (not
+// necessarily chronological) put in the first 250.
+//
+// A best-effort keyword filter on LibraryName/SampleName excludes likely
+// host-associated/co-infection or predation-model samples (mouse, macrophage,
+// in vivo, blood, tissue, Acanthamoeba, Galleria, zebrafish, C. elegans,
+// etc.) so Trinity isn't assembled against a mix of fungal + host/predator
+// reads -- e.g. Acanthamoeba castellanii co-culture is a standard
+// Cryptococcus virulence assay and would otherwise slip through untagged.
+// SRA runinfo has no dedicated "pure culture vs host-associated" field, so
+// this is a heuristic, not a guarantee -- treat it as a first pass, not a
+// substitute for a curated accession list on heavily-studied species where
+// the automated top-5 pick matters (spot-check the resulting sra_query.csv;
+// LibraryName/SampleName aren't retained in the CSV, so cross-reference
+// accessions against SRA runinfo/BioSample directly if verifying).
 // Resources overridden per-profile by withName: '.*:SRA_QUERY_BATCH' in
 // conf/profile_annotate.config (short queue, retry on failure).
 process SRA_QUERY_BATCH {
@@ -35,8 +66,8 @@ process SRA_QUERY_BATCH {
 
         for attempt in 1 2 3; do
             rm -f "_runinfo_\${stag}.tmp"
-            if timeout 120 bash -c \\
-                    "esearch -db sra -query 'txid\${tid}[Organism:noexp] AND RNA-Seq[Strategy] AND PAIRED[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND (BGISEQ[Platform] OR Illumina[Platform])' | efetch -format runinfo" \\
+            if timeout 300 bash -c \\
+                    "esearch -db sra -query 'txid\${tid}[Organism:noexp] AND RNA-Seq[Strategy] AND PAIRED[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND (BGISEQ[Platform] OR Illumina[Platform])' | efetch -format runinfo -start 1 -stop 250" \\
                     < /dev/null > "_runinfo_\${stag}.tmp"; then
                 return 0
             fi
@@ -57,13 +88,22 @@ process SRA_QUERY_BATCH {
 
         if query_species "\${species_tag}" "\${taxonid}"; then
             printf 'species_tag,taxonid,sra_accession,spots,platform,layout\\n' > "\${species_tag}.sra_query.csv"
-            # col 1=Run, col 4=spots, col 13=LibraryStrategy, col 16=LibraryLayout, col 19=Platform
+            # col 1=Run, col 2=ReleaseDate, col 4=spots, col 12=LibraryName, col 13=LibraryStrategy,
+            # col 16=LibraryLayout, col 19=Platform, col 30=SampleName.
             # Prepend a platform rank (0=Illumina, 1=BGI/other) so the top 5 prefer Illumina,
-            # then by spot count desc; BGI/other only fill remaining slots when Illumina runs out.
-            awk -F',' 'NR>1 && \$13=="RNA-Seq" && \$16=="PAIRED" && \$1~/^[SDE]RR/ && \$4+0>=250000 {rank=(\$19~/[Ii]llumina/)?0:1; printf "%d,%s,%s,%s\\n", rank, \$1, \$4, \$19}' "_runinfo_\${species_tag}.tmp" | \\
-                sort -t',' -k1,1n -k3,3rn | \\
+            # then most-recent ReleaseDate first, then spot count desc as a final tiebreaker.
+            # Best-effort keyword filter on LibraryName/SampleName excludes likely
+            # host-associated/co-infection samples -- see module header comment.
+            awk -F',' '
+                NR>1 && \$13=="RNA-Seq" && \$16=="PAIRED" && \$1~/^[SDE]RR/ && \$4+0>=250000 {
+                    meta = " " tolower(\$12 " " \$30) " "
+                    if (meta ~ /(mouse|murine| mice | rat |rabbit|macrophage|phagocyt|in.?vivo|infect|co.?infec|co.?cultur|amoeba|acanthamoeba|galleria|zebrafish|elegans| host |blood|serum|plasma|csf|cerebrospinal|lung|brain|spleen|kidney| liver |tissue|biopsy|patient|clinical|autopsy|necropsy|bronch)/) next
+                    rank = (\$19 ~ /[Ii]llumina/) ? 0 : 1
+                    printf "%d,%s,%s,%s,%s\\n", rank, \$2, \$1, \$4, \$19
+                }' "_runinfo_\${species_tag}.tmp" | \\
+                sort -t',' -k1,1n -k2,2r -k4,4rn | \\
                 head -n 5 | \\
-                while IFS=',' read -r rank acc spots platform; do
+                while IFS=',' read -r rank reldate acc spots platform; do
                     printf '%s,%s,%s,%s,%s,PAIRED\\n' "\${species_tag}" "\${taxonid}" "\$acc" "\$spots" "\$platform"
                 done >> "\${species_tag}.sra_query.csv"
             rm -f "_runinfo_\${species_tag}.tmp"
@@ -72,13 +112,18 @@ process SRA_QUERY_BATCH {
             # SE fallback: if no PE hits and enable_single_end, query SINGLE layout
             if [ "${params.enable_single_end}" = "true" ] && [ "\$NHITS" -eq 0 ]; then
                 rm -f "_runinfo_se_\${species_tag}.tmp"
-                if timeout 120 bash -c \\
-                        "esearch -db sra -query 'txid\${taxonid}[Organism:noexp] AND RNA-Seq[Strategy] AND SINGLE[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND Illumina[Platform]' | efetch -format runinfo" \\
+                if timeout 300 bash -c \\
+                        "esearch -db sra -query 'txid\${taxonid}[Organism:noexp] AND RNA-Seq[Strategy] AND SINGLE[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND Illumina[Platform]' | efetch -format runinfo -start 1 -stop 250" \\
                         < /dev/null > "_runinfo_se_\${species_tag}.tmp"; then
-                    awk -F',' 'NR>1 && \$13=="RNA-Seq" && \$16=="SINGLE" && \$1~/^[SDE]RR/ && \$4+0>=250000 {printf "%s,%s,%s\\n", \$1, \$4, \$19}' "_runinfo_se_\${species_tag}.tmp" | \\
-                        sort -t',' -k2 -rn | \\
+                    awk -F',' '
+                        NR>1 && \$13=="RNA-Seq" && \$16=="SINGLE" && \$1~/^[SDE]RR/ && \$4+0>=250000 {
+                            meta = " " tolower(\$12 " " \$30) " "
+                            if (meta ~ /(mouse|murine| mice | rat |rabbit|macrophage|phagocyt|in.?vivo|infect|co.?infec|co.?cultur|amoeba|acanthamoeba|galleria|zebrafish|elegans| host |blood|serum|plasma|csf|cerebrospinal|lung|brain|spleen|kidney| liver |tissue|biopsy|patient|clinical|autopsy|necropsy|bronch)/) next
+                            printf "%s,%s,%s,%s\\n", \$2, \$1, \$4, \$19
+                        }' "_runinfo_se_\${species_tag}.tmp" | \\
+                        sort -t',' -k1,1r -k3,3rn | \\
                         head -n ${params.max_rnaseq_se_runs} | \\
-                        while IFS=',' read -r acc spots platform; do
+                        while IFS=',' read -r reldate acc spots platform; do
                             printf '%s,%s,%s,%s,%s,SINGLE\\n' "\${species_tag}" "\${taxonid}" "\$acc" "\$spots" "\$platform"
                         done >> "\${species_tag}.sra_query.csv"
                 fi
