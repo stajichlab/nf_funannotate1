@@ -1,6 +1,11 @@
-// Run funannotate train --stop_after_trinity for the representative assembly of a species.
-// Archives shared Trinity-GG FASTA to rnaseq_data/ so all non-representative strains can
-// skip the Trinity assembly step. storeDir-cached.
+// Run funannotate train for the representative assembly of a species, producing the
+// shared Trinity-GG transcriptome. With params.stop_after_trinity=true (funannotate
+// >=1.9) uses `train --stop_after_trinity` -> scratch train stopped after Trinity.
+// With stop_after_trinity=false (funannotate 1.8.x, no such flag) runs the FULL
+// train, persisted into training_target (the rep is trained once; FUNANNOTATE_TRAIN
+// skips it) and still archives the shared trinity.fasta. All non-representative
+// strains reuse the archived FASTA in FUNANNOTATE_TRAIN via --trinity.
+// storeDir-cached.
 // Resources overridden by withName: '.*:RNASEQ_PREPARE' in conf/profile_annotate.config.
 process RNASEQ_PREPARE {
     label 'funannotate'
@@ -21,6 +26,19 @@ process RNASEQ_PREPARE {
     def species       = meta.species
     def strain        = meta.strain
     def header_length = params.header_length
+    // funannotate >= 1.9 supports `train --stop_after_trinity`: assemble the shared
+    // Trinity-GG transcriptome for the representative WITHOUT running PASA, letting
+    // FUNANNOTATE_TRAIN do the alignment for every strain via --trinity. The 1.8.x
+    // line has NO such flag (train.py rejects it as an unrecognized argument), so for
+    // older releases we run the FULL train for the representative, persisting it into
+    // training_target (so the rep is trained ONCE, not twice — FUNANNOTATE_TRAIN sees
+    // the finished train and skips) and still archive its trinity.fasta as the shared
+    // transcriptome. Computed here in Groovy (not inside the shell string) so the
+    // training dir/flags below interpolate correctly at parse time.
+    def stopTrinity = params.stop_after_trinity.toBoolean()
+    def OUTDIR      = stopTrinity ? "\$SCRATCH/${out}" : "${params.training_target}/${out}"
+    def TRINITY     = stopTrinity ? '--stop_after_trinity --no_trimmomatic' : ''
+    def STAGE       = stopTrinity ? 'scratch' : 'persistent (full train, no --stop_after_trinity)'
     """
     # ── Empty-reads sentinel: no RNA-seq found by SRA_FETCH / SRA_FETCH_SE ──
     if [ ! -s "${r1}" ] && [ ! -s "${se}" ]; then
@@ -50,6 +68,9 @@ process RNASEQ_PREPARE {
     TMPDIR=\${SCRATCH:-/tmp}
 
     echo "[INFO] RNASEQ_PREPARE: running funannotate train for representative ${out} (species: ${species_tag})"
+    if [ "${params.debug.toBoolean()}" = "true" ]; then
+        echo "[DEBUG] RNASEQ_PREPARE: stop_after_trinity=${stopTrinity} OUTDIR=${OUTDIR} TRINITY_FLAGS=${TRINITY}"
+    fi
 
     # Inflate a gzipped clean genome to a local uncompressed copy.
     GENOME_FA="${genome_fa}"
@@ -59,28 +80,29 @@ process RNASEQ_PREPARE {
     esac
 
     if [ -s "${r1}" ]; then
-        funannotate train -i "\$GENOME_IN" -o \$SCRATCH/${out} \\
+        echo "[INFO] RNASEQ_PREPARE: funannotate train (PE, ${STAGE}) for representative ${out}"
+        funannotate train -i "\$GENOME_IN" -o ${OUTDIR} \\
             --left_norm ${r1} --right_norm ${r2} --aligners minimap2 \\
             --species "${species}" --strain "${strain}" \\
             --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
             --header_length ${header_length} \\
             --jaccard_clip --no-progress --min_coverage 4 \\
             --max_intronlen ${params.max_intronlen} \\
-            --stop_after_trinity --no_trimmomatic
+            ${TRINITY}
     else
-        echo "[INFO] RNASEQ_PREPARE: using single-end reads for ${out}"
-        funannotate train -i "\$GENOME_IN" -o \$SCRATCH/${out} \\
+        echo "[INFO] RNASEQ_PREPARE: funannotate train (SE, ${STAGE}) for representative ${out}"
+        funannotate train -i "\$GENOME_IN" -o ${OUTDIR} \\
             --single_norm ${se} --aligners minimap2 \\
             --species "${species}" --strain "${strain}" \\
             --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
             --header_length ${header_length} \\
             --no-progress --min_coverage 4 \\
             --max_intronlen ${params.max_intronlen} \\
-            --stop_after_trinity --no_trimmomatic
+            ${TRINITY}
     fi
 
     # ── Copy shared outputs to rnaseq_data/ ──────────────────────────────────
-    TRAINDIR="\$SCRATCH/${out}/training"
+    TRAINDIR="${OUTDIR}/training"
     TRINITY_FA=\$(find \$TRAINDIR -maxdepth 1 -name "trinity.fasta" | head -1)
     if [ -n "\$TRINITY_FA" ]; then
         cp "\$TRINITY_FA" ${species_tag}.trinity-GG.fasta
@@ -89,7 +111,12 @@ process RNASEQ_PREPARE {
         touch ${species_tag}.trinity-GG.fasta
     fi
 
-    rm -rf "\$SCRATCH/${out}"
+    # Scratch (stop_after_trinity) runs clean up; full persistent runs keep the
+    # training dir for FUNANNOTATE_PREDICT (via symlink) and so FUNANNOTATE_TRAIN
+    # can skip the already-trained representative.
+    if [ "${stopTrinity}" = "true" ]; then
+        rm -rf "\$SCRATCH/${out}"
+    fi
     echo "[INFO] RNASEQ_PREPARE complete for ${species_tag}"
     """
 

@@ -282,6 +282,11 @@
           "type": "string",
           "description": "Adapter/quality trimmer for RNA-seq reads.",
           "default": "fastp"
+        },
+        "stop_after_trinity": {
+          "type": "boolean",
+          "description": "Run representative funannotate train with --stop_after_trinity (funannotate >=1.9), archiving the shared Trinity-GG transcriptome without PASA. funannotate 1.8.x lacks this flag; set false to run a full persisted train instead.",
+          "default": true
         }
       }
     },
