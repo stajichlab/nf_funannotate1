@@ -127,6 +127,44 @@ up front (and again from the predict log) and skipped cleanly — flagged in
 Both the small *and* fragmented gates must trip, so complete small genomes (e.g.
 *Malassezia*) are unaffected.
 
+### Standalone ab-initio predictors (GeneMark + optional Prodigal)
+
+Beyond funannotate's own Augustus training, two standalone predictors run ahead of
+`FUNANNOTATE_PREDICT` and hand their models over as EVM sources.
+
+**GeneMark-ES/ET (`GENEMARK_RUN`, on by default).** Trains ab-initio models on the
+masked genome (ES) or with RNA-seq hints (ET) and passes the `.mod` to predict
+via `--genemark_gtf` (EVM source `genemark`, weight 1). Obeys `run_genemark`,
+`genemark_mode` (AUTO/ES/ET), and `genemark_container_mode`. The container path
+(validated against a real genome in the 2026-08-20 realtest) runs
+`gmes_petap.pl` from the public `teambraker/braker3` image, which bundles
+GeneMark 4.72 under BRAKER's CC-BY-NC-SA relicense — no `gm_key` needed — plus
+Augustus's `bam2hints`/`join_mult_hints.pl` for ET hint prep. The host-licensed
+`genemarkESET` module / a private `genemark_path` install is the alternative for
+sites that have a key.
+
+**Prodigal (`PRODIGAL_RUN`, off by default).** For short-ORF / intron-poor
+special cases — microsporidia (tiny, very-compact genomes where neither Augustus
+nor usually GeneMark recover enough training genes for the 30-model floor) —
+Prodigal's single-genome mode is strong at short-ORF discovery. Its GFF is
+passed to predict as `--other_gff <gff>:<weight>`, which funannotate renames to
+EVM source `other_pred1` (`StartWeights['other_pred1']`). `-g` reuses the
+assembly's `transl_table`, so alternative / CUG-reassigned tables always agree
+with predict's `--table`. Follow-up candidate: Saccharomycotina.
+
+| Param | Default | Meaning |
+|---|---|---|
+| `run_genemark` | `true` | run the standalone GeneMark step; `false` = `--auto-skip-genemark` (no ab-initio models) |
+| `genemark_mode` | `AUTO` | ES / ET / AUTO (ET when a training BAM exists) |
+| `genemark_container_mode` | `false` | run GeneMark inside `container_genemark` (braker3) instead of a host licensed install |
+| `run_prodigal` | `false` | run `PRODIGAL_RUN` and hand its models to predict via `--other_gff` |
+| `prodigal_weight` | `1` | EVM weight for `other_pred1` (1 = equal peer; recalibrate from a benchmark) |
+| `prodigal_mode` | `single` | `single` (complete genomes) or `meta` (fragmented/short contigs) |
+
+Prodigal runs on the same soft-masked genome as the other steps, so it will
+under-call inside repeats (acceptable; EVM-compatible) — running it on the
+unmasked raw with a mask-interval filter is a documented in-module TODO.
+
 ### Compressed storage
 
 Clean and masked genomes are stored gzip-compressed in `input_clean_genomes/`
