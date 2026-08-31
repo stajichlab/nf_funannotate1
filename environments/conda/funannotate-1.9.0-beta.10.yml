@@ -68,8 +68,25 @@ dependencies:
   - trnascan-se
   - ucsc-blat
   - ucsc-pslcdnafilter
+  # Perl modules funannotate needs at runtime. The bioconda `funannotate`
+  # recipe declares these as run deps, but this env pip-installs 1.9 (no conda
+  # package), so they must be listed explicitly here or `funannotate check`
+  # reports them missing and the perl EVM/PASA workers fail at runtime.
+  - perl-dbd-mysql
+  - perl-hash-merge
+  - perl-libwww-perl
+  - perl-local-lib
+  - perl-logger-simple
+  - perl-scalar-util-numeric
+  - perl-text-soundex
+  # perl-dbd-mysql's .so needs libmysqlclient.so.24, shipped by mysql-libs
+  # (8.3.0 provides only .so.23 and DBD::mysql fails to load — pin to 8.4.x).
+  - mysql-libs 8.4.2
+  - mysql-common 8.4.2
   - pip
   - pip:
-    # This git tag. Pin to a full commit hash to make the build deterministic:
-    #   - git+https://github.com/nextgenusfs/funannotate.git@1.9.0-beta.10
-    - git+https://github.com/nextgenusfs/funannotate.git@1.9.0-beta.10
+    # This git tag. NOTE: the release tag is 'v1.9.0-beta.10' (with the 'v' —
+    # '1.9.0-beta.10' does NOT exist upstream and pip's `git checkout` fails).
+    # Pin to a full commit hash to make the build deterministic:
+    #   - git+https://github.com/nextgenusfs/funannotate.git@0f68b7b7484bad05efe32d7751a21f2497163937
+    - git+https://github.com/nextgenusfs/funannotate.git@0f68b7b7484bad05efe32d7751a21f2497163937

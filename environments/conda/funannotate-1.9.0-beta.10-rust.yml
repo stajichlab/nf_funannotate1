@@ -169,5 +169,6 @@ dependencies:
   - sqlite
 
   # ── funannotate itself from git (no conda 1.9.0-beta.10 package) ────────────
+  # NOTE: release tag is 'v1.9.0-beta.10' (with 'v'); commit pinned for determinism.
   - pip:
-    - git+https://github.com/nextgenusfs/funannotate.git@1.9.0-beta.10
+    - git+https://github.com/nextgenusfs/funannotate.git@0f68b7b7484bad05efe32d7751a21f2497163937
