@@ -1,0 +1,173 @@
+# funannotate-1.9.0-beta.10-rust.yml — conda deps + 1.9.0-beta.10 with Rust
+# EVM / PASA / Trinity.
+#
+# The "with RUST" configuration. Same funannotate package as the perl-EVM
+# beta.10 file, but the three heavy ab-initio/splice-assembly tools are the
+# Rust-optimized `rust_optimize` forks (hyphaltip: EVidenceModeler, PASApipeline,
+# trinityrnaseq) source-built into the env, instead of the conda perl builds.
+#
+# This mirrors the reference env in
+#   ~/projects/funannotate/funannotate-live/pixi.toml
+# whose [dependencies] deliberately lists NO `trinity`, `pasa`, or
+# `evidencemodeler` conda package. Instead it pins:
+#   * a build toolchain  (rust, c-compiler/cxx-compiler, make, cmake, autoconf,
+#                         automake, libtool, zlib, bzip2, libffi, sqlite) and
+#   * each tool's RUNTIME deps (openjdk + the R/bioconductor stack for Trinity;
+#     perl-* for EVM; ucsc-blat/lighttpd/pblat/transdecoder for PASA),
+# then source-builds the forks with the helper scripts in
+#   install_scripts/pixi_install_{trinity,pasa,evm,bowtie2}.sh
+# into the env, and sets FUNANNOTATE_EVM_ENGINE=rust.
+#
+# Build (once):
+#   mamba env create -f environments/conda/funannotate-1.9.0-beta.10-rust.yml \
+#       -p /rhome/jstajich/conda/envs/funannotate-1.9.0-beta.10-rust
+#   # then source-build the Rust forks INTO the new env (heavy; do once):
+#   # copy the four install_scripts/pixi_install_*.sh + pixi_setup_symlinks.sh
+#   # from ~/projects/funannotate/funannotate-live/, then, with the env active:
+#   bash pixi_install_evm.sh
+#   bash pixi_install_trinity.sh
+#   bash pixi_install_pasa.sh
+#   bash pixi_install_bowtie2.sh
+#   bash pixi_setup_symlinks.sh
+#   export FUNANNOTATE_EVM_ENGINE=rust
+#   # verify: funannotate check --show-versions should report the Rust EVM,
+#   # PASA, and Trinity (not evidence_modeler.pl).
+#
+# before running the pipeline:
+#   nextflow run ... -profile annotate,slurm,conda --conda_env funannotate-1.9.0-beta.10-rust
+#
+# NOTE: the funannotate python code itself still pip-installs from the git tag
+# (no conda package exists for the 1.9.0-beta.10 release; bioconda tops at
+# 1.8.17). Pin to a full commit hash for a deterministic build.
+name: funannotate-1.9.0-beta.10-rust
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  # Python + funannotate direct python deps (transcribed from pixi.toml — note
+  # python <3.9 here, matching the reference 1.9.0 env, not the 1.8.17 recipe).
+  - python >=3.6,<3.9
+  - pip
+  - biopython <1.80
+  - xlrd ==1.2.0
+  - goatools >=1.4.12,<2
+  - seaborn-base
+  - psutil
+  - pandas
+  - matplotlib-base >=3.7.3,<4
+  - natsort >=8.4.0,<9
+  - numpy >=1.24.4,<2
+  - requests
+  - scikit-learn
+  - scipy
+  - distro >=1.9.0,<2
+  - ete3 >=3.1.3,<4
+  - perl-yaml >=1.30,<2
+
+  # ── 3rd-party runtime tools (per pixi.toml). NO trinity/pasa/evidencemodeler
+  # here — those are the Rust source-built forks (see header / install_scripts).
+  - blast >=2.16.0,<3
+  - repeatmasker >=4.2.3,<5
+  - repeatmodeler >=1.0.8,<2
+  - miniprot >=0.18,<0.19
+  - minimap2 >=2.30,<3
+  - exonerate >=2.4.0,<3
+  - hmmer >=3.4,<4
+  - codingquarry ==2.0
+  - augustus >=3.5.0
+  - proteinortho >=6.3.6,<7
+  - pigz >=2.8,<3
+  - tantan >=51,<52
+  - bedtools >=2.31.1,<3
+  - diamond >=2.0.5
+  - tbl2asn >=25.7,<26
+  - blat >=35,<36
+  - trnascan-se >=2.0
+  - ucsc-pslcdnafilter >=482,<483
+  - trimmomatic >=0.40,<0.41
+  - fastp >=0.23,<1
+  - raxml >=8.2.13,<9
+  - iqtree >=3.1.1,<4
+  - trimal >=1.5.1,<2
+  - mafft >=7
+  - hisat2 >=2.2.2,<3
+  - kallisto ==0.46.1
+  - stringtie >=3.0.3,<4
+  - salmon >=1.0
+  - samtools >=1.9
+  - glimmerhmm >=3.0.4,<4
+  - bamtools >=2.5.3,<3
+  - kmer-jellyfish >=2.3.0,<3
+  - snap >=2017_3_1,<2018
+  - gmap >=2025.7.31,<2026
+  - eggnog-mapper >=2.1.13,<3
+  - repeatscout >=1.0.7,<2
+  - recon >=1.8,<2
+  - fasta3 >=36.3.8,<37
+  - which
+  - coreutils
+  - perl-dbd-mysql >=5.13,<6
+  - perl-dbd-sqlite >=1.78,<2
+  - perl-file-which >=1.24,<2
+  - perl-local-lib >=2.29,<3
+  - perl-clone >=0.46,<0.47
+  - perl-hash-merge >=0.302,<0.303
+  - perl-soap-lite >=1.27,<2
+  - perl-json >=4.11,<5
+  - perl-logger-simple >=2.0,<3
+  - perl-scalar-util-numeric >=0.40,<0.41
+  - perl-math-utils >=1.14,<2
+  - perl-mce >=1.902,<2
+  - perl-text-soundex >=3.5,<4
+  - perl-parallel-forkmanager >=2.4,<3
+  - perl-db-file >=1.855,<2
+
+  # ── Rust EVM runtime deps (perl, from pixi.toml) ────────────────────────────
+  - perl-carp
+  - perl-uri
+  - perl-dbi
+
+  # ── Rust PASA runtime deps (from pixi.toml) ─────────────────────────────────
+  - ucsc-blat
+  - lighttpd
+  - pblat >=2.5,<3
+  - transdecoder >=6.0.0,<7
+
+  # ── Rust Trinity runtime deps (from pixi.toml) ──────────────────────────────
+  - openjdk >=17
+  - bowtie2 >=2.3.0,<3
+  - libgomp
+  - r-base
+  - r-cluster
+  - r-gplots
+  - r-fastcluster
+  - r-argparse
+  - r-ape
+  - r-phangorn
+  - r-tidyverse
+  - r-sm
+  - r-vioplot
+  - bioconductor-qvalue
+  - bioconductor-ctc
+  - bioconductor-edger
+  - bioconductor-goseq
+  - bioconductor-go.db
+  - bioconductor-dexseq
+
+  # ── Build toolchain for the source-built Rust forks (from pixi.toml) ────────
+  - rust >=1.80
+  - c-compiler
+  - cxx-compiler
+  - make >=4
+  - cmake >=3.20
+  - autoconf >=2.69
+  - automake >=1.16
+  - libtool >=2.4
+  - zlib >=1.2
+  - bzip2 >=1.0
+  - libffi >=3.5.2,<4
+  - sqlite
+
+  # ── funannotate itself from git (no conda 1.9.0-beta.10 package) ────────────
+  - pip:
+    - git+https://github.com/nextgenusfs/funannotate.git@1.9.0-beta.10

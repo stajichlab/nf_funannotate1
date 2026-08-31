@@ -1,0 +1,74 @@
+# funannotate-master.yml — conda deps + the latest funannotate from git master.
+#
+# There is NO conda package for master; this env installs the conda dependencies
+# then pip-installs the live funannotate checkout on top. Build (once):
+#   mamba env create -f environments/conda/funannotate-master.yml \
+#       -p /rhome/jstajich/conda/envs/funannotate-master
+#   # then apply funannotate's own dependency changes if any were merged since
+#   # this file was written (see the note below).
+#
+# WARNING: the pip step installs whatever the `@pixi`/latest master branch declares
+# at build time, so its python deps can drift ahead of the pinned list below. After
+# creating the env, run `funannotate check --show-versions` and install any newly
+# required python deps into the env explicitly (this env only guarantees the conda-
+# runtime toolchain, not master's churn). For a pinned/frozen run, prefer building
+# from a git tag (see funannotate-1.9.0-beta.10.yml) instead of @pixi/latest.
+name: funannotate-master
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python >=3.6,<3.12
+  - setuptools <81
+  - biopython <1.80
+  - goatools
+  - seaborn-base
+  - psutil
+  - pandas
+  - matplotlib-base
+  - natsort
+  - numpy
+  - requests
+  - scikit-learn
+  - scipy
+  - distro
+  # 3rd-party runtime tools (kept at the 1.8.17 recipe's pins as a known-good
+  # base; adjust if master documents different needs):
+  - augustus ==3.5.0
+  - bamtools !=2.5.2
+  - bedtools
+  - blast
+  - codingquarry
+  - diamond
+  - evidencemodeler =1.1.1
+  - ete3
+  - exonerate
+  - glimmerhmm
+  - fasta3
+  - hisat2
+  - hmmer
+  - kallisto >=0.46.0,<0.46.2
+  - mafft >=7
+  - minimap2
+  - pasa
+  - phyml
+  - pigz
+  - proteinortho
+  - raxml
+  - salmon
+  - samtools
+  - snap
+  - stringtie
+  - tantan
+  - tbl2asn
+  - trimal
+  - trimmomatic
+  - trinity
+  - trnascan-se
+  - ucsc-blat
+  - ucsc-pslcdnafilter
+  - pip
+  - pip:
+    # Live master checkout. Pin to a commit/tag for reproducibility:
+    #   - git+https://github.com/nextgenusfs/funannotate.git@<commit>
+    - git+https://github.com/nextgenusfs/funannotate.git

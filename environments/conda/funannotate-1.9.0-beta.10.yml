@@ -1,0 +1,75 @@
+# funannotate-1.9.0-beta.10.yml — conda deps + the 1.9.0-beta.10 release, PERL EVM.
+#
+# There is NO conda package for 1.9.0-beta.10 (bioconda tops out at 1.8.17; the
+# beta is published only as a ghcr.io/nextgenusfs/funannotate:1.9.0-beta.10
+# container). This env installs the conda runtime toolchain then pip-installs the
+# beta tag on top, keeping the PERL evidencemodeler (conda `evidencemodeler`) as
+# funannotate's EVM backend — the "without RUST" configuration.
+# Build (once) and select at runtime:
+#   mamba env create -f environments/conda/funannotate-1.9.0-beta.10.yml \
+#       -p /rhome/jstajich/conda/envs/funannotate-1.9.0-beta.10
+#   nextflow run ... -profile annotate,slurm,conda --conda_env funannotate-1.9.0-beta.10
+#
+# IMPORTANT: conda and bioconda cannot resolve a tag-pinned git dependency; the
+# pip step below must run AFTER the conda create (it is a pip:-block list, which
+# conda/mamba handles, but the funannotate python deps are NOT enumerated here —
+# the 1.9.0-beta.10 branch's setup.py supplies them at pip time). If they clash
+# with the pins below, `conda install` the conflicting ones explicitly afterward.
+name: funannotate-1.9.0-beta.10
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python >=3.6,<3.9   # match reference pixi.toml + 1.8.17 recipe; 1.9 branch tested on <3.9
+  - setuptools <81
+  - biopython <1.80
+  - goatools
+  - seaborn-base
+  - psutil
+  - pandas
+  - matplotlib-base
+  - natsort
+  - numpy
+  - requests
+  - scikit-learn
+  - scipy
+  - distro
+  # 3rd-party runtime tools (1.8.17 recipe pins as a known-good base).
+  - augustus ==3.5.0
+  - bamtools !=2.5.2
+  - bedtools
+  - blast
+  - codingquarry
+  - diamond
+  - evidencemodeler =1.1.1
+  - ete3
+  - exonerate
+  - glimmerhmm
+  - fasta3
+  - hisat2
+  - hmmer
+  - kallisto >=0.46.0,<0.46.2
+  - mafft >=7
+  - minimap2
+  - pasa
+  - phyml
+  - pigz
+  - proteinortho
+  - raxml
+  - salmon
+  - samtools
+  - snap
+  - stringtie
+  - tantan
+  - tbl2asn
+  - trimal
+  - trimmomatic
+  - trinity
+  - trnascan-se
+  - ucsc-blat
+  - ucsc-pslcdnafilter
+  - pip
+  - pip:
+    # This git tag. Pin to a full commit hash to make the build deterministic:
+    #   - git+https://github.com/nextgenusfs/funannotate.git@1.9.0-beta.10
+    - git+https://github.com/nextgenusfs/funannotate.git@1.9.0-beta.10

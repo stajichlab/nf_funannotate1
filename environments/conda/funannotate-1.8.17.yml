@@ -1,0 +1,65 @@
+# funannotate-1.8.17.yml — pure conda: the released 1.8.17 from bioconda.
+#
+# Build (once) into your conda envs root, then select it at runtime:
+#   mamba env create -f environments/conda/funannotate-1.8.17.yml \
+#       -p /rhome/jstajich/conda/envs/funannotate-1.8.17
+#   nextflow run ... -profile annotate,slurm,conda --conda_env funannotate-1.8.17
+#
+# Run deps mirror the bioconda recipe (conda-forge + bioconda). augustus is
+# pinned to ==3.5.0 exactly as the recipe does — a newer augustus breaks
+# funannotate's ab-initio training (funannotate#1013).
+name: funannotate-1.8.17
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python >=3.6,<3.12
+  - setuptools <81
+  - biopython <1.80
+  - goatools
+  - seaborn-base
+  - psutil
+  - pandas
+  - matplotlib-base
+  - natsort
+  - numpy
+  - requests
+  - scikit-learn
+  - scipy
+  - distro
+  # 3rd-party runtime tools (as in the bioconda recipe):
+  - augustus ==3.5.0
+  - bamtools !=2.5.2
+  - bedtools
+  - blast
+  - codingquarry
+  - diamond
+  - evidencemodeler =1.1.1
+  - ete3
+  - exonerate
+  - glimmerhmm
+  - fasta3
+  - hisat2
+  - hmmer
+  - kallisto >=0.46.0,<0.46.2
+  - mafft >=7
+  - minimap2
+  - pasa
+  - phyml
+  - pigz
+  - proteinortho
+  - raxml
+  - salmon
+  - samtools
+  - snap
+  - stringtie
+  - tantan
+  - tbl2asn
+  - trimal
+  - trimmomatic
+  - trinity
+  - trnascan-se
+  - ucsc-blat
+  - ucsc-pslcdnafilter
+  # The package itself (latest 1.8.x build):
+  - funannotate =1.8.17
