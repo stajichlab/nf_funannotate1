@@ -71,13 +71,13 @@
       "properties": {
         "source": {
           "type": "string",
-          "description": "NCBI_ASM source dir; genomes resolved as <source>/<ASMID>/<ASMID>_genomic.fna.gz for rows without a GENOME column.",
-          "default": "/bigdata/stajichlab/shared/projects/1KFG/2026/NCBI_fungi/source/NCBI_ASM"
+          "description": "NCBI_ASM source dir; genomes resolved as <source>/<ASMID>/<ASMID>_genomic.fna.gz for rows without a GENOME column. Portable default is launchDir-relative; UCR HPCC overrides to the shared 1KFG staging dir (conf/site_ucr_hpcc.config).",
+          "default": "${launchDir}/source"
         },
         "taxondb": {
           "type": "string",
-          "description": "Local taxonkit/NCBI taxonomy database directory.",
-          "default": "/bigdata/stajichlab/shared/projects/1KFG/2026/NCBI_fungi/tmp/taxa/"
+          "description": "Local taxonkit/NCBI taxonomy database directory. Auto-downloaded by SETUP_TAXONDB (storeDir-cached) on first use, so the portable default just caches it under launchDir/work; UCR HPCC overrides to a shared download (conf/site_ucr_hpcc.config).",
+          "default": "${launchDir}/work/taxondb"
         },
         "proteins": {
           "type": "string",
@@ -91,8 +91,8 @@
         },
         "eggnog_db": {
           "type": "string",
-          "description": "eggNOG-mapper database directory used by funannotate annotate (EGGNOG_DATA_DIR). Bound into the funannotate container as /opt/databases/eggnog_db; the image sets EGGNOG_DATA_DIR to that path. Must contain eggnog.db, eggnog_proteins.dmnd and the eggnog.taxa.db files.",
-          "default": "/srv/projects/db/eggNOG/LATEST"
+          "description": "eggNOG-mapper database directory used by funannotate annotate (EGGNOG_DATA_DIR). Bound into the funannotate container as /opt/databases/eggnog_db; the image sets EGGNOG_DATA_DIR to that path. Must contain eggnog.db, eggnog_proteins.dmnd and the eggnog.taxa.db files. Not auto-downloaded by this pipeline -- populate it yourself (or override --eggnog_db) before --run_annotate. Portable default is a launchDir-relative placeholder; UCR HPCC overrides to the shared install (conf/site_ucr_hpcc.config).",
+          "default": "${launchDir}/eggnog_db"
         },
         "augustus_config": {
           "type": "string",
@@ -503,8 +503,8 @@
         },
         "busco_lineages": {
           "type": "string",
-          "default": "/srv/projects/db/BUSCO/v12/",
-          "description": "BUSCO lineages tree (--download_path / BUSCO_LINEAGES) for BUSCO_GENOME."
+          "default": "${launchDir}/busco_lineages",
+          "description": "BUSCO lineages tree (--download_path / BUSCO_LINEAGES) for BUSCO_GENOME. Must be v10-format datasets (funannotate predict's vendored BUSCO step needs the legacy lengths_cutoff files). Not auto-downloaded by this pipeline -- populate it yourself (`busco --download`) or override --busco_lineages. Portable default is a launchDir-relative placeholder; UCR HPCC overrides to the shared v10 tree (conf/site_ucr_hpcc.config)."
         },
         "genome_stats_outdir": {
           "type": "string",
