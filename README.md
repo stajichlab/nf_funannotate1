@@ -59,11 +59,72 @@ Process scripts carry **no `module load`** — provisioning is supplied per proc
 
 ### Singularity images to build
 
-Public biocontainers are used for edirect/antismash/interproscan/setup. Build
-these and point at them with `--container_*` (defaults under
+Public biocontainers are used for edirect/prodigal/skani/busco/interproscan/setup
+(pulled automatically into the `sif_dir` cache by Nextflow). Build these and
+point at them with `--container_*` (defaults under
 `/bigdata/stajichlab/shared/lib/singularity_cache`):
-`funannotate`, `AAFTF` (genome_clean), the SRA multi-tool image, and
-`signalp` (fast mode). `mariadb.sif` (PASA) already exists in shared lib.
+`funannotate` (pinned `1.9.0-beta.10`), `AAFTF` (genome_clean), the SRA
+multi-tool image, `signalp6-fast.sif` (fast mode, licensed), `DeepTMHMM-1.0.sif`
+(licensed), and the antismash-procps image. `mariadb.sif` (PASA) already exists
+in shared lib. Build one-liners live in `conf/provision_singularity.config`
+next to each `container_*` param.
+
+## Running at another site
+
+The pipeline is portable by construction: process scripts carry **no tools**
+and the provisioning is injected per process `label` by the provisioning
+profile (see above), so everything except the `ucr_hpcc` (Lmod) axis works
+identically at any site. To run elsewhere:
+
+```bash
+# single workstation / login node (containers, any linux with apptainer):
+nextflow run stajichlab/nf_funannotate1 -profile annotate,local,singularity
+
+# another SLURM cluster (containers on the scheduler):
+nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,singularity
+
+# ...or project-local pixi envs instead of containers (any executor):
+nextflow run stajichlab/nf_funannotate1 -profile annotate,local,pixi
+```
+
+`local` is the portable executor; the `slurm` profile was already generic
+(`-N 1 -n 1` clusterOptions moved into it — no SLURM flags leak into other
+executors). Non-SLURM schedulers (PBS/LSF/SGE) need only a small executor block
+like the `slurm` one in `nextflow.config`.
+
+### One-time site artifacts (checklist)
+
+1. **Container cache** — `sif_dir` resolves from `NXF_APPTAINER_CACHE` /
+   `NXF_SINGULARITY_CACHE` / `APPTAINER_CACHE` (fallback documented in
+   `nextflow.config`). Export one of those env vars, then `apptainer pull` the
+   locally-built images listed in `conf/provision_singularity.config`:
+   `funannotate:1.9.0-beta.10` (ghcr.io), `AAFTF`, the SRA multi-tool image,
+   `signalp6-fast.sif` + converted GPU weights, `DeepTMHMM-1.0.sif`,
+   `antismash-standalone-8.0.4-procps.sif`, `mariadb.sif`. Public biocontainers
+   (edirect, prodigal, skani, busco, interproscan, setup, braker3) are pulled
+   on first use.
+2. **Reference databases** — everything the pipeline can auto-download
+   (taxonkit taxdump, funannotate DBs, antiSMASH DBs, BUSCO lineages) is
+   storeDir-cached under `launchDir` and needs no manual step. What a site
+   *must* supply before those processes run: the **eggNOG DB** (`--eggnog_db`:
+   eggnog.db, eggnog_proteins.dmnd, eggnog.taxa.db) and **SwissProt fungi
+   proteins** (`--proteins`) for `--run_annotate`; a **PASA config**
+   (`--pasa_conf_dir`) for the MySQL backend. Point an existing shared install
+   at any of them with `--<param> /path` and the setup process no-ops.
+3. **Licenses / GPU** — a GeneMark `~/.gm_key` (or `--genemark_path` to a
+   host install, vs the braker3-container mode `genemark_container_mode=true`
+   on the singularity axis); `signalp6-fast.sif` and `DeepTMHMM-1.0.sif` are
+   licensed (no conda/module substitute). Turn `--signalp_gpu` /
+   `--deeptmhmm_gpu` off on clusters without GPU nodes — same image, CPU mode.
+4. **Conda axis only** — build the frozen envs once into shared storage with
+   `environments/conda/build_conda_env.sh`. Point every run at it the same way
+   the container cache is pointed: export `CONDA_ENVS_ROOT=/shared/lib/condaenv`
+   in the site env/launcher, or pass `--conda_envs_root` per run. Unset, the
+   conda axis falls back to a per-user `$HOME/.conda/nf_funannotate1`.
+5. **Site config file** — copy `conf/site_template.config` to
+   `conf/site_<site>.config`, fill in the shared paths you have, and pass
+   `-c conf/site_<site>.config` (or includeConfig it from a site profile).
+   `conf/site_ucr_hpcc.config` is the filled-in UCR example.
 
 ## Input model (`samples.csv`)
 
