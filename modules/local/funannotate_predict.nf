@@ -52,6 +52,9 @@ process FUNANNOTATE_PREDICT {
     // 'other_pred1', EVM-validates it, and applies the weight as
     // StartWeights['other_pred1'] (see predict.py --other_gff parsing). Empty
     // string -> omitted entirely.
+    // PRODIGAL_RUN now emits gene/mRNA/CDS blocks (prodigal_gff_hier.py): EVM
+    // assembles consensus models from gene/mRNA blocks, so a CDS-only source
+    // is structurally inert no matter its weight (OC4 gene Sn 0.584 -> 0.839).
     def other_gff_file = other_gff ? file(other_gff as String) : null
     def other_gff_ok   = other_gff_file && other_gff_file.exists() && other_gff_file.size() > 0
     def other_gff_cli  = other_gff_ok ? "--other_gff ${other_gff}:${params.prodigal_weight}" : ''

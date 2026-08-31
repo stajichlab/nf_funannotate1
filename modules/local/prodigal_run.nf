@@ -11,6 +11,14 @@
 // Follow-up candidate: Saccharomycotina (dense, intron-poor but larger ORFs)
 // weighing prodigal models against Augustus/RNA-seq.
 //
+// Hierarchy fix (2026-08-31): Prodigal's native -f gff output is CDS-only,
+// and EVM assembles models from gene/mRNA blocks -- a CDS-only pass-through is
+// structurally inert no matter its weight. bin/prodigal_gff_hier.py re-emits
+// each CDS as a gene/mRNA/CDS block (blank-line separated, no header), the
+// same transform validated on the OC4 held-out gold genome: gene Sn/Sp went
+// 0.584/0.698 (CDS-only, consensus was a pure GeneMark echo) -> 0.839/0.817.
+// => prodigal_weight default is now 5 (was 1), calibrated from that run.
+//
 // Skeleton status / TODOs before this is production-validated:
 //   TODO(masked): decide the genome handed in. This process is fed the same
 //     masked `genome_fa` as GENEMARK_RUN/FUNANNOTATE_PREDICT; prodigal will NOT
@@ -26,11 +34,6 @@
 //     prefers ORF recovery over training quality on fragmented inputs --
 //     expose via params.prodigal_mode and default per params.predict_frag_max_*
 //     pre-flight verdict if needed.
-//   TODO(weights): the :weight suffix is honored by funannotate predict
-//     (StartWeights['other_pred1'] = weight; see predict.py's --other_gff
-//     parsing and _runEVM/libraries weights), but there is no empirical
-//     calibration yet for microsporidia -- prodigal_weight default 1 makes it
-//     an equal EVM peer. Recalibrate from a benchmark once models land.
 //   TODO(validate): prodigal GFF contig names come straight from the FASTA
 //     headers, so they match as long as the same genome goes in; funannotate
 //     itself validates contigs + EVM-formats the file (predict_misc/
@@ -38,8 +41,9 @@
 //     check needed here.
 //
 // Outputs:
-//   - ${out}.prodigal.gff3 : Prodigal native GFF (source will become
-//     'other_pred1' inside funannotate, EVM-validated there).
+//   - ${out}.prodigal.gff3 : Prodigal GFF re-emitted as gene/mRNA/CDS blocks
+//     (source will become 'other_pred1' inside funannotate, EVM-validated
+//     there).
 //   - ${out}.prodigal.faa  : predicted proteins (informational / future
 //     validation; NOT currently wired to predict).
 //
@@ -74,23 +78,29 @@ process PRODIGAL_RUN {
     # --table, so model translation tables always agree (microsporidia CUG
     # reassignment / alt tables must match or EVM evidence is meaningless).
     # -f gff keeps the native 'gene'/'CDS' features funannotate's
-    # renameGFF/EVM validation expects.
+    # renameGFF/EVM validation expects. Note: prodigal emits CDS rows only --
+    # bin/prodigal_gff_hier.py re-emits them as gene/mRNA/CDS blocks so EVM
+    # can use the source structurally (see header comment "Hierarchy fix").
     echo "[INFO] PRODIGAL_RUN ${out}: prodigal -p ${mode} -g ${transl_table} on \$(grep -c '>' genome.fa) contigs"
     prodigal -i genome.fa -f gff -p ${mode} -g ${transl_table} \\
-        -o "${out}.prodigal.gff3" -a "${out}.prodigal.faa"
+        -o "${out}.prodigal.raw.gff3" -a "${out}.prodigal.faa"
 
-    if [ ! -s "${out}.prodigal.gff3" ]; then
+    if [ ! -s "${out}.prodigal.raw.gff3" ]; then
         echo "ERROR: prodigal produced no GFF for ${out}" >&2
         exit 1
     fi
+    python "${workflow.projectDir}/bin/prodigal_gff_hier.py" "${out}.prodigal.raw.gff3" \\
+        -o "${out}.prodigal.gff3"
+    rm -f genome.fa "${out}.prodigal.raw.gff3"
     echo "[INFO] PRODIGAL_RUN ${out}: \$(grep -c \$'\\tgene\\t' "${out}.prodigal.gff3") genes predicted"
-    rm -f genome.fa
     """
 
     stub:
     def out = meta.id
     """
-    printf '##gff-version 3\\n${out}\\tprodigal\\tgene\\t1\\t100\\t.\\t+\\t.\\tID=stub_1\\n' > "${out}.prodigal.gff3"
+    printf '%s\\tprodigal\\tgene\\t1\\t100\\t.\\t+\\t.\\tID=prodigal_g1\\n' "${out}" > "${out}.prodigal.gff3"
+    printf '%s\\tprodigal\\tmRNA\\t1\\t100\\t.\\t+\\t.\\tID=prodigal_m1;Parent=prodigal_g1\\n' "${out}" >> "${out}.prodigal.gff3"
+    printf '%s\\tprodigal\\tCDS\\t1\\t100\\t58.7\\t+\\t0\\tID=prodigal_m1.cds;Parent=prodigal_m1\\n' "${out}" >> "${out}.prodigal.gff3"
     printf '>stub_1\\nMSTUB\\n' > "${out}.prodigal.faa"
     echo "[STUB] PRODIGAL_RUN ${out}"
     """

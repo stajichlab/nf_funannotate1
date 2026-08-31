@@ -219,7 +219,7 @@ with predict's `--table`. Follow-up candidate: Saccharomycotina.
 | `genemark_mode` | `AUTO` | ES / ET / AUTO (ET when a training BAM exists) |
 | `genemark_container_mode` | `false` | run GeneMark inside `container_genemark` (braker3) instead of a host licensed install |
 | `run_prodigal` | `false` | run `PRODIGAL_RUN` and hand its models to predict via `--other_gff` |
-| `prodigal_weight` | `1` | EVM weight for `other_pred1` (1 = equal peer; recalibrate from a benchmark) |
+| `prodigal_weight` | `5` | EVM weight for `other_pred1` (calibrated 2026-08-31 on OC4: gene Sn/Sp 0.839/0.817) |
 | `prodigal_mode` | `single` | `single` (complete genomes) or `meta` (fragmented/short contigs) |
 
 Prodigal runs on the same soft-masked genome as the other steps, so it will

@@ -338,8 +338,8 @@
         "prodigal_weight": {
           "type": "integer",
           "minimum": 0,
-          "default": 1,
-          "description": "EVM weight given to Prodigal models (StartWeights['other_pred1']) when run_prodigal is true. Default 1 = equal EVM peer with Augustus."
+          "default": 5,
+          "description": "EVM weight given to Prodigal models (StartWeights['other_pred1']) when run_prodigal is true. Default 5, calibrated 2026-08-31 on the OC4 held-out microsporidia gold genome (gene Sn/Sp 0.839/0.817 vs 0.849/0.791 Prodigal-alone)."
         },
         "prodigal_mode": {
           "type": "string",
