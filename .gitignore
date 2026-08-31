@@ -35,3 +35,7 @@ nextflow/
 /lib/*.faa
 /lib/template.sbt
 tables/
+
+# conda validation run data assets (single-genome smoke-test input, not a repo fixture)
+validation/*/source/
+validation/*/md5sum.txt
