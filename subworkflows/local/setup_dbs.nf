@@ -15,9 +15,10 @@
  * the primary outputs exist. Version info for these once-run DBs is static.
  */
 
-include { SETUP_TAXONDB        } from './../../modules/local/setup_taxondb'
-include { SETUP_FUNANNOTATE_DB } from './../../modules/local/setup_funannotate_db'
-include { SETUP_AUGUSTUS_CONFIG } from './../../modules/local/setup_augustus_config'
+include { SETUP_TAXONDB          } from './../../modules/local/setup_taxondb'
+include { SETUP_FUNANNOTATE_DB   } from './../../modules/local/setup_funannotate_db'
+include { SETUP_AUGUSTUS_CONFIG  } from './../../modules/local/setup_augustus_config'
+include { SETUP_MARIADB_DATADIR  } from './../../modules/local/setup_mariadb_datadir'
 
 workflow SETUP_DBS {
 
@@ -26,8 +27,17 @@ workflow SETUP_DBS {
     SETUP_FUNANNOTATE_DB()
     SETUP_AUGUSTUS_CONFIG()
 
+    // Only build the PASA MariaDB seed datadir when pasa_mysql=true.
+    // funannotate_train.nf/funannotate_update.nf read params.mysql_datadir
+    // directly (not as a task input), so callers must gate on this channel
+    // the same way as db/config below to avoid racing SETUP_MARIADB_DATADIR.
+    def mysql_ready = params.pasa_mysql.toBoolean()
+        ? SETUP_MARIADB_DATADIR().ready.map { true }
+        : Channel.value(true)
+
     emit:
     taxondb = SETUP_TAXONDB.out.ready.map { params.taxondb }
     db      = SETUP_FUNANNOTATE_DB.out.db
     config  = SETUP_AUGUSTUS_CONFIG.out.config
+    mysql   = mysql_ready
 }

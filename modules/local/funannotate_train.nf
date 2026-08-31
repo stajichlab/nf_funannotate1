@@ -80,7 +80,7 @@ process FUNANNOTATE_TRAIN {
         module load singularity
         singularity instance start --writable-tmpfs \\
             -B \$MYSQL_SCRATCH/conf/my.cnf:/etc/mysql/my.cnf,\$MYSQL_SCRATCH/db/:/var/lib/mysql,\$MYSQL_SCRATCH/conf:/usr/conf \\
-            ${params.mariadb_sif} mysqldb_${asmid} /usr/bin/mysqld_safe
+            ${params.container_mariadb} mysqldb_${asmid} /usr/bin/mysqld_safe
         pasa_db_arg="--pasa_db mysql"
         sleep 5
     fi

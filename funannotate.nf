@@ -136,7 +136,8 @@ workflow {
         predict_genome_ch = predict_genome_ch
             .combine(SETUP_DBS.out.db)
             .combine(SETUP_DBS.out.config)
-            .map { row -> row[0..-3] }
+            .combine(SETUP_DBS.out.mysql)
+            .map { row -> row[0..-4] }
 
         // SRA read fetching (FETCH_RNASEQ) + training (RNASEQ_PREPARE + FUNANNOTATE_TRAIN)
         // + prediction (FUNANNOTATE_PREDICT). All three are composed in TRAIN_PREDICT.
