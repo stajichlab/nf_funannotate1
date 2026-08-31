@@ -1,0 +1,2 @@
+SPECIES,STRAIN,ASMID,LOCUSTAG,BUSCO_LINEAGE,TRANSL_TABLE,NCBI_TAXONID,GENOME
+Penicillium citrinum,NRRL 1841,GCA_020284165.1,PCITR,fungi_odb10,1,4751,/bigdata/stajichlab/jstajich/projects/nf/nf_funannotate1/validation/conda_light/source/Penicillium_citrinum_GCA_020284165.1.fa
