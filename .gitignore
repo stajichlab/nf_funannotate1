@@ -1,7 +1,7 @@
 # Nextflow run artifacts
 work/
 work.*/
-funannotate_db/
+funannotate_db
 .nextflow/
 .nextflow.log*
 logs/

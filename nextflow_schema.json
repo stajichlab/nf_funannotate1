@@ -94,6 +94,11 @@
           "description": "eggNOG-mapper database directory used by funannotate annotate (EGGNOG_DATA_DIR). Bound into the funannotate container as /opt/databases/eggnog_db; the image sets EGGNOG_DATA_DIR to that path. Must contain eggnog.db, eggnog_proteins.dmnd and the eggnog.taxa.db files. Not auto-downloaded by this pipeline -- populate it yourself (or override --eggnog_db) before --run_annotate. Portable default is a launchDir-relative placeholder; UCR HPCC overrides to the shared install (conf/site_ucr_hpcc.config).",
           "default": "${launchDir}/eggnog_db"
         },
+        "antismash_db": {
+          "type": "string",
+          "description": "antiSMASH reference databases dir (ClusterBlast/MIBiG/PFAM/etc). The antismash-lite biocontainer ships no DBs; SETUP_ANTISMASH_DB populates this once via download-antismash-databases, storeDir-cached like funannotate_db. Portable default caches it under launchDir; override to a prebuilt shared install to skip the download.",
+          "default": "${launchDir}/data/antismash_db"
+        },
         "augustus_config": {
           "type": "string",
           "description": "Writable AUGUSTUS_CONFIG copy seeded once by SETUP_AUGUSTUS_CONFIG.",
