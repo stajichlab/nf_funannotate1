@@ -62,7 +62,7 @@ build_one() {
 }
 
 if [[ "${1:-}" == "--all" ]]; then
-    for m in "${MANIFEST_DIR}"/funannotate-*.yml; do
+    for m in "${MANIFEST_DIR}"/*.yml; do
         build_one "${m}"
     done
 elif [[ -n "${1:-}" ]]; then

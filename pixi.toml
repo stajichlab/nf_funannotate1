@@ -15,8 +15,12 @@ platforms = ["linux-64"]
 
 # ── per-label features ────────────────────────────────────────────────────────
 [feature.genome_clean.dependencies]
+# AAFTF is NOT on conda-forge/bioconda (perl/python source suite) — provision it
+# via the AAFTF container (conf/provision_singularity.config:
+# container_genome_clean = ${sif_dir}/AAFTF.sif) or the site module (ucr_hpcc:
+# module load AAFTF). Under pixi, run GENOME_CLEAN with --skip_fcs and only the
+# length-filter path (scripts/clean_genome_fa.py) is used, so no AAFTF needed.
 taxonkit = "*"
-aaftf    = "*"
 pigz     = "*"
 
 [feature.edirect.dependencies]

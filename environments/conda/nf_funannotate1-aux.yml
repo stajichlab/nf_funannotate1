@@ -1,0 +1,65 @@
+# nf_funannotate1-aux.yml — one shared "peripheral" env for the conda axis.
+#
+# The `-profile conda` axis uses TWO envs (see conf/provision_conda.config):
+#   conda_env      — the versioned funannotate env (funannotate-*.yml)
+#   conda_env_aux  — THIS env, shared by every peripheral tool label:
+#                    edirect / sra / genome_clean / skani / busco / prodigal /
+#                    antismash / interproscan / repeatmask / earlgrey / select.
+#
+# It mirrors conf/provision_pixi.config's per-feature dependency lists (same
+# channels, same package set) plus the two EarlGrey-path labels (repeatmask,
+# earlgrey) that pixi.toml does not feature, plus python for the stdlib-only
+# 'select' label (SELECT_REPS runs scripts/select_repeat_representatives.py).
+#
+# Build (once) into the shared, node-visible conda root (the build wrapper
+# picks up any *.yml in this directory via --all, or build just this one):
+#   ./environments/conda/build_conda_env.sh nf_funannotate1-aux
+#   # or, with CONDA_ENVS_ROOT exported: ./environments/conda/build_conda_env.sh --all
+#
+# Notes:
+#   - interproscan is best-effort (like pixi.toml's feature): large, often run
+#     from a site install. Shipped here so a solve that CAN install it does;
+#     drop it (or run the label under singularity/ucr_hpcc) where it won't.
+#   - antismash pulls its own heavy stack (diamond, hmmer, pillow, …). The
+#     reference DBs are NOT in this env — SETUP_ANTISMASH_DB downloads them
+#     via `download-antismash-databases` to params.antismash_db at runtime.
+#   - earlgrey brings RepeatMasker/RMBlast as dependencies; repeatmasker is
+#     listed explicitly for direct REPEATMASK_STRAIN use under the label.
+name: nf_funannotate1-aux
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # select (SELECT_REPS: stdlib-only python script)
+  - python
+  # edirect
+  - entrez-direct
+  # sra (sra_fetch / sra_fetch_se)
+  - sra-tools
+  - parallel-fastq-dump
+  - fastp
+  - bbmap
+  - seqkit
+  - aria2
+  - pigz
+  # genome_clean (length-filter path only; AAFTF is NOT conda-solvable)
+  #   Under conda use --skip_fcs: GENOME_CLEAN then just length-filters via
+  #   scripts/clean_genome_fa.py + pigz (no AAFTF). The FCS-GX purge path (the
+  #   only AAFTF consumer) runs under singularity (container_genome_clean =
+  #   ${sif_dir}/AAFTF.sif) or ucr_hpcc (module load AAFTF), never conda.
+  #   taxonkit is kept here only because pixi.toml's feature.genome_clean lists
+  #   it; it is likewise only used by the FCS path.
+  - taxonkit
+  # skani
+  - skani
+  # busco (genome-mode assessment)
+  - busco
+  # prodigal (standalone PRODIGAL_RUN)
+  - prodigal
+  # antismash (+ its `download-antismash-databases` used by SETUP_ANTISMASH_DB)
+  - antismash
+  # interproscan (best-effort — see notes above)
+  - interproscan
+  # repeatmask / earlgrey (EarlGrey-path labels, see earlgrey_mask.nf)
+  - repeatmasker
+  - earlgrey

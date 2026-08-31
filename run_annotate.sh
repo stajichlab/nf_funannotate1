@@ -19,6 +19,7 @@
 # Default provisioning is the UCR HPCC institutional profile (Lmod modules) on
 # SLURM. Swap axes via env vars:
 #   PROVISION=singularity sbatch run_annotate.sh   # portable containers
+#   PROVISION=conda       sbatch run_annotate.sh   # shared conda envs
 #   EXECUTOR=local        sbatch run_annotate.sh   # head + tasks local
 #   REVISION=v0.1.0       sbatch run_annotate.sh   # pin a release
 #
@@ -31,6 +32,13 @@
 set -euo pipefail
 
 module load nextflow
+
+# Conda provisioning axis (PROVISION=conda): conf/provision_conda.config resolves
+# `conda_envs_root` from $CONDA_ENVS_ROOT (falling back to ~/.conda). The shared
+# envs are built under this root by environments/conda/build_conda_env.sh; the
+# directory is on /bigdata so every SLURM node can read it. Harmless for the
+# ucr_hpcc/singularity axes, which ignore it.
+export CONDA_ENVS_ROOT="${CONDA_ENVS_ROOT:-/bigdata/stajichlab/shared/condaenv}"
 
 PIPELINE="${PIPELINE:-stajichlab/nf_funannotate1}"
 REVISION="${REVISION:-}"

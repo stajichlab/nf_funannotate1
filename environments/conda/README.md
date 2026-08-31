@@ -20,6 +20,14 @@ changed between them.
 | `funannotate-master.yml` | git master | perl `evidencemodeler` | no — `pip install git+...` |
 | `funannotate-1.9.0-beta.10.yml` | 1.9.0-beta.10 (tag) | perl `evidencemodeler` | no — `pip install git+...` |
 | `funannotate-1.9.0-beta.10-rust.yml` | 1.9.0-beta.10 (tag) | Rust EVM + PASA + Trinity (`rust_optimize` forks) | no — `pip install git+...` + source builds (see below) |
+| `nf_funannotate1-aux.yml` | — | shared *peripheral* env | yes |
+
+`nf_funannotate1-aux.yml` is the second env the `conda` axis activates: one
+shared aux env serving every peripheral tool label (edirect / sra /
+genome_clean / skani / busco / prodigal / antismash / interproscan / repeatmask
+/ earlgrey / select — see `conf/provision_conda.config`). It mirrors the
+per-feature lists in `pixi.toml` plus the two EarlGrey-path labels; build it
+exactly like a funannotate release env.
 
 Only **1.8.17** is a pure conda package on bioconda. Master and 1.9.0-beta.10
 have **no conda release** — those env files install the conda runtime toolchain,
@@ -35,8 +43,9 @@ into the shared, node-visible root (default `/bigdata/stajichlab/shared/condaenv
 wrapper script:
 
 ```bash
-./environments/conda/build_conda_env.sh funannotate-1.8.17   # one env
-./environments/conda/build_conda_env.sh --all                  # every manifest
+./environments/conda/build_conda_env.sh funannotate-1.8.17    # one env
+./environments/conda/build_conda_env.sh nf_funannotate1-aux   # the peripheral env
+./environments/conda/build_conda_env.sh --all                  # every manifest (incl. aux)
 # verify the tools resolve
 /bigdata/stajichlab/shared/condaenv/funannotate-1.8.17/bin/funannotate check --show-versions
 ```
