@@ -83,7 +83,7 @@ process PRODIGAL_RUN {
         echo "ERROR: prodigal produced no GFF for ${out}" >&2
         exit 1
     fi
-    echo "[INFO] PRODIGAL_RUN ${out}: \$(grep -c $'\\tgene\\t' "${out}.prodigal.gff3") genes predicted"
+    echo "[INFO] PRODIGAL_RUN ${out}: \$(grep -c \$'\\tgene\\t' "${out}.prodigal.gff3") genes predicted"
     rm -f genome.fa
     """
 
