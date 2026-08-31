@@ -15,6 +15,12 @@
 #   ./build_conda_env.sh funannotate-1.8.17 --refresh  # rebuild, overwrite lock
 #
 # Envs land in $CONDA_ENVS_ROOT (default /bigdata/stajichlab/shared/condaenv).
+#
+# Channels come from the manifest's `channels:` list (mamba env create has no
+# -c flag). If a manifest adds a local file:// channel (e.g. the aaftf dist
+# channel in nf_funannotate1-aux.yml), mamba 1.x cannot solve it — build that
+# env with micromamba instead:
+#   MAMBA=micromamba ./build_conda_env.sh nf_funannotate1-aux
 
 set -euo pipefail
 

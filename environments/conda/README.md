@@ -183,8 +183,13 @@ licensed or won't install from conda stays on another provider (use the
 - **GeneMark-ES/ET** — licensed, no conda package. Under `conda` set
   `genemark_container_mode=false --genemark_path /path/to/gmes_petap_dir` (host
   install), exactly like the `pixi` profile.
-- **SignalP / interproscan / antismash / AAFTF (FCS-GX)** — licensed or
-  best-effort on conda; leave those labels on `singularity`/`ucr_hpcc`.
+- **SignalP / interproscan / antismash** — licensed or best-effort on conda;
+  leave those labels on `singularity`/`ucr_hpcc`.
+- **AAFTF (FCS-GX purge)** — IS conda-solvable, but only from the aaftf channel
+  (`stajichlab` on anaconda.org, or the local `file://.../dist-conda` build; see
+  `nf_funannotate1-aux.yml`). Make sure the channel is in the manifest before
+  building the aux env; build with `MAMBA=micromamba` when it is a `file://`
+  channel (mamba 1.x cannot solve local channels).
 
 The **PASA MySQL (mariadb)** step already runs via `apptainer exec` independent
 of the provisioning axis, so it behaves identically under `conda`.

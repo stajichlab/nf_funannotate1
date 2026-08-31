@@ -29,6 +29,10 @@ name: nf_funannotate1-aux
 channels:
   - conda-forge
   - bioconda
+  # aaftf is NOT on conda-forge/bioconda. Active here (this cluster): the local
+  # rattler-build dist channel; swap for `stajichlab` once uploaded to anaconda.org.
+  #   - use MAMBA=micromamba to solve (mamba 1.x cannot solve file:// channels)
+  - file:///bigdata/stajichlab/jstajich/projects/AAFTF/dist-conda
 dependencies:
   # select (SELECT_REPS: stdlib-only python script)
   - python
@@ -42,13 +46,14 @@ dependencies:
   - seqkit
   - aria2
   - pigz
-  # genome_clean (length-filter path only; AAFTF is NOT conda-solvable)
-  #   Under conda use --skip_fcs: GENOME_CLEAN then just length-filters via
-  #   scripts/clean_genome_fa.py + pigz (no AAFTF). The FCS-GX purge path (the
-  #   only AAFTF consumer) runs under singularity (container_genome_clean =
-  #   ${sif_dir}/AAFTF.sif) or ucr_hpcc (module load AAFTF), never conda.
-  #   taxonkit is kept here only because pixi.toml's feature.genome_clean lists
-  #   it; it is likewise only used by the FCS path.
+  # genome_clean — full AAFTF path, now conda-solvable. aaftf comes from the
+  # channel listed above (local file:// dist-conda or stajichlab); it installs
+  # the whole AAFTF toolchain (bbduk, NOVOPlasty, spades, masurca, ...) in one
+  # solve. This enables GENOME_CLEAN's FCS-GX purge under the conda axis
+  # (previously container/module-only). The FCS path still needs taxonkit +
+  # params.taxondb and the /dev/shm gxdb staging via params.fcs_shm_script.
+  # --skip_fcs (length-filter only) keeps working with or without aaftf.
+  - aaftf
   - taxonkit
   # skani
   - skani
