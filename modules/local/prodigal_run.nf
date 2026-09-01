@@ -53,10 +53,22 @@
 //   - ${out}.prodigal.faa  : predicted proteins (informational / future
 //     validation; NOT currently wired to predict).
 //
-// Runs under the 'prodigal' provisioning label (prodigal is conda-solvable --
-// bioconda `prodigal` -- so conda/pixi/module all supply it; no licensed or
-// container-only constraints like GeneMark). Resources overridden per-profile
-// by withName: '.*:PRODIGAL_RUN' in conf/profile_annotate.config.
+// Two provisioning paths, selected by params.prodigal_container_mode (set true
+// by conf/provision_singularity.config, false/unset under ucr_hpcc/pixi):
+//   - container mode: prodigal runs via a manually-built `apptainer exec`
+//     against params.container_prodigal -- NOT via a process `container =`
+//     full-script wrap, because this script also calls python/gzip on the bare
+//     host shell and the prodigal bioconda image (prodigal 2.6.3--hec16e2b_4)
+//     ships no python at all (only busybox gzip): the bin/prodigal_gff_hier.py
+//     re-emission step would 127 on `python: command not found` inside it.
+//     Same rationale as the 'genemark' withLabel comment in
+//     conf/provision_singularity.config.
+//   - host mode (ucr_hpcc/pixi): `prodigal` is on PATH from the provisioning
+//     env (`module load prodigal`, or the conda/pixi prodigal env).
+// Resources overridden per-profile by withName: '.*:PRODIGAL_RUN' in
+// conf/profile_annotate.config. The 'prodigal' label is kept for those
+// beforeScript env mods (module load prodigal etc.) and only matches the
+// container assignment in provision_singularity.config, which is removed.
 process PRODIGAL_RUN {
     label 'prodigal'
     label 'process_single'
@@ -75,6 +87,7 @@ process PRODIGAL_RUN {
     def mode          = params.prodigal_mode ?: 'single'
     def prodigalLineages = (params.prodigal_lineages ?: []).collect { it.toString() }
     def skip = !prodigalLineages.isEmpty() && !prodigalLineages.contains(meta.busco?.toString())
+    def containerMode = params.prodigal_container_mode ?: false
     """
     if [ "${skip.toBoolean()}" = "true" ]; then
         # Contingency: params.prodigal_lineages (e.g. ['microsporidia_odb10'])
@@ -87,6 +100,23 @@ process PRODIGAL_RUN {
         : > "${out}.prodigal.faa"
         exit 0
     fi
+
+    if [ "${containerMode}" = "true" ]; then
+        # Container mode: manually build an apptainer invocation for just the
+        # prodigal command below -- python/gzip in this same script still run
+        # on the bare host shell (not guaranteed present in
+        # ${params.container_prodigal}), so this can't be a process
+        # `container =` full-script wrap. Same approach as GENEMARK_RUN.
+        export TMPDIR=\${SCRATCH:-/tmp}
+        SING_BINDS="--bind \$PWD:\$PWD,${workflow.projectDir}:${workflow.projectDir},\$TMPDIR:\$TMPDIR"
+        SING="apptainer exec \$SING_BINDS ${params.container_prodigal}"
+        echo "[INFO] PRODIGAL_RUN ${out}: running prodigal from container ${params.container_prodigal}"
+    else
+        SING=""
+    fi
+    run_prodigal() {
+        if [ -n "\$SING" ]; then \$SING prodigal "\$@"; else prodigal "\$@"; fi
+    }
 
     GENOME_FA="${genome_fa}"
     case "\$GENOME_FA" in
@@ -102,7 +132,7 @@ process PRODIGAL_RUN {
     # bin/prodigal_gff_hier.py re-emits them as gene/mRNA/CDS blocks so EVM
     # can use the source structurally (see header comment "Hierarchy fix").
     echo "[INFO] PRODIGAL_RUN ${out}: prodigal -p ${mode} -g ${transl_table} on \$(grep -c '>' genome.fa) contigs"
-    prodigal -i genome.fa -f gff -p ${mode} -g ${transl_table} \\
+    run_prodigal -i genome.fa -f gff -p ${mode} -g ${transl_table} \\
         -o "${out}.prodigal.raw.gff3" -a "${out}.prodigal.faa"
 
     if [ ! -s "${out}.prodigal.raw.gff3" ]; then
