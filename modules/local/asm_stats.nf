@@ -21,7 +21,7 @@ process ASM_STATS {
 
     printf 'ASMID\\ttotal_length_bp\\tN50_bp\\tcontig_count\\n' > \$TMPFILE
 
-    awk -F',' 'NR>1 {print \$2}' ${samples} | sort -u | while read asmid; do
+    awk -F',' 'NR>1 {print \$3}' ${samples} | sort -u | while read asmid; do
         [ -z "\$asmid" ] && continue
         asmid="\$(echo "\$asmid" | xargs)"
 
@@ -38,10 +38,15 @@ process ASM_STATS {
             continue
         fi
 
-        total_bp=\$(seqkit stats -T "\$genome" 2>/dev/null | tail -n 1 | awk '{print \$4}')
-        n50=\$(seqkit fx2tab -l "\$genome" 2>/dev/null | sort -rn -k2 | \\
-            awk -v total="\$total_bp" 'BEGIN{sum=0} {sum+=\$2; if(sum >= total/2) {print \$2; exit}}')
-        contigs=\$(seqkit stats -T "\$genome" 2>/dev/null | tail -n 1 | awk '{print \$3}')
+        lens=\$(gzip -cd -f "\$genome" | awk '
+            /^>/     { if (seqlen) print seqlen; seqlen=0; next }
+            { seqlen += length(\$0) }
+            END      { if (seqlen) print seqlen }
+        ' | sort -rn)
+
+        total_bp=\$(echo "\$lens" | awk '{s+=\$1} END{print s+0}')
+        contigs=\$(echo "\$lens" | wc -l)
+        n50=\$(echo "\$lens" | awk -v total="\$total_bp" 'BEGIN{sum=0} {sum+=\$1; if (sum >= total/2) {print \$1; exit}}')
 
         [ -z "\$total_bp" ] && total_bp="0"
         [ -z "\$n50" ] && n50="0"
@@ -50,20 +55,21 @@ process ASM_STATS {
         printf '%s\\t%s\\t%s\\t%s\\n' "\$asmid" "\$total_bp" "\$n50" "\$contigs" >> \$TMPFILE
     done
 
-    pigz -c \$TMPFILE > asm_stats.tsv.gz
+    gzip -c \$TMPFILE > asm_stats.tsv.gz
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        seqkit: \$(seqkit version 2>&1 | sed 's/seqkit v//')
+        awk: \$(awk --version 2>&1 | head -1)
+        gzip: \$(gzip --version 2>&1 | head -1)
     END_VERSIONS
     """
 
     stub:
     """
-    printf 'ASMID\\ttotal_length_bp\\tN50_bp\\tcontig_count\\n' | pigz -c > asm_stats.tsv.gz
+    printf 'ASMID\\ttotal_length_bp\\tN50_bp\\tcontig_count\\n' | gzip -c > asm_stats.tsv.gz
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        seqkit: 2.8.0
+        awk: 1.3.4
     END_VERSIONS
     """
 }
