@@ -46,9 +46,13 @@ else
     # parallel filesystem, so fan out one rsync per file (-P4 matches typical
     # node core count). --whole-file skips delta-transfer checksumming, which
     # is pure overhead here since the destination is always freshly emptied.
+    # We use -rt (NOT -a): /dev/shm is tmpfs and rejects chgrp (EINVAL), so
+    # owner/group/perm preservation would make rsync exit 23 and fail the
+    # task despite all bytes being copied. This is a throwaway RAM cache —
+    # data + timestamps are all we need.
     fcs_gx_sync_start=$(date +%s)
     find "${FCS_GX_DB_SRC}/" -maxdepth 1 -type f -printf '%f\0' | \
-        xargs -0 -P 4 -I{} rsync -a -W --inplace "${FCS_GX_DB_SRC}/{}" "${FCS_GX_SHM_DIR}/{}"
+        xargs -0 -P 4 -I{} rsync -r -t -W --inplace "${FCS_GX_DB_SRC}/{}" "${FCS_GX_SHM_DIR}/{}"
     fcs_gx_sync_status=$?
     fcs_gx_sync_end=$(date +%s)
     fcs_gx_sync_elapsed=$(( fcs_gx_sync_end - fcs_gx_sync_start ))
