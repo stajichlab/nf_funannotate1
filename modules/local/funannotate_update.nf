@@ -34,22 +34,35 @@ process FUNANNOTATE_UPDATE {
     pasa_db_arg="--pasa_db sqlite"
     # ── Optional per-task MariaDB for PASA ────────────────────────────────────
     if [ "${params.pasa_mysql}" = "true" ]; then
-        MYSQL_SCRATCH=${params.training_target}/${out}/training/mysql_db
-        if [ ! -f \$MYSQL_SCRATCH/mysql/conf/my.cnf ]; then
-            echo "[INFO] Setting up temporary MariaDB for PASA at \$MYSQL_SCRATCH"
-            mkdir -p \$MYSQL_SCRATCH/db \$MYSQL_SCRATCH/conf
-            rsync -a ${params.mysql_datadir}/mysql \$MYSQL_SCRATCH/db/ || \
-                { echo "ERROR: Failed to copy mysql data from ${params.mysql_datadir}" >&2; exit 1; }
-            cp ${params.pasa_conf_dir}/my.cnf \$MYSQL_SCRATCH/conf/my.cnf || \
-                { echo "ERROR: Failed to copy my.cnf" >&2; exit 1; }
-        fi
+        # Lives under \$TMPDIR (== node-local \$SCRATCH under SLURM) rather
+        # than under training_target on shared storage -- see
+        # funannotate_train.nf (confirmed 2026-09-01, ported from
+        # BFD/Fungi_BFD_runs) for why: this datadir is pure per-task sidecar
+        # infra that nothing downstream ever reads back, so a persistent,
+        # species-keyed copy on shared storage just let a crashed prior
+        # attempt strand an orphaned InnoDB tablespace file that broke
+        # PASA's "-r" drop-then-recreate ("Directory not empty" / "database
+        # exists"). Each SLURM job gets its own fresh node-local scratch
+        # dir (see the FUNANNOTATE_UPDATE clusterOptions in
+        # provision_ucr_hpcc.config), so that bug class is now impossible.
+        MYSQL_SCRATCH=\$TMPDIR/mysql_db_${out}
+        rm -rf \$MYSQL_SCRATCH
+        mkdir -p \$MYSQL_SCRATCH/db \$MYSQL_SCRATCH/conf
+        rsync -a ${params.mysql_datadir}/mysql \$MYSQL_SCRATCH/db/ || \
+            { echo "ERROR: Failed to copy mysql data from ${params.mysql_datadir}" >&2; exit 1; }
+        cp ${params.pasa_conf_dir}/my.cnf \$MYSQL_SCRATCH/conf/my.cnf || \
+            { echo "ERROR: Failed to copy my.cnf" >&2; exit 1; }
         MYHOSTNAME=\$(hostname -s)
         PORT=\$(shuf -i3000-4999 -n1)
         export PASACONF=\$MYSQL_SCRATCH/conf/pasa-local-\${MYHOSTNAME}.config.txt
         cp ${params.pasa_conf_dir}/conf.txt \$PASACONF
         sed -i "s/^MYSQLSERVER.*\$/MYSQLSERVER=\${MYHOSTNAME}:\${PORT}/" \$PASACONF
         perl -i -p -e "s/port = \\d+/port = \${PORT}/" \$MYSQL_SCRATCH/conf/my.cnf
-        export SINGULARITY_BINDPATH=\$TMPDIR,\$MYSQL_SCRATCH/mysql_db
+        # \$MYSQL_SCRATCH (not the old, never-created "\$MYSQL_SCRATCH/mysql_db"
+        # dead-bind path) is now a subdirectory of \$TMPDIR, which is already
+        # bound; this SINGULARITY_BINDPATH is mostly redundant with the
+        # explicit -B flags on `instance start` below but kept for parity.
+        export SINGULARITY_BINDPATH=\$TMPDIR,\$MYSQL_SCRATCH
         stop_mysqldb() { singularity instance stop mysqldb_${asmid} 2>/dev/null || true; }
         trap "stop_mysqldb; exit 130" SIGHUP SIGINT SIGTERM
         trap "stop_mysqldb" EXIT
