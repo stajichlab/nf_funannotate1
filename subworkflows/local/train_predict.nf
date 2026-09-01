@@ -158,6 +158,10 @@ workflow TRAIN_PREDICT {
     // passes it as --genemark_gtf (empty string -> --auto-skip-genemark).
     // PRODIGAL_RUN (optional, params.run_prodigal) runs on the same predict_ch
     // and its GFF is passed as --other_gff <gff>:<weight> (empty when disabled).
+    // Contingency: params.prodigal_lineages (list of BUSCO lineage names, e.g.
+    // ['microsporidia_odb10']) is enforced inside PRODIGAL_RUN — genomes whose
+    // lineage is NOT in the list emit an empty GFF, which FUNANNOTATE_PREDICT
+    // drops (other_gff_ok requires size>0), so they get no --other_gff.
     def runProdigal = (params.run_prodigal ?: false).toString().toBoolean()
     def gtf_ch = predict_ch.join(GENEMARK_RUN.out.gtf, by: 0)
     def predict_final

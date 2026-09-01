@@ -19,6 +19,12 @@
 // 0.584/0.698 (CDS-only, consensus was a pure GeneMark echo) -> 0.839/0.817.
 // => prodigal_weight default is now 5 (was 1), calibrated from that run.
 //
+// Contingency (2026-09-01): params.prodigal_lineages (list of BUSCO lineage
+// names, e.g. ['microsporidia_odb10']) restricts which genomes get prodigal.
+// Genomes whose lineage is NOT in the list emit a 0-byte GFF/FAA so
+// FUNANNOTATE_PREDICT's other_gff_ok (size>0) drops the source -- no
+// --other_gff, they stay on Augustus/GeneMark. Empty list = all genomes.
+//
 // Skeleton status / TODOs before this is production-validated:
 //   TODO(masked): decide the genome handed in. This process is fed the same
 //     masked `genome_fa` as GENEMARK_RUN/FUNANNOTATE_PREDICT; prodigal will NOT
@@ -67,7 +73,21 @@ process PRODIGAL_RUN {
     def out           = meta.id
     def transl_table  = meta.transl_table
     def mode          = params.prodigal_mode ?: 'single'
+    def prodigalLineages = (params.prodigal_lineages ?: []).collect { it.toString() }
+    def skip = !prodigalLineages.isEmpty() && !prodigalLineages.contains(meta.busco?.toString())
     """
+    if [ "${skip.toBoolean()}" = "true" ]; then
+        # Contingency: params.prodigal_lineages (e.g. ['microsporidia_odb10'])
+        # restricts which BUSCO lineages get prodigal. Non-matching genomes emit
+        # a 0-byte GFF -- FUNANNOTATE_PREDICT's other_gff_ok requires size>0, so
+        # it drops the source and these genomes get NO --other_gff (they stay on
+        # Augustus/GeneMark). The 1:1 join in the subworkflow is preserved.
+        echo "[INFO] PRODIGAL_RUN ${out}: lineage ${meta.busco} not in prodigal_lineages -- skipping (empty GFF)"
+        : > "${out}.prodigal.gff3"
+        : > "${out}.prodigal.faa"
+        exit 0
+    fi
+
     GENOME_FA="${genome_fa}"
     case "\$GENOME_FA" in
         *.gz) echo "[INFO] Inflating compressed genome"; pigz -dc "\$GENOME_FA" > genome.fa ;;

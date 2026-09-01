@@ -350,6 +350,14 @@
           "default": "single",
           "description": "Prodigal run mode: 'single' (complete genomes, default) or 'meta' (fragmented/short contigs, prefers ORF recovery over single-genome training quality). Uses the assembly's transl_table via -g."
         },
+        "prodigal_lineages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Contingency: restrict PRODIGAL_RUN to genomes whose BUSCO lineage is in this list (e.g. ['microsporidia_odb10'] applies the prodigal hierarchy fix only to microsporidia; other genomes get an empty --other_gff and stay on Augustus/GeneMark). Empty list = run prodigal for every genome whenever run_prodigal is true."
+        },
         "genemark_path": {
           "type": [
             "string",

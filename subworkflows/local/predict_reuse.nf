@@ -123,7 +123,9 @@ workflow PREDICT_REUSE {
     }
     // Optional prodigal pass-through (--other_gff <gff>:<weight>), same as the
     // TRAIN_PREDICT non-reuse path. PRODIGAL_RUN runs on the same fresh_todo
-    // that FUNANNOTATE_PREDICT consumes, so joins are 1:1.
+    // that FUNANNOTATE_PREDICT consumes, so joins are 1:1. Contingency: see
+    // prodigal_lineages — enforced inside PRODIGAL_RUN (non-matching lineages
+    // emit an empty GFF that FUNANNOTATE_PREDICT drops).
     def runProdigal = (params.run_prodigal ?: false).toString().toBoolean()
     def fresh_final
     if (runProdigal) {
@@ -262,6 +264,8 @@ workflow PREDICT_REUSE {
 
     // Optional prodigal pass-through for reusing siblings, mirroring the fresh
     // path above (PRODIGAL_RUN_SIB on the same gated sibling_predict_todo).
+    // Contingency: enforced inside the module (non-matching BUSCO lineages
+    // emit an empty GFF -> no --other_gff).
     def runProdigalSib = (params.run_prodigal ?: false).toString().toBoolean()
     def sibling_final
     if (runProdigalSib) {

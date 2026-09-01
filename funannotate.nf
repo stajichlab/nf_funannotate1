@@ -56,7 +56,13 @@ workflow {
     try {
         validateParameters()
     } catch (Exception e) {
-        log.warn "Parameter validation: ${e.message.readLines().take(5).join('; ')}"
+        // nf-schema 2.6.1 can throw an InvocationTargetException with a NULL
+        // message when CLI params can't be coerced to schema types (NF 26.x
+        // passes CLI args as raw strings). The real reason is buried in the
+        // cause. Never call e.message.readLines() unguarded — a null message
+        // here previously crashed the whole run instead of just warning.
+        def reason = e.message ?: e.cause?.message ?: e.toString()
+        log.warn "Parameter validation (non-fatal): ${reason.readLines().take(8).join(' | ')}"
     }
     log.info paramsSummaryLog(workflow)
 

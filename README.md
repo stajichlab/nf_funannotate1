@@ -221,6 +221,7 @@ with predict's `--table`. Follow-up candidate: Saccharomycotina.
 | `run_prodigal` | `false` | run `PRODIGAL_RUN` and hand its models to predict via `--other_gff` |
 | `prodigal_weight` | `5` | EVM weight for `other_pred1` (calibrated 2026-08-31 on OC4: gene Sn/Sp 0.839/0.817) |
 | `prodigal_mode` | `single` | `single` (complete genomes) or `meta` (fragmented/short contigs) |
+| `prodigal_lineages` | `[]` | contingency: run `PRODIGAL_RUN` only for genomes whose BUSCO lineage is in this list (e.g. `['microsporidia_odb10']`); empty = all genomes |
 
 Prodigal runs on the same soft-masked genome as the other steps, so it will
 under-call inside repeats (acceptable; EVM-compatible) — running it on the
