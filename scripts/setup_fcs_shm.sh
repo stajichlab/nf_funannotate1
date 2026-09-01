@@ -8,15 +8,18 @@
 #   AAFTF fcs_gx_purge --db /dev/shm/gxdb/all ...
 #
 # Configure the source location of the GX database via FCS_GX_DB_SRC (a directory
-# containing all.gxi / all.gxs etc). The default below is set to the UCR HPCC
-# shared NCBI FCS-GX install (on /srv, which sits on the shared /bigdata GPFS —
-# node-visible). Set it to your site's FCS-GX database path (or export
-# FCS_GX_DB_SRC before launching the pipeline / in the profile env).
+# containing all.gxi / all.gxs etc). The default below is the UCR HPCC shared
+# NCBI FCS-GX install at its REAL path under /bigdata — NOT the /srv/... path:
+# /srv/projects is a symlink to /bigdata/operations/pkgadmin/srv/projects and is
+# only visible on the login/compute node host, not inside the AAFTF container
+# (which only binds /bigdata). 0.5.4 is itself a host-only symlink to 0.5.0.
+# Set FCS_GX_DB_SRC before launching the pipeline / in the profile env to
+# override for your site.
 #
 # This script is idempotent: if /dev/shm/gxdb/all.gxi already exists it does
 # nothing, so concurrent GENOME_CLEAN tasks on the same node share one copy.
 
-: "${FCS_GX_DB_SRC:=/srv/projects/db/ncbi-fcs/0.5.4/gxdb}"
+: "${FCS_GX_DB_SRC:=/bigdata/operations/pkgadmin/srv/projects/db/ncbi-fcs/0.5.0/gxdb}"
 : "${FCS_GX_SHM_DIR:=/dev/shm/gxdb}"
 
 # Timing is logged to stderr (captured in .command.log by Nextflow) and
