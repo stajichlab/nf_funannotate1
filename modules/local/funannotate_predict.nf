@@ -113,6 +113,12 @@ process FUNANNOTATE_PREDICT {
         *)    GENOME_IN="\$GENOME_FA" ;;
     esac
 
+    # funannotate predict rejects FASTA deflines longer than 24 chars; NCBI-style
+    # headers survive the AAFTF clean verbatim (scripts/clean_genome_fa.py keeps
+    # headers untouched), so rewrite each header to its accession (first
+    # whitespace token). Idempotent -- safe on already-short headers too.
+    awk '/^>/{print \$1; next} {print}' "\$GENOME_IN" > "\$GENOME_IN.hdr" && mv "\$GENOME_IN.hdr" "\$GENOME_IN"
+
     # ── Too-small-genome pre-flight guard ────────────────────────────────────
     # Shared with GENEMARK_RUN, which needs the identical policy upstream of
     # this process (see genemark_run.nf, bin/asm_preflight_stats.py).
@@ -138,7 +144,7 @@ process FUNANNOTATE_PREDICT {
         --min_training_models 30 --tmpdir \$TMPDIR --SeqCenter ${params.seqcenter} \\
         --keep_no_stops --header_length ${header_length} --protein_evidence ${params.proteins} \\
         --max_intronlen ${params.max_intronlen} --min_intronlen ${params.min_intronlen} \\
-        --tbl2asn "\$TBL2ASN_PARAMS" --table ${transl_table} ${genemark_cli} ${other_gff_cli} || true
+        --tbl2asn "\$TBL2ASN_PARAMS" ${genemark_cli} ${other_gff_cli} || true
 
     # ── Post-predict catch ────────────────────────────────────────────────────
     if [ ! -s "\$PREDICT_GBK" ]; then

@@ -67,6 +67,13 @@ process GENOME_CLEAN {
         [ -f \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv.gz ] && \
             mv \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv.gz ${launchDir}/input_clean_genomes/clean/
     fi
+    # Normalize FASTA deflines to the accession (first whitespace token).
+    # funannotate rejects headers >24 chars and, more importantly, requires ONE
+    # naming scheme across the genemark GTF, repeat-mask output and predict
+    # input; NCBI deflines (long descriptions) survive clean_genome_fa.py
+    # verbatim and produced inconsistent seqids in EVM. Short accessions match
+    # what the classic `funannotate clean` step produced.
+    awk '/^>/{print \$1; next} {print}' ${asmid}.fa > ${asmid}.fa.hdr && mv ${asmid}.fa.hdr ${asmid}.fa
     # Deliver the clean genome gzip-compressed to save space in input_clean_genomes;
     # downstream tools inflate it on the fly (they cannot read a gzipped FASTA via -i).
     pigz -f ${asmid}.fa
