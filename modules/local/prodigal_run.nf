@@ -90,7 +90,7 @@ process PRODIGAL_RUN {
 
     GENOME_FA="${genome_fa}"
     case "\$GENOME_FA" in
-        *.gz) echo "[INFO] Inflating compressed genome"; pigz -dc "\$GENOME_FA" > genome.fa ;;
+        *.gz) echo "[INFO] Inflating compressed genome"; gzip -dc "\$GENOME_FA" > genome.fa ;;
         *)    cp "\$GENOME_FA" genome.fa ;;
     esac
 

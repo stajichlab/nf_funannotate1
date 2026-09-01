@@ -51,6 +51,7 @@ BATCH_EOF
     fi
 
     i=0
+    fcs_fails=0
     while IFS=\$'\\t' read -r asmid gz taxonid; do
         [ -z "\$asmid" ] && continue
         i=\$((i+1))
@@ -98,11 +99,17 @@ BATCH_EOF
             printf '%s\\t%s\\n' "\$asmid" "\$target" >> \$MANIFEST
         else
             echo "[\$i/\$n_total][FAIL] fcs_gx_purge failed for \$asmid" >&2
+            fcs_fails=\$((fcs_fails+1))
         fi
         rm -f \$SCRATCH/\${asmid}.raw.fa \$SCRATCH/\${asmid}.purge.fasta
     done < batch.tsv
 
-    echo "[INFO] batch ${task.index} complete: \$(grep -c . \$MANIFEST || echo 0) cleaned genomes in manifest"
+    echoed_manifest=\$(grep -c . \$MANIFEST || echo 0)
+    if [ "\${fcs_fails}" -gt 0 ] || [ "\${echoed_manifest}" -eq 0 ]; then
+        echo "[ERROR] batch ${task.index}: \${fcs_fails} purge failure(s); manifest has \${echoed_manifest} entries" >&2
+        exit 1
+    fi
+    echo "[INFO] batch ${task.index} complete: \${echoed_manifest} cleaned genomes in manifest"
     """
 
     stub:
