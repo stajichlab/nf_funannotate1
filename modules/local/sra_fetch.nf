@@ -235,7 +235,17 @@ process SRA_FETCH {
                 out2=\$TMPDIR/${species_tag}_trunc_R2.fastq.gz minlen=75 \
                 || { echo "[ERROR] enforce_seqpair_readlen failed for ${species_tag} even after EBI FTP fallback"; exit 1; }
         fi
-        bbnorm.sh in=\$TMPDIR/${species_tag}_trunc_R1.fastq.gz in2=\$TMPDIR/${species_tag}_trunc_R2.fastq.gz \
+        # bbnorm.sh autodetects heap from node RAM (~85%), which can exceed the
+        # SLURM cgroup limit and get OOM-killed on memory-pinned nodes; cap xmx=
+        # to ~75% of the cgroup limit (36g fallback if cgroup is unreadable).
+        # NOTE: use `xmx=` (no dashes); `--xmx=` is passed through to
+        # jgi.KmerNormalize which rejects it ("Unknown parameter xmx=...").
+        BB_CG=\$(cat /sys/fs/cgroup/memory.max 2>/dev/null | grep -oE '^[0-9]+' || true)
+        BB_XMX=36g
+        if [ -n "\$BB_CG" ] && [ "\$BB_CG" -gt 0 ]; then
+            BB_XMX="\$((BB_CG * 75 / 100 / 1073741824))g"
+        fi
+        bbnorm.sh xmx="\$BB_XMX" in=\$TMPDIR/${species_tag}_trunc_R1.fastq.gz in2=\$TMPDIR/${species_tag}_trunc_R2.fastq.gz \
             out1=\$TMPDIR/${species_tag}_norm_R1.fastq.gz \
             out2=\$TMPDIR/${species_tag}_norm_R2.fastq.gz target=30 ecc=t
 

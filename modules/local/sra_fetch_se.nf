@@ -112,7 +112,17 @@ process SRA_FETCH_SE {
         exit 0
     fi
 
-    bbnorm.sh in="\$TMPDIR/${species_tag}_SE.fastq.gz" \\
+    # bbnorm.sh autodetects heap from node RAM (~85%), which can exceed the
+    # SLURM cgroup limit and get OOM-killed on memory-pinned nodes; cap xmx=
+    # to ~75% of the cgroup limit (36g fallback if cgroup is unreadable).
+    # NOTE: use `xmx=` (no dashes); `--xmx=` is passed through to
+    # jgi.KmerNormalize which rejects it ("Unknown parameter xmx=...").
+    BB_CG=\$(cat /sys/fs/cgroup/memory.max 2>/dev/null | grep -oE '^[0-9]+' || true)
+    BB_XMX=36g
+    if [ -n "\$BB_CG" ] && [ "\$BB_CG" -gt 0 ]; then
+        BB_XMX="\$((BB_CG * 75 / 100 / 1073741824))g"
+    fi
+    bbnorm.sh xmx="\$BB_XMX" in="\$TMPDIR/${species_tag}_SE.fastq.gz" \\
         out="\$TMPDIR/${species_tag}_norm_SE_bbn.fastq.gz" target=30 ecc=f
 
     fastp --in1 "\$TMPDIR/${species_tag}_norm_SE_bbn.fastq.gz" \\
