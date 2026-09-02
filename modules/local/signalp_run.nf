@@ -24,7 +24,13 @@ process SIGNALP_RUN {
         echo "ERROR: protein FASTA not found: ${proteins}" >&2
         exit 1
     fi
-    TMPDIR=\${SCRATCH:-/tmp}
+    # Node-local scratch may not exist / be writable if an inherited \$SCRATCH
+    # points at another node's path — fall back to the task workdir.
+    TMPDIR=\$(printf '%s' "\${SCRATCH:-}" | tr -d '\\n\\r')
+    TMPDIR=\${TMPDIR:-/tmp}
+    if [ ! -d "\$TMPDIR" ] || [ ! -w "\$TMPDIR" ]; then
+        TMPDIR="\$PWD"
+    fi
     MODEL_DIR_ARG=()
 
     if [ "${params.signalp_gpu}" = "true" ]; then

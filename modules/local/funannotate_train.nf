@@ -53,7 +53,13 @@ process FUNANNOTATE_TRAIN {
 
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}
-    TMPDIR=\${SCRATCH:-/tmp}
+    # Node-local scratch may not exist / be writable if an inherited \$SCRATCH
+    # points at another node's path — fall back to the task workdir.
+    TMPDIR=\$(printf '%s' "\${SCRATCH:-}" | tr -d '\\n\\r')
+    TMPDIR=\${TMPDIR:-/tmp}
+    if [ ! -d "\$TMPDIR" ] || [ ! -w "\$TMPDIR" ]; then
+        TMPDIR="\$PWD"
+    fi
     export PASACONF=""
     pasa_db_arg="--pasa_db sqlite"
     # ── Optional per-task MariaDB for PASA ────────────────────────────────────

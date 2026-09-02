@@ -25,6 +25,11 @@ process GENOME_CLEAN_BATCH {
     source /etc/profile.d/modules.sh 2>/dev/null || true
 
     SCRATCH=\$(printf '%s' "\${SCRATCH:-.}" | tr -d '\\n\\r')
+    # An inherited \$SCRATCH may point at a path that doesn't exist / isn't
+    # writable on this node — fall back to the task workdir.
+    if [ ! -d "\$SCRATCH" ] || [ ! -w "\$SCRATCH" ]; then
+        SCRATCH="."
+    fi
     TAXONKIT_DB=${taxondb}
     DEST=${launchDir}/input_clean_genomes
     mkdir -p \$DEST/clean

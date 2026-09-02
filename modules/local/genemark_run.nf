@@ -84,7 +84,15 @@ process GENEMARK_RUN {
         # ${params.container_genemark}), so this can't be a process
         # `container =` full-script wrap. See conf/provision_singularity.config's
         # withLabel: 'genemark' comment.
-        export TMPDIR=\${SCRATCH:-/tmp}
+        # Node-local scratch may not exist / be writable if an inherited
+        # \$SCRATCH points at another node's path — fall back to the task
+        # workdir, which is already bound into the container below.
+        export TMPDIR=\$(printf '%s' "\${SCRATCH:-}" | tr -d '\\n\\r')
+        TMPDIR=\${TMPDIR:-/tmp}
+        if [ ! -d "\$TMPDIR" ] || [ ! -w "\$TMPDIR" ]; then
+            TMPDIR="\$PWD"
+        fi
+        export TMPDIR
         # GeneMark's license resolution (gmes_petap.pl reads ~/.gm_key) can hop
         # through host-specific symlinks that land outside \$HOME/\$PWD (e.g. a
         # module-installed license landing under this cluster's /opt/linux
@@ -120,6 +128,22 @@ process GENEMARK_RUN {
             exit 1
         fi
         export GENEMARK_PATH="\$GM"
+
+        # gmes_petap.pl needs Perl's YAML.pm. UCR HPCC's funannotate/genemarkESET
+        # host modules run it under the system perl (/usr/bin/perl via #!/usr/bin/env
+        # perl) and don't ship or wire in YAML.pm (no PERL5LIB in either modulefile),
+        # so a bare host-module GENEMARK_RUN dies with "Can't locate YAML.pm in @INC"
+        # before even printing --help. The conda envs built for the funannotate
+        # provisioning axis happen to bundle a working YAML.pm; reuse it as a
+        # PERL5LIB fallback, but only when the host perl doesn't already have one
+        # (keeps this a no-op anywhere YAML.pm is already resolvable/installed).
+        if ! perl -MYAML -e1 >/dev/null 2>&1; then
+            _yaml_site="${params.conda_envs_root ?: '/bigdata/stajichlab/shared/condaenv'}/funannotate-1.8.17/lib/perl5/site_perl"
+            if [ -f "\$_yaml_site/YAML.pm" ]; then
+                export PERL5LIB="\$_yaml_site\${PERL5LIB:+:\$PERL5LIB}"
+                echo "[INFO] GENEMARK_RUN ${out}: host perl lacks YAML.pm; PERL5LIB+=\$_yaml_site"
+            fi
+        fi
         echo "[INFO] GENEMARK_RUN ${out}: GENEMARK_PATH=\$GENEMARK_PATH"
     fi
 

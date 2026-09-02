@@ -65,7 +65,16 @@ process RNASEQ_PREPARE {
 
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}
-    TMPDIR=\${SCRATCH:-/tmp}
+    # Node-local scratch may not exist / be writable if an inherited \$SCRATCH
+    # points at another node's path (e.g. the driver's) — fall back to the
+    # task workdir so Trinity's OUTDIR and the cleanup below land somewhere
+    # real. Any child using \$TMPDIR inherits the same resolved path.
+    SCRATCH=\$(printf '%s' "\${SCRATCH:-}" | tr -d '\\n\\r')
+    SCRATCH=\${SCRATCH:-/tmp}
+    if [ ! -d "\$SCRATCH" ] || [ ! -w "\$SCRATCH" ]; then
+        SCRATCH="\$PWD"
+    fi
+    TMPDIR=\$SCRATCH
 
     echo "[INFO] RNASEQ_PREPARE: running funannotate train for representative ${out} (species: ${species_tag})"
     if [ "${params.debug.toBoolean()}" = "true" ]; then

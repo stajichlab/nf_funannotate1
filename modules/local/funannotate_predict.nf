@@ -61,7 +61,13 @@ process FUNANNOTATE_PREDICT {
     """
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}
-    TMPDIR=\${SCRATCH:-/tmp}
+    # Node-local scratch may not exist / be writable if an inherited \$SCRATCH
+    # points at another node's path — fall back to the task workdir.
+    TMPDIR=\$(printf '%s' "\${SCRATCH:-}" | tr -d '\\n\\r')
+    TMPDIR=\${TMPDIR:-/tmp}
+    if [ ! -d "\$TMPDIR" ] || [ ! -w "\$TMPDIR" ]; then
+        TMPDIR="\$PWD"
+    fi
 
     PREDICTDIR="${params.target}/${out}"
     PREDICT_GBK="\$PREDICTDIR/predict_results/${out}.gbk"

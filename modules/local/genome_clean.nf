@@ -28,6 +28,11 @@ process GENOME_CLEAN {
 
     source /etc/profile.d/modules.sh 2>/dev/null || true
     SCRATCH=\$(printf '%s' "\${SCRATCH:-.}" | tr -d '\\n\\r')
+    # An inherited \$SCRATCH may point at a path that doesn't exist / isn't
+    # writable on this node — fall back to the task workdir.
+    if [ ! -d "\$SCRATCH" ] || [ ! -w "\$SCRATCH" ]; then
+        SCRATCH="."
+    fi
 
     echo "[INFO] Decompressing genome for ${asmid}..."
     # Accept either a gzipped (NCBI_ASM .fna.gz) or plain (local GENOME column) FASTA.

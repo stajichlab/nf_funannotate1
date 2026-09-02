@@ -128,7 +128,13 @@ process SRA_FETCH {
         echo "[INFO] No paired-end RNA-seq runs found for ${species_tag} (no accessions in query CSV or all skipped)"
     else
         echo "[INFO] SRA accessions for ${species_tag}: \$ACCESSIONS"
-        TMPDIR=\${SCRATCH:-/tmp}
+        # Node-local scratch may not exist / be writable if an inherited
+        # \$SCRATCH points at another node's path — fall back to the workdir.
+        TMPDIR=\$(printf '%s' "\${SCRATCH:-}" | tr -d '\\n\\r')
+        TMPDIR=\${TMPDIR:-/tmp}
+        if [ ! -d "\$TMPDIR" ] || [ ! -w "\$TMPDIR" ]; then
+            TMPDIR="\$PWD"
+        fi
         mkdir -p reads
 
         # Download and concatenate in accession order so R1/R2 stay matched.

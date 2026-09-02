@@ -107,7 +107,15 @@ process PRODIGAL_RUN {
         # on the bare host shell (not guaranteed present in
         # ${params.container_prodigal}), so this can't be a process
         # `container =` full-script wrap. Same approach as GENEMARK_RUN.
-        export TMPDIR=\${SCRATCH:-/tmp}
+        # Node-local scratch may not exist / be writable if an inherited
+        # \$SCRATCH points at another node's path — fall back to the task
+        # workdir, which is already bound into the container below.
+        export TMPDIR=\$(printf '%s' "\${SCRATCH:-}" | tr -d '\\n\\r')
+        TMPDIR=\${TMPDIR:-/tmp}
+        if [ ! -d "\$TMPDIR" ] || [ ! -w "\$TMPDIR" ]; then
+            TMPDIR="\$PWD"
+        fi
+        export TMPDIR
         SING_BINDS="--bind \$PWD:\$PWD,${workflow.projectDir}:${workflow.projectDir},\$TMPDIR:\$TMPDIR"
         SING="apptainer exec \$SING_BINDS ${params.container_prodigal}"
         echo "[INFO] PRODIGAL_RUN ${out}: running prodigal from container ${params.container_prodigal}"

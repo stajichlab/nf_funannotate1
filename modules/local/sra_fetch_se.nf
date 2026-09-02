@@ -66,7 +66,13 @@ process SRA_FETCH_SE {
     fi
 
     echo "[INFO] SE accessions for ${species_tag}: \$SE_ACCESSIONS"
-    TMPDIR=\${SCRATCH:-/tmp}
+    # Node-local scratch may not exist / be writable if an inherited \$SCRATCH
+    # points at another node's path — fall back to the task workdir.
+    TMPDIR=\$(printf '%s' "\${SCRATCH:-}" | tr -d '\\n\\r')
+    TMPDIR=\${TMPDIR:-/tmp}
+    if [ ! -d "\$TMPDIR" ] || [ ! -w "\$TMPDIR" ]; then
+        TMPDIR="\$PWD"
+    fi
     mkdir -p reads
 
     for ACC in \$SE_ACCESSIONS; do

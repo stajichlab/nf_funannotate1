@@ -29,7 +29,13 @@ process FUNANNOTATE_ANNOTATE {
     # provision_singularity.config; echoed here so the export is idempotent
     # whichever image build is in play.
     export EGGNOG_DATA_DIR=/opt/databases/eggnog_db
-    TMPDIR=\${SCRATCH:-/tmp}
+    # Node-local scratch may not exist / be writable if an inherited \$SCRATCH
+    # points at another node's path — fall back to the task workdir.
+    TMPDIR=\$(printf '%s' "\${SCRATCH:-}" | tr -d '\\n\\r')
+    TMPDIR=\${TMPDIR:-/tmp}
+    if [ ! -d "\$TMPDIR" ] || [ ! -w "\$TMPDIR" ]; then
+        TMPDIR="\$PWD"
+    fi
 
     funannotate annotate -i ${params.target}/${out} -o ${params.target}/${out} \\
         --species "${species}" --strain "${strain}" \\
