@@ -1,5 +1,5 @@
 // Build a fresh MariaDB data directory once (mariadb-install-db), storeDir-cached
-// at params.mysql_datadir. funannotate_train.nf / funannotate_update.nf rsync
+// at params.mysql_datadir. funannotate_train.nf / funannotate_update.nf cp -a
 // just the "mysql" system-schema subfolder out of this into each task's private
 // scratch datadir to seed a disposable per-task mysqld instance for PASA
 // (--pasa_db mysql; see params.pasa_mysql) -- so this only needs to produce that

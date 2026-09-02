@@ -54,7 +54,10 @@ process FUNANNOTATE_UPDATE {
         MYSQL_SCRATCH=\$TMPDIR/mysql_db_${out}
         rm -rf \$MYSQL_SCRATCH
         mkdir -p \$MYSQL_SCRATCH/db \$MYSQL_SCRATCH/conf
-        rsync -a ${params.mysql_datadir}/mysql \$MYSQL_SCRATCH/db/ || \
+        # cp -a (not rsync): this runs inside the funannotate container image,
+        # which has no rsync binary; the datadir is a one-shot bootstrap into a
+        # fresh empty dir, and cp -a preserves perms/times/symlinks identically.
+        cp -a ${params.mysql_datadir}/mysql \$MYSQL_SCRATCH/db/ || \
             { echo "ERROR: Failed to copy mysql data from ${params.mysql_datadir}" >&2; exit 1; }
         cp ${params.pasa_conf_dir}/my.cnf \$MYSQL_SCRATCH/conf/my.cnf || \
             { echo "ERROR: Failed to copy my.cnf" >&2; exit 1; }
