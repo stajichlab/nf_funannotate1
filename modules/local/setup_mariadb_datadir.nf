@@ -35,7 +35,8 @@ process SETUP_MARIADB_DATADIR {
     }
     mkdir -p ${datadir_name}
     "\$APPTAINER_BIN" exec -B "\$PWD":"\$PWD" ${params.container_mariadb} \\
-        mariadb-install-db --datadir="\$PWD/${datadir_name}" --auth-root-authentication-method=normal
+        bash -c 'DB="\$(command -v mariadb-install-db || command -v mysql_install_db)"; [ -n "\$DB" ] || DB=mysql_install_db; echo "[INFO] using \$DB"; exec "\$DB" --datadir="\$1" --auth-root-authentication-method=normal' _ \\
+        "\$PWD/${datadir_name}"
     echo "[INFO] MariaDB seed datadir built at ${datadir_name}"
     """
 
