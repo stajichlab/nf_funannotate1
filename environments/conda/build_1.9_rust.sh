@@ -105,19 +105,63 @@ done
 "${MANIFEST_DIR}/build_conda_env.sh" "${ENV_NAME}" $([[ ${REFRESH} -eq 1 ]] && echo --refresh)
 
 # ── Activate bound to this prefix (scripts need CONDA_PREFIX + toolchain) ────
+# Mirror what `conda activate`/pixi does: setting CONDA_PREFIX + PATH is NOT
+# enough, because the conda-forge compiler wrappers (gcc/gxx/binutils) only
+# get and CPPFLAGS="-isystem $CONDA_PREFIX/include" +
+# LDFLAGS="-L$CONDA_PREFIX/lib -Wl,-rpath,$CONDA_PREFIX/lib" from their
+# etc/conda/activate.d/*.sh scripts. Without CPPFLAGS, bowtie2's make can't
+# find zlib.h (and later trinity/evm/pasa would fail the same way) even
+# though the env ships the header. Source every activate.d script after
+# CONDA_PREFIX is set.
 export CONDA_PREFIX="${PREFIX}"
 export PATH="${CONDA_PREFIX}/bin:${PATH}"
+for _ad in "${CONDA_PREFIX}/etc/conda/activate.d/"*.sh; do
+    # shellcheck disable=SC1090
+    source "${_ad}"
+done
+# Some Makefiles hardcode "gcc" / "g++" and never use $CPPFLAGS/$LDFLAGS (e.g.
+# Trinity's trinity-plugins/seqtk-trinity), so CPPFLAGS alone isn't enough.
+# CPATH/LIBRARY_PATH are search paths the compiler/linker consume directly from
+# the environment, so those recipes pick up $CONDA_PREFIX/include and /lib too.
+export CPATH="${CONDA_PREFIX}/include"
+export LIBRARY_PATH="${CONDA_PREFIX}/lib"
 
 # ── Phase 2: source-build the Rust forks, Dockerfile order ───────────────────
+# fixup_trivially_retry: some upstream plugin Makefiles are barely usable
+# outside the Docker/author-machine context. When we can pin down a one-line
+# fix, apply it to the (persistent, idempotently-reused) source tree and retry
+# once instead of failing the whole build. Trinity is the known offender: its
+# htslib is configured against the env's libcurl/openssl/libdeflate, so the
+# plugins that link "-lhts" without adding the transitive -l* flags die in ld;
+# the conda-forge convention is -Wl,--allow-shlib-undefined, so patch it in.
+fixup_and_retry() {
+    local s="$1" log="$2" n=0
+    while :; do
+        echo "[1.9-rust] running ${s} (attempt $((n + 1)), log: ${log})..."
+        if bash "${SCRIPTS}/${s}" >"${log}" 2>&1; then
+            echo "[1.9-rust] ${s} OK"
+            return 0
+        fi
+        n=$((n + 1))
+        [[ $n -ge 2 ]] && break
+        case "${s}" in
+            *trinity*)
+                echo "[1.9-rust] ${s} failed; applying known Trinity plugin Makefile fixes..."
+                sed -i 's/\(-o _sift_bam_max_cov sift_bam_max_cov\.cpp -Wall -O2 -L\.\/htslib\/build\/lib\/ -I\.\/htslib\/build\/include -lhts\)$/\1 -Wl,--allow-shlib-undefined/' \
+                    "${PREFIX}/opt/trinityrnaseq/trinity-plugins/bamsifter/Makefile" || true
+                sed -i 's/\(-lhts -o scaffold_iworm_contigs\)$/\1 -Wl,--allow-shlib-undefined/' \
+                    "${PREFIX}/opt/trinityrnaseq/trinity-plugins/scaffold_iworm_contigs/Makefile" || true
+                ;;
+        esac
+    done
+    echo "[1.9-rust] ERROR: ${s} failed. Last 50 lines of ${log}:" >&2
+    tail -50 "${log}" >&2 || true
+    return 1
+}
+
 for s in "${INSTALL_SCRIPTS[@]}"; do
     log="${LOG_DIR}/${ENV_NAME}.$(basename "${s}" .sh).log"
-    echo "[1.9-rust] running ${s} (log: ${log})..."
-    if ! bash "${SCRIPTS}/${s}" >"${log}" 2>&1; then
-        echo "[1.9-rust] ERROR: ${s} failed. Last 50 lines of ${log}:" >&2
-        tail -50 "${log}" >&2 || true
-        exit 1
-    fi
-    echo "[1.9-rust] ${s} OK"
+    fixup_and_retry "${s}" "${log}" || exit 1
 done
 
 # ── Phase 3: symlink helper (fasta) + verification of installed artifacts ────
@@ -170,9 +214,15 @@ glibc_smoke() {
     fi
     local fail=0 bin req
     while IFS= read -r bin; do
-        req="$(objdump -T "${bin}" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -Vu | tail -1 | cut -d_ -f2)"
+        # || true: non-ELF executables (Perl scripts) yield no GLIBC_* symbols and
+        # grep exits 1 -- under `set -o pipefail` that would kill the whole job.
+        req="$(objdump -T "${bin}" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -Vu | tail -1 | cut -d_ -f2 || true)"
         [[ -z "${req}" ]] && continue
-        if awk -v a="${host_ver}" -v b="${req}" 'BEGIN{exit !(a < b)}'; then
+        # Compare as major.minor, NOT decimal floats: glibc "2.28" is newer
+        # than "2.4", but 2.28 < 2.4 numerically (28 > 4 should win).
+        if awk -v a="${host_ver}" -v b="${req}" \
+            'BEGIN{ split(a,A,"."); split(b,B,".");
+                   m=(A[1]<B[1])||(A[1]==B[1]&&A[2]<B[2]); exit m ? 0 : 1 }'; then
             echo "  FAIL ${bin##*/} needs glibc ${req} > host ${host_ver}" >&2
             fail=1
         fi
