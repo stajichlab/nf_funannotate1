@@ -75,7 +75,11 @@ process FUNANNOTATE_UPDATE {
         stop_mysqldb() { singularity instance stop mysqldb_${asmid} 2>/dev/null || true; }
         trap "stop_mysqldb; exit 130" SIGHUP SIGINT SIGTERM
         trap "stop_mysqldb" EXIT
-        module load singularity
+        # apptainer (not the old `singularity` module) so squashfuse is pulled
+        # in automatically -- see conf/provision_singularity.config for the
+        # same rationale on the main container axis. The `singularity` binary
+        # used below is apptainer's own compat symlink.
+        module load apptainer
         singularity instance start --writable-tmpfs \\
             -B \$MYSQL_SCRATCH/conf/my.cnf:/etc/mysql/my.cnf,\$MYSQL_SCRATCH/db/:/var/lib/mysql,\$MYSQL_SCRATCH/conf:/usr/conf \\
             ${params.container_mariadb} mysqldb_${asmid} /usr/bin/mysqld_safe
