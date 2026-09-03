@@ -45,10 +45,28 @@ REVISION="${REVISION:-}"
 EXECUTOR="${EXECUTOR:-slurm}"
 PROVISION="${PROVISION:-ucr_hpcc}"
 
+# conf/provision_ucr_hpcc.config (loaded only by the `ucr_hpcc` profile) carries
+# two unrelated things bundled together: Lmod module-loading beforeScripts, AND
+# the per-process SLURM clusterOptions/queue safety net (queue selection, and
+# critically `--export=ALL,SCRATCH=,TMPDIR=` so each task gets its OWN
+# SLURM-prolog-created node-local $SCRATCH instead of a leaked/absent one from
+# the submitting shell -- see GENOME_CLEAN's comment in provision_ucr_hpcc.config
+# for the "GENEMARK_RUN epidemic" this guards against). Swapping PROVISION to
+# `conda`/`singularity` used to REPLACE `ucr_hpcc` in the profile list, silently
+# dropping that safety net on every UCR HPCC SLURM run and reintroducing the
+# node-local /tmp exhaustion failures. Always keep `ucr_hpcc` in the profile
+# list (it must come before the provisioning axis so conda's/singularity's own
+# process.shell / beforeScript overrides still win), and layer the requested
+# PROVISION on top only when it differs.
+PROFILES="annotate,${EXECUTOR},ucr_hpcc"
+if [ "${PROVISION}" != "ucr_hpcc" ]; then
+    PROFILES="${PROFILES},${PROVISION}"
+fi
+
 mkdir -p logs/nextflow
 
 NXF_OPTS="-Xms512m -Xmx4g" \
 nextflow run "${PIPELINE}" ${REVISION:+-r "${REVISION}"} \
-    -profile annotate,${EXECUTOR},${PROVISION} \
+    -profile "${PROFILES}" \
     -resume \
     "$@"
