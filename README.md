@@ -40,22 +40,64 @@ Compose one option from each of three axes: `-profile <pipeline>,<executor>,<pro
 |---|---|
 | **pipeline** | `annotate` · `earlgrey` · `test` / `stub` |
 | **executor** | `slurm` · `local` |
-| **provisioning** | `module` (default) · `pixi` · `singularity` |
+| **provisioning** | `ucr_hpcc` (default; institutional Lmod modules) · `conda` (shared frozen envs) · `pixi` · `singularity` (containers) |
 
 ```bash
 nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,ucr_hpcc -resume
+nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,conda -resume
 nextflow run stajichlab/nf_funannotate1 -profile annotate,local,singularity -resume
 ```
 
 The `run_annotate.sh` launcher honours `EXECUTOR=` / `PROVISION=` (default
-`slurm` / `module`) and `PIPELINE=` / `REVISION=` env vars. It runs the pipeline
-**by project name** (`nextflow run stajichlab/nf_funannotate1`) rather than
-by file path, so it is safe under `sbatch` (which copies the script to a spool dir).
-For development, point it at a local checkout: `PIPELINE=$PWD sbatch run_annotate.sh`.
+`slurm` / `ucr_hpcc`) and `PIPELINE=` / `REVISION=` env vars:
+
+```bash
+sbatch run_annotate.sh                          # default: slurm + ucr_hpcc (Lmod modules)
+PROVISION=conda       sbatch run_annotate.sh     # shared conda envs
+PROVISION=singularity sbatch run_annotate.sh     # portable containers
+EXECUTOR=local         sbatch run_annotate.sh     # head + tasks local
+```
+
+`PROVISION=conda`/`singularity` **layers on top of** `ucr_hpcc` rather than
+replacing it (`-profile annotate,slurm,ucr_hpcc,conda`) — `ucr_hpcc` still
+carries the SLURM SCRATCH/TMPDIR safety net regardless of which provisioning
+axis supplies the tools; only the last-loaded axis's `beforeScript`/`container`
+setting wins per process.
+
+It runs the pipeline **by project name** (`nextflow run stajichlab/nf_funannotate1`)
+rather than by file path, so it is safe under `sbatch` (which copies the script
+to a spool dir). For development, point it at a local checkout:
+`PIPELINE=$PWD sbatch run_annotate.sh`.
 
 Process scripts carry **no `module load`** — provisioning is supplied per process
 `label` by the provisioning profile (`conf/provision_*.config`): a `beforeScript`
-(module/pixi) or a `container` (singularity).
+(ucr_hpcc/pixi/conda) or a `container` (singularity).
+
+### Selecting a funannotate version / EVM backend (conda vs. singularity)
+
+Neither axis auto-selects a version — pick one explicitly per run:
+
+| | conda (`--conda_env`) | singularity (`--container_funannotate`) |
+|---|---|---|
+| 1.8.17 | `funannotate-1.8.17` | local `.sif` pulled from `docker://nextgenusfs/funannotate:v1.8.17` (Docker Hub only — ghcr has no 1.8.17 tag; build with `scripts/pull_funannotate_image.sh` or see `conf/release_1_8.config`) |
+| 1.9.0-beta.10, perl EVM | `funannotate-1.9.0-beta.10` | local `.sif` built **without** rust (custom rebuild; the plain `docker://ghcr.io/nextgenusfs/funannotate:1.9.0-beta.10` tag is rust-enabled — see below) |
+| 1.9.0-beta.10, rust EVM | `funannotate-1.9.0-beta.10-rust` | `params.container_funannotate` default: `docker://ghcr.io/nextgenusfs/funannotate:1.9.0-beta.10` (rust-enabled; the only combo requiring no override) |
+
+```bash
+# 1.8.17 via conda
+sbatch run_annotate.sh --conda_env funannotate-1.8.17 -c conf/release_1_8.config
+PROVISION=conda sbatch run_annotate.sh --conda_env funannotate-1.9.0-beta.10-rust
+
+# 1.9.0-beta.10, perl EVM, via singularity (no-rust local .sif)
+PROVISION=singularity sbatch run_annotate.sh \
+    --container_funannotate /bigdata/stajichlab/shared/lib/singularity_cache/funannotate-1.9.0-beta.10-norust.sif
+```
+
+`conda_env` resolves under `--conda_envs_root` (`$CONDA_ENVS_ROOT`, default
+`/bigdata/stajichlab/shared/condaenv` when set by `run_annotate.sh`); see
+`conf/provision_conda.config`. `container_funannotate` resolves relative to
+`--sif_dir` when not given as an absolute path/URI; see
+`conf/provision_singularity.config`.
 
 ### Singularity images to build
 
