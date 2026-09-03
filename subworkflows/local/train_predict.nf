@@ -139,20 +139,49 @@ workflow TRAIN_PREDICT {
             FunannotateUtils.staleGenome(meta.id as String, meta.asmid as String, params.source as String, params.target as String)
         }
 
-    // ── GENEMARK_RUN (standalone, host-side) ────────────────────────────────
-    // Runs only for assemblies actually being predicted, so it emits exactly one
-    // GTF per predict task. mode resolves params.genemark_mode for each assembly:
-    // 'auto' -> ET when its FUNANNOTATE_TRAIN BAM exists, else ES. shared_mod
-    // fast-reuses the species' shared GeneMark model when present (unless
-    // force_independent); with no shared-root configured it's null -> fresh training.
-    def genemark_input = predict_ch.map { meta, genome_fa ->
-        def training_bam = FunannotateUtils.trainingTranscriptBamFor(meta.id as String, params.training_target as String)
-        def mode = params.genemark_mode == 'auto' ? (training_bam ? 'ET' : 'ES') : params.genemark_mode
-        def shared_root = params.gene_prediction_shared_abinitio
-        def shared_mod  = shared_root ? FunannotateUtils.sharedGenemarkModFor(meta.species as String, shared_root as String) : null
-        tuple(meta, genome_fa, mode, training_bam, params.force_independent, shared_mod ? shared_mod.toString() : '')
+    // ── GENEMARK_RUN (standalone, host-side) — or an external sidecar ────────
+    // params.genemark_sidecar_dir (default unset): when set, GeneMark is NOT
+    // run inside this cell at all. Instead each genome's GTF is looked up from
+    // <genemark_sidecar_dir>/<meta.id>.genemark.gtf, produced once, out of band,
+    // by genemark_sidecar.nf (see that file / the launcher that runs it). This
+    // exists for the nf_funannotate1 benchmarking harness (funannotate version
+    // x conda/container x rust), where GeneMark is deliberately held constant
+    // (same container-mode braker3 GeneMark run, same result) across every
+    // cell for a genome, rather than retrained independently per cell — see
+    // Funannotate_benchmarking/DESIGN.md "GeneMark sidecar". A missing GTF for
+    // a genome degrades to --auto-skip-genemark (empty string) with a warning,
+    // same as GENEMARK_RUN's own too-small/fragmented skip, rather than
+    // hard-failing the whole batch.
+    //
+    // Normal (unset) path: runs only for assemblies actually being predicted,
+    // so it emits exactly one GTF per predict task. mode resolves
+    // params.genemark_mode for each assembly: 'auto' -> ET when its
+    // FUNANNOTATE_TRAIN BAM exists, else ES. shared_mod fast-reuses the
+    // species' shared GeneMark model when present (unless force_independent);
+    // with no shared-root configured it's null -> fresh training.
+    def sidecarDir = params.genemark_sidecar_dir ?: ''
+    def gtf_ch
+    if (sidecarDir) {
+        gtf_ch = predict_ch.map { meta, genome_fa ->
+            def gtf = file("${sidecarDir}/${meta.id}.genemark.gtf")
+            if (!gtf.exists()) {
+                log.warn "TRAIN_PREDICT: no sidecar GeneMark GTF for ${meta.id} at ${gtf} -- predicting with --auto-skip-genemark for this genome"
+                tuple(meta, genome_fa, '')
+            } else {
+                tuple(meta, genome_fa, gtf.toString())
+            }
+        }
+    } else {
+        def genemark_input = predict_ch.map { meta, genome_fa ->
+            def training_bam = FunannotateUtils.trainingTranscriptBamFor(meta.id as String, params.training_target as String)
+            def mode = params.genemark_mode == 'auto' ? (training_bam ? 'ET' : 'ES') : params.genemark_mode
+            def shared_root = params.gene_prediction_shared_abinitio
+            def shared_mod  = shared_root ? FunannotateUtils.sharedGenemarkModFor(meta.species as String, shared_root as String) : null
+            tuple(meta, genome_fa, mode, training_bam, params.force_independent, shared_mod ? shared_mod.toString() : '')
+        }
+        GENEMARK_RUN(genemark_input)
+        gtf_ch = predict_ch.join(GENEMARK_RUN.out.gtf, by: 0)
     }
-    GENEMARK_RUN(genemark_input)
 
     // Join the stand-alone GTF back to each predict task. FUNANNOTATE_PREDICT
     // passes it as --genemark_gtf (empty string -> --auto-skip-genemark).
@@ -163,7 +192,6 @@ workflow TRAIN_PREDICT {
     // lineage is NOT in the list emit an empty GFF, which FUNANNOTATE_PREDICT
     // drops (other_gff_ok requires size>0), so they get no --other_gff.
     def runProdigal = (params.run_prodigal ?: false).toString().toBoolean()
-    def gtf_ch = predict_ch.join(GENEMARK_RUN.out.gtf, by: 0)
     def predict_final
     if (runProdigal) {
         PRODIGAL_RUN(predict_ch)
@@ -187,7 +215,10 @@ workflow TRAIN_PREDICT {
     // sibling filtering is future work: the compare_ANI leg that computes
     // is_representative isn't ported yet, so for now every fresh-trained species
     // defines the shared store for itself.
-    if (params.gene_prediction_shared_abinitio) {
+    // Not applicable in sidecar mode: GENEMARK_RUN never executes in this cell,
+    // so there is no fresh per-cell .mod to backfill (the sidecar produces its
+    // own .mod separately, out of band, if genemark_sidecar.nf is asked to).
+    if (params.gene_prediction_shared_abinitio && !sidecarDir) {
         def backfill_input = FUNANNOTATE_PREDICT.out.metadata
             .map { meta -> tuple(meta.id.toString(), meta.species.toString()) }
             .join(GENEMARK_RUN.out.mod.map { meta, mod -> tuple(meta.id.toString(), mod.toString()) })
