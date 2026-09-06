@@ -32,6 +32,7 @@ include { FUNANNOTATE_PREDICT } from './../../modules/local/funannotate_predict'
 include { GENEMARK_RUN      } from './../../modules/local/genemark_run'
 include { PRODIGAL_RUN      } from './../../modules/local/prodigal_run'
 include { BACKFILL_ABINITIO_PARAMS } from './../../modules/local/backfill_abinitio_params'
+include { BUSCO_COMPLETENESS } from './../../modules/local/busco_completeness'
 include { PREDICT_REUSE     } from './predict_reuse'
 
 workflow TRAIN_PREDICT {
@@ -149,9 +150,11 @@ workflow TRAIN_PREDICT {
     // (same container-mode braker3 GeneMark run, same result) across every
     // cell for a genome, rather than retrained independently per cell — see
     // Funannotate_benchmarking/DESIGN.md "GeneMark sidecar". A missing GTF for
-    // a genome degrades to --auto-skip-genemark (empty string) with a warning,
-    // same as GENEMARK_RUN's own too-small/fragmented skip, rather than
-    // hard-failing the whole batch.
+    // a genome is a HARD error: --auto-skip-genemark doesn't exist in older
+    // funannotate releases (e.g. 1.8.17) and would crash FUNANNOTATE_PREDICT
+    // there anyway, and on releases where it does exist it would silently
+    // reintroduce the per-cell GeneMark confound the sidecar exists to
+    // remove. Run genemark_sidecar.nf to completion for every genome first.
     //
     // Normal (unset) path: runs only for assemblies actually being predicted,
     // so it emits exactly one GTF per predict task. mode resolves
@@ -165,11 +168,9 @@ workflow TRAIN_PREDICT {
         gtf_ch = predict_ch.map { meta, genome_fa ->
             def gtf = file("${sidecarDir}/${meta.id}.genemark.gtf")
             if (!gtf.exists()) {
-                log.warn "TRAIN_PREDICT: no sidecar GeneMark GTF for ${meta.id} at ${gtf} -- predicting with --auto-skip-genemark for this genome"
-                tuple(meta, genome_fa, '')
-            } else {
-                tuple(meta, genome_fa, gtf.toString())
+                error "TRAIN_PREDICT: no sidecar GeneMark GTF for ${meta.id} at ${gtf} -- run genemark_sidecar.nf for this genome before launching this cell"
             }
+            tuple(meta, genome_fa, gtf.toString())
         }
     } else {
         def genemark_input = predict_ch.map { meta, genome_fa ->
@@ -203,6 +204,18 @@ workflow TRAIN_PREDICT {
     }
 
     FUNANNOTATE_PREDICT(predict_final)
+
+    // ── BUSCO_COMPLETENESS (final delivered gene set, not ab-initio training) ─
+    // See modules/local/busco_completeness.nf for why this reruns BUSCO rather
+    // than reusing funannotate's own busco.log. Built directly from the
+    // published predict_results path ("Option B persistence" -- FUNANNOTATE_PREDICT
+    // writes straight to params.target/<asmid>/, no publishDir), filtered to
+    // genomes that actually have a lineage configured and finished predict.
+    def busco_completeness_input = FUNANNOTATE_PREDICT.out.metadata
+        .filter { meta -> meta.busco }
+        .map { meta -> tuple(meta, file("${params.target}/${meta.asmid}/predict_results/${meta.asmid}.proteins.fa")) }
+        .filter { meta, proteins -> proteins.exists() }
+    BUSCO_COMPLETENESS(busco_completeness_input)
 
     // ── BACKFILL_ABINITIO_PARAMS (fresh .mod -> shared per-species store) ─────
     // Only when a shared ab-initio store is configured. Every species freshly
