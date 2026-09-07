@@ -86,12 +86,21 @@ workflow TRAIN_PREDICT {
         def shared_ch = RNASEQ_PREPARE.out.shared.mix(empty_shared_ch)
 
         // ── Join shared Trinity back to every assembly for FUNANNOTATE_TRAIN ──
+        // pasa_tier is hardcoded 'stringent' for every assembly: this pipeline has
+        // no ANI-driven representative/sibling distance computation and no
+        // hybrid-cross composite Trinity building yet (both exist in
+        // BFD/Fungi_BFD_runs's FUNANNOTATE_RNASEQ.nf/pasaTierFor()), so
+        // 'relaxed'/'composite'/'composite_fallback' can never legitimately be
+        // assigned here. FUNANNOTATE_TRAIN accepts and branches on all four
+        // tiers already (see modules/local/funannotate_train.nf) so wiring in a
+        // real per-assembly tier later is a change to this map{} only, not to
+        // the module. Follow-up, not done here.
         def train_input = assembly_with_reads
             .combine(shared_ch, by: 0)
             .map { species_tag, meta, genome_fa, r1, r2, se, trinity_fa ->
-                tuple(meta, genome_fa, r1, r2, se, trinity_fa)
+                tuple(meta, genome_fa, r1, r2, se, trinity_fa, 'stringent')
             }
-        // train_input: (meta, genome_fa, r1, r2, se, trinity_fa)
+        // train_input: (meta, genome_fa, r1, r2, se, trinity_fa, pasa_tier)
 
         // Assemblies with no RNA-seq bypass FUNANNOTATE_TRAIN entirely.
         def branched = train_input.branch {
@@ -99,22 +108,28 @@ workflow TRAIN_PREDICT {
             no_rnaseq:  true
         }
         def predict_no_rnaseq = branched.no_rnaseq
-            .map { meta, genome_fa, _r1, _r2, _se, _tf -> tuple(meta, genome_fa) }
+            .map { meta, genome_fa, _r1, _r2, _se, _tf, _tier -> tuple(meta, genome_fa) }
 
         // Skip TRAIN when pasa.gff3 already exists and is not stale relative to reads.
-        def train_todo = branched.has_rnaseq.filter { meta, _gfa, _r1, _r2, _se, _tf ->
+        def train_todo = branched.has_rnaseq.filter { meta, _gfa, _r1, _r2, _se, _tf, _tier ->
             def gff3 = file("${params.training_target}/${meta.id}/training/funannotate_train.pasa.gff3")
             !gff3.exists() || gff3.size() == 0 || FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString())
         }
         def train_done = branched.has_rnaseq
-            .filter { meta, _gfa, _r1, _r2, _se, _tf ->
+            .filter { meta, _gfa, _r1, _r2, _se, _tf, _tier ->
                 def gff3 = file("${params.training_target}/${meta.id}/training/funannotate_train.pasa.gff3")
                 gff3.exists() && gff3.size() > 0 && !FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString())
             }
-            .map { meta, genome_fa, _r1, _r2, _se, _tf -> tuple(meta, genome_fa) }
+            .map { meta, genome_fa, _r1, _r2, _se, _tf, _tier -> tuple(meta, genome_fa) }
 
         FUNANNOTATE_TRAIN(train_todo)
-        predict_input_ch = FUNANNOTATE_TRAIN.out.mix(train_done).mix(predict_no_rnaseq)
+        predict_input_ch = FUNANNOTATE_TRAIN.out.predict_input.mix(train_done).mix(predict_no_rnaseq)
+
+        // Audit trail for graceful degrades to ab-initio-only -- one reviewable
+        // file, published at launchDir. Empty when nothing degraded.
+        FUNANNOTATE_TRAIN.out.pasa_failed
+            .collectFile(name: 'pasa_train_failed.tsv', storeDir: launchDir,
+                         keepHeader: true, skip: 1)
     } else {
         // No RNA-seq: pass genomes straight to predict.
         predict_input_ch = ch_genomes
