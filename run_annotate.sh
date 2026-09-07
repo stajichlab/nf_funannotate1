@@ -1,7 +1,12 @@
 #!/usr/bin/bash -l
-#SBATCH -N 1 -n 1 -c 2 --mem 8gb --time 7-00:00:00
+#SBATCH -N 1 -n 1 -c 2 --mem 32gb --time 7-00:00:00
 #SBATCH --job-name=nxf_annotate
 #SBATCH --output=logs/annotate_launch.%j.log
+# --mem 32gb (was 8gb): under PROVISION=singularity, Nextflow's own image
+# pull/build (e.g. SETUP_AUGUSTUS_CONFIG's `apptainer pull` of the funannotate
+# image) runs in THIS head-job process, not a dispatched SLURM task -- 8GB
+# OOM-killed mksquashfs mid-build converting the funannotate OCI image to SIF
+# (confirmed 2026-09-06).
 
 # Launch the eukaryotic genome annotation pipeline (funannotate.nf).
 # Submit from a launch directory containing samples.csv (and lib/ assets):
@@ -32,6 +37,13 @@
 set -euo pipefail
 
 module load nextflow
+# Nextflow's own image-pull/caching step (e.g. SETUP_AUGUSTUS_CONFIG's
+# `apptainer pull`) runs in THIS head-job process, not a dispatched SLURM
+# task, so it never sees the per-label beforeScript module loads that cover
+# task execution under the singularity provisioning axis. `module load
+# nextflow` only drags in the old `singularity` module as a dependency (no
+# `apptainer` binary) -- load apptainer explicitly so head-job pulls work.
+module load apptainer 2>/dev/null || true
 
 # Conda provisioning axis (PROVISION=conda): conf/provision_conda.config resolves
 # `conda_envs_root` from $CONDA_ENVS_ROOT (falling back to ~/.conda). The shared
