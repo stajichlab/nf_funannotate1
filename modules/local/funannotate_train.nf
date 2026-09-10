@@ -110,6 +110,21 @@ process FUNANNOTATE_TRAIN {
     if [ ! -d "\$TMPDIR" ] || [ ! -w "\$TMPDIR" ]; then
         TMPDIR="\$PWD"
     fi
+    # funannotate 1.9's trinity.py falls back to \$TMPDIR for Trinity's
+    # --workdir when funannotate train isn't given one explicitly (which we
+    # never do here). Trinity itself refuses to run unless "trinity" appears
+    # literally in that path (its own safety check against auto-deleting the
+    # wrong directory on cleanup) -- confirmed 2026-09-08 failing every
+    # genome under v1.9.0-beta.11 (both perl and Rust Trinity, since they
+    # share this same Python wrapper) with a bare \$SCRATCH path
+    # (/scratch/<user>/<jobid>, no "trinity" in it). 1.8.17's older
+    # trinity.py has no such fallback, so this never affected v1.8.17_conda.
+    # Must be `export`ed: TMPDIR here was previously a plain (non-exported)
+    # local var, so `funannotate train` was actually inheriting SLURM's own
+    # auto-exported TMPDIR (== raw \$SCRATCH) instead of this computed value.
+    TMPDIR="\$TMPDIR/trinity_work"
+    mkdir -p "\$TMPDIR"
+    export TMPDIR
     export PASACONF=""
     pasa_db_arg="--pasa_db sqlite"
     # ── Optional per-task MariaDB for PASA ────────────────────────────────────
@@ -134,37 +149,178 @@ process FUNANNOTATE_TRAIN {
         MYSQL_SCRATCH=\$TMPDIR/mysql_db_${out}
         rm -rf \$MYSQL_SCRATCH
         mkdir -p \$MYSQL_SCRATCH/db \$MYSQL_SCRATCH/conf
-        # cp -a (not rsync): this runs inside the funannotate container image,
-        # which has no rsync binary; the datadir is a one-shot bootstrap into a
-        # fresh empty dir, and cp -a preserves perms/times/symlinks identically.
-        cp -a ${params.mysql_datadir}/mysql \$MYSQL_SCRATCH/db/ || \
-            { echo "ERROR: Failed to copy mysql data from ${params.mysql_datadir}" >&2; exit 1; }
+        # System-tables init moved into the branches below (each has a
+        # different tool available to run it) -- see there instead of a
+        # ${params.mysql_datadir}/mysql template copy. A pre-built,
+        # externally-staged datadir template was previously required before
+        # this pipeline could even start (not self-contained: the file has to
+        # already exist at a specific host path outside version control), and
+        # every task paid its full copy cost (previously ~121MB/89 files via
+        # cp -a) even though `mariadb-install-db`/`mysql_install_db` initializes
+        # fresh system tables in a few seconds regardless.
         cp ${params.pasa_conf_dir}/my.cnf \$MYSQL_SCRATCH/conf/my.cnf || \
             { echo "ERROR: Failed to copy my.cnf" >&2; exit 1; }
         MYHOSTNAME=\$(hostname -s)
         PORT=\$(shuf -i3000-4999 -n1)
         export PASACONF=\$MYSQL_SCRATCH/conf/pasa-local-\${MYHOSTNAME}.config.txt
         cp ${params.pasa_conf_dir}/conf.txt \$PASACONF
-        sed -i "s/^MYSQLSERVER.*\$/MYSQLSERVER=\${MYHOSTNAME}:\${PORT}/" \$PASACONF
+        # 127.0.0.1, not \$MYHOSTNAME: mariadbd binds loopback-only
+        # (my.cnf's bind-address) and PASA runs in the same node/namespace,
+        # so this connection never needs to leave loopback. Routing it
+        # through the node's real hostname instead round-trips over the
+        # cluster network fabric and made MariaDB's host-ACL check reject
+        # the connection (confirmed 2026-09-09 against Fungi_BFD's identical
+        # setup -- reverse-DNS resolved the peer to the InfiniBand FQDN,
+        # which matched none of the ACL entries mariadb-install-db creates).
+        sed -i "s/^MYSQLSERVER.*\$/MYSQLSERVER=127.0.0.1:\${PORT}/" \$PASACONF
         perl -i -p -e "s/port = \\d+/port = \${PORT}/" \$MYSQL_SCRATCH/conf/my.cnf
+        # Read the account PASA will actually connect as straight out of
+        # \$PASACONF rather than hardcoding it here, so assets/pasa_conf/
+        # conf.txt stays the single source of truth for these credentials.
+        PASA_MYSQL_USER=\$(grep '^MYSQL_RW_USER=' \$PASACONF | cut -d= -f2)
+        PASA_MYSQL_PASS=\$(grep '^MYSQL_RW_PASSWORD=' \$PASACONF | cut -d= -f2)
+        # Point MariaDB's on-disk temp-table dir at this job's own node-local
+        # \$TMPDIR (== \$SCRATCH) instead of assets/pasa_conf/my.cnf's default
+        # of /tmp -- mariadbd shares the host mount namespace (no
+        # --containall), so its "/tmp" is literally the compute node's real,
+        # SHARED /tmp; when several FUNANNOTATE_TRAIN tasks land on the same
+        # node at once (routine here -- this benchmark runs every genome in
+        # a cell in parallel), their MariaDB instances all write large
+        # PASA-alignment MyISAM temp tables into that same shared /tmp
+        # concurrently, and once it fills, mysqld fails mid-write on a temp
+        # table and then fails again trying to delete the file it never
+        # finished creating (confirmed against Fungi_BFD 2026-08-29,
+        # ported here 2026-09-10 -- ${out} would otherwise be exposed to
+        # the identical failure mode once enough cells run concurrently).
+        MYSQL_TMP="\$TMPDIR/pasa_mysql_tmp_${asmid}"
+        mkdir -p "\$MYSQL_TMP"
+        sed -i "s#^tmpdir[[:space:]]*=.*#tmpdir\t\t= \$MYSQL_TMP#" \$MYSQL_SCRATCH/conf/my.cnf
         # \$MYSQL_SCRATCH (not the old, never-created "\$MYSQL_SCRATCH/mysql_db"
         # dead-bind path) is now a subdirectory of \$TMPDIR, which is already
         # bound; this SINGULARITY_BINDPATH is mostly redundant with the
-        # explicit -B flags on `instance start` below but kept for parity.
+        # explicit -B flags on the sidecar-container branch below but kept
+        # for parity.
         export SINGULARITY_BINDPATH=\$TMPDIR,\$MYSQL_SCRATCH
-        stop_mysqldb() { singularity instance stop mysqldb_${asmid} 2>/dev/null || true; }
+        # ── Prefer an in-image mariadbd/mysqld_safe when present ──────────────
+        # Under the container/singularity provisioning profile, this whole
+        # task already runs INSIDE params.container_funannotate via
+        # Nextflow's own container wrap. The old unconditional path below
+        # then tried to nest a SECOND singularity container (the MariaDB
+        # sidecar) from inside that wrap via `module load apptainer` +
+        # `singularity instance start` -- neither Lmod nor an
+        # apptainer/singularity client exist inside the funannotate image,
+        # so that always failed under container mode (confirmed 2026-09-08,
+        # every genome, both v1.8.17_container and v1.9.0-beta11_container_rust).
+        # Once funannotate-live's Dockerfile.base bundles mariadb-server
+        # (see its apt-get install block), mysqld_safe/mariadbd is on PATH
+        # inside the SAME container the task is already running in, so we
+        # can just start it in-place -- no nesting, no module/singularity
+        # dependency at all. This is a runtime capability check, not a
+        # provisioning-profile branch: conda-profile tasks run bare on the
+        # host (no funannotate container involved) and essentially never
+        # have a local mariadbd on PATH, so they transparently keep using
+        # the sidecar-container fallback below, unchanged from today's
+        # working behavior.
+        # Require BOTH a server daemon AND an install-db tool -- bioconda's
+        # mysql-libs/mysql-common ship a mysqld_safe *wrapper script* (with
+        # no actual mariadbd/mysqld behind it) but no install-db tool at all,
+        # which false-positived this check into the in-image branch with
+        # nothing to actually run (confirmed 2026-09-09/10, every conda
+        # cell: "bundled mariadbd/mysqld_safe found but no
+        # mariadb-install-db/mysql_install_db on PATH").
+        if { command -v mariadbd >/dev/null 2>&1 || command -v mysqld_safe >/dev/null 2>&1; } && \\
+           { command -v mariadb-install-db >/dev/null 2>&1 || command -v mysql_install_db >/dev/null 2>&1; }; then
+            MYSQLD_BIN=\$(command -v mariadbd || command -v mysqld_safe)
+            # Fresh in-image init -- no external datadir template needed.
+            # NOTE: exact flag name/availability not yet verified against the
+            # rebuilt image's actual mariadb-server package (Debian trixie);
+            # confirm `mariadb-install-db --help` there and adjust if needed.
+            MYSQL_INSTALL_BIN=\$(command -v mariadb-install-db || command -v mysql_install_db)
+            if [ -n "\$MYSQL_INSTALL_BIN" ]; then
+                echo "[INFO] Initializing fresh MariaDB system tables via \$MYSQL_INSTALL_BIN"
+                "\$MYSQL_INSTALL_BIN" --datadir=\$MYSQL_SCRATCH/db/mysql \\
+                    --auth-root-authentication-method=normal || \\
+                    { echo "ERROR: \$MYSQL_INSTALL_BIN failed" >&2; exit 1; }
+            else
+                echo "ERROR: bundled mariadbd/mysqld_safe found but no mariadb-install-db/mysql_install_db on PATH" >&2
+                exit 1
+            fi
+            echo "[INFO] Using in-image \$MYSQLD_BIN for the PASA MariaDB backend (no sidecar container needed)"
+            "\$MYSQLD_BIN" --defaults-file=\$MYSQL_SCRATCH/conf/my.cnf \\
+                --datadir=\$MYSQL_SCRATCH/db/mysql \\
+                --socket=\$MYSQL_SCRATCH/mysqld.sock \\
+                --pid-file=\$MYSQL_SCRATCH/mysqld.pid &
+            MYSQLD_PID=\$!
+            stop_mysqldb() { kill \$MYSQLD_PID 2>/dev/null || true; wait \$MYSQLD_PID 2>/dev/null || true; }
+        else
+            stop_mysqldb() { singularity instance stop mysqldb_${asmid}_\${SLURM_JOB_ID:-\$\$} 2>/dev/null || true; }
+            # apptainer (not the old `singularity` module) so squashfuse is
+            # pulled in automatically -- see conf/provision_singularity.config
+            # for the same rationale on the main container axis. The
+            # `singularity` binary used below is apptainer's own compat symlink.
+            module load apptainer
+            # Fresh init via the sidecar image's OWN bundled install-db tool
+            # (same rationale as the in-image branch above: no external
+            # datadir template needed) -- NOT yet verified that
+            # params.container_mariadb actually has mariadb-install-db/
+            # mysql_install_db on its PATH; confirm before relying on this.
+            singularity exec -B \$MYSQL_SCRATCH/db/:/var/lib/mysql \\
+                ${params.container_mariadb} sh -c \\
+                'command -v mariadb-install-db || command -v mysql_install_db' \\
+                > /tmp/mysql_install_bin_\$\$.txt 2>/dev/null
+            MYSQL_INSTALL_BIN=\$(cat /tmp/mysql_install_bin_\$\$.txt 2>/dev/null)
+            rm -f /tmp/mysql_install_bin_\$\$.txt
+            if [ -n "\$MYSQL_INSTALL_BIN" ]; then
+                echo "[INFO] Initializing fresh MariaDB system tables via sidecar image's \$MYSQL_INSTALL_BIN"
+                # --datadir=/var/lib/mysql, NOT /var/lib/mysql/mysql: the
+                # `instance start` below (and assets/pasa_conf/my.cnf's own
+                # `datadir = /var/lib/mysql`) reads tables straight out of
+                # this same bind point with no extra nesting -- an earlier
+                # version of this line added a spurious /mysql suffix, so
+                # mysqld_safe found nothing there and never actually started
+                # listening (confirmed 2026-09-10: every genome failed with
+                # "Can't connect to MySQL server ... (111)" despite
+                # `instance start` itself reporting success).
+                singularity exec -B \$MYSQL_SCRATCH/db/:/var/lib/mysql \\
+                    ${params.container_mariadb} \\
+                    "\$MYSQL_INSTALL_BIN" --datadir=/var/lib/mysql \\
+                    --auth-root-authentication-method=normal || \\
+                    { echo "ERROR: sidecar \$MYSQL_INSTALL_BIN failed" >&2; exit 1; }
+            else
+                echo "ERROR: no mariadb-install-db/mysql_install_db found in ${params.container_mariadb}" >&2
+                exit 1
+            fi
+            singularity instance start --writable-tmpfs \\
+                -B \$MYSQL_SCRATCH/conf/my.cnf:/etc/mysql/my.cnf,\$MYSQL_SCRATCH/db/:/var/lib/mysql,\$MYSQL_SCRATCH/conf:/usr/conf \\
+                ${params.container_mariadb} mysqldb_${asmid}_\${SLURM_JOB_ID:-\$\$} /usr/bin/mysqld_safe
+        fi
         trap "stop_mysqldb; exit 130" SIGHUP SIGINT SIGTERM
         trap "stop_mysqldb" EXIT
-        # apptainer (not the old `singularity` module) so squashfuse is pulled
-        # in automatically -- see conf/provision_singularity.config for the
-        # same rationale on the main container axis. The `singularity` binary
-        # used below is apptainer's own compat symlink.
-        module load apptainer
-        singularity instance start --writable-tmpfs \\
-            -B \$MYSQL_SCRATCH/conf/my.cnf:/etc/mysql/my.cnf,\$MYSQL_SCRATCH/db/:/var/lib/mysql,\$MYSQL_SCRATCH/conf:/usr/conf \\
-            ${params.container_mariadb} mysqldb_${asmid} /usr/bin/mysqld_safe
         pasa_db_arg="--pasa_db mysql"
         sleep 5
+        # mariadb-install-db (--auth-root-authentication-method=normal, above)
+        # only creates root@localhost/127.0.0.1/::1/<hostname> with no
+        # password -- it never creates the account conf.txt tells PASA to
+        # connect as. Confirmed 2026-09-09 (same bug hit in Fungi_BFD): this
+        # is a fresh, throwaway, loopback-only DB that lives for one task, so
+        # a shared generic account (assets/pasa_conf/conf.txt) is fine.
+        if command -v mariadb >/dev/null 2>&1 || command -v mysql >/dev/null 2>&1; then
+            MYSQL_CLIENT_BIN=\$(command -v mariadb || command -v mysql)
+        else
+            MYSQL_CLIENT_BIN=\$(singularity exec ${params.container_mariadb} sh -c 'command -v mariadb || command -v mysql' 2>/dev/null)
+            MYSQL_CLIENT_BIN="singularity exec ${params.container_mariadb} \$MYSQL_CLIENT_BIN"
+        fi
+        if [ -z "\$MYSQL_CLIENT_BIN" ]; then
+            echo "ERROR: no mariadb/mysql client found" >&2
+            exit 1
+        fi
+        # Grant to '...'@'127.0.0.1', not '...@localhost': MariaDB's ACL
+        # matches the literal connecting host/IP, and a TCP connection to
+        # 127.0.0.1 is not treated as 'localhost' (reserved for Unix-socket
+        # connections) -- same ACL-mismatch class as the MYSQLSERVER fix above.
+        \$MYSQL_CLIENT_BIN -uroot -h127.0.0.1 -P\${PORT} -e \
+            "CREATE USER IF NOT EXISTS '\${PASA_MYSQL_USER}'@'127.0.0.1' IDENTIFIED BY '\${PASA_MYSQL_PASS}'; GRANT ALL ON *.* TO '\${PASA_MYSQL_USER}'@'127.0.0.1'; FLUSH PRIVILEGES;" || \
+            { echo "ERROR: failed to create \${PASA_MYSQL_USER} mysql user" >&2; exit 1; }
     fi
 
     # Inflate a gzipped clean genome to a local uncompressed copy.
