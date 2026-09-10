@@ -130,9 +130,6 @@ process FUNANNOTATE_UPDATE {
         trap "stop_mysqldb; exit 130" SIGHUP SIGINT SIGTERM
         trap "stop_mysqldb" EXIT
         pasa_db_arg="--pasa_db mysql"
-        sleep 5
-        # See funannotate_train.nf for why this account has to be created
-        # explicitly (mariadb-install-db only makes root accounts).
         if command -v mariadb >/dev/null 2>&1 || command -v mysql >/dev/null 2>&1; then
             MYSQL_CLIENT_BIN=\$(command -v mariadb || command -v mysql)
         else
@@ -143,6 +140,25 @@ process FUNANNOTATE_UPDATE {
             echo "ERROR: no mariadb/mysql client found" >&2
             exit 1
         fi
+        # Poll for the listener instead of a fixed sleep -- see
+        # funannotate_train.nf's identical fix for the full rationale
+        # (confirmed 2026-09-10: a fixed short delay was the actual cause of
+        # "Can't connect to MySQL server ... (111)" despite "instance
+        # started successfully").
+        MYSQL_READY=0
+        for _ in \$(seq 1 30); do
+            if \$MYSQL_CLIENT_BIN -uroot -h127.0.0.1 -P\${PORT} -e 'SELECT 1' >/dev/null 2>&1; then
+                MYSQL_READY=1
+                break
+            fi
+            sleep 1
+        done
+        if [ "\$MYSQL_READY" -ne 1 ]; then
+            echo "ERROR: mariadbd on 127.0.0.1:\${PORT} did not become ready within 30s" >&2
+            exit 1
+        fi
+        # See funannotate_train.nf for why this account has to be created
+        # explicitly (mariadb-install-db only makes root accounts).
         \$MYSQL_CLIENT_BIN -uroot -h127.0.0.1 -P\${PORT} -e \
             "CREATE USER IF NOT EXISTS '\${PASA_MYSQL_USER}'@'127.0.0.1' IDENTIFIED BY '\${PASA_MYSQL_PASS}'; GRANT ALL ON *.* TO '\${PASA_MYSQL_USER}'@'127.0.0.1'; FLUSH PRIVILEGES;" || \
             { echo "ERROR: failed to create \${PASA_MYSQL_USER} mysql user" >&2; exit 1; }

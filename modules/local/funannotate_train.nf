@@ -297,13 +297,6 @@ process FUNANNOTATE_TRAIN {
         trap "stop_mysqldb; exit 130" SIGHUP SIGINT SIGTERM
         trap "stop_mysqldb" EXIT
         pasa_db_arg="--pasa_db mysql"
-        sleep 5
-        # mariadb-install-db (--auth-root-authentication-method=normal, above)
-        # only creates root@localhost/127.0.0.1/::1/<hostname> with no
-        # password -- it never creates the account conf.txt tells PASA to
-        # connect as. Confirmed 2026-09-09 (same bug hit in Fungi_BFD): this
-        # is a fresh, throwaway, loopback-only DB that lives for one task, so
-        # a shared generic account (assets/pasa_conf/conf.txt) is fine.
         if command -v mariadb >/dev/null 2>&1 || command -v mysql >/dev/null 2>&1; then
             MYSQL_CLIENT_BIN=\$(command -v mariadb || command -v mysql)
         else
@@ -314,6 +307,32 @@ process FUNANNOTATE_TRAIN {
             echo "ERROR: no mariadb/mysql client found" >&2
             exit 1
         fi
+        # Poll for the listener instead of a fixed sleep: mariadb-install-db +
+        # mysqld_safe startup time varies with node load/cold page cache, and
+        # a fixed short delay is exactly what produced "Can't connect to
+        # MySQL server ... (111)" despite "instance started successfully"
+        # (confirmed 2026-09-10, every conda cell -- the daemon just wasn't
+        # listening yet). 30 x 1s covers the slowest cold-start case seen so
+        # far with a wide margin; a still-failed daemon after that is treated
+        # as a real infra failure, not silently waited on forever.
+        MYSQL_READY=0
+        for _ in \$(seq 1 30); do
+            if \$MYSQL_CLIENT_BIN -uroot -h127.0.0.1 -P\${PORT} -e 'SELECT 1' >/dev/null 2>&1; then
+                MYSQL_READY=1
+                break
+            fi
+            sleep 1
+        done
+        if [ "\$MYSQL_READY" -ne 1 ]; then
+            echo "ERROR: mariadbd on 127.0.0.1:\${PORT} did not become ready within 30s" >&2
+            exit 1
+        fi
+        # mariadb-install-db (--auth-root-authentication-method=normal, above)
+        # only creates root@localhost/127.0.0.1/::1/<hostname> with no
+        # password -- it never creates the account conf.txt tells PASA to
+        # connect as. Confirmed 2026-09-09 (same bug hit in Fungi_BFD): this
+        # is a fresh, throwaway, loopback-only DB that lives for one task, so
+        # a shared generic account (assets/pasa_conf/conf.txt) is fine.
         # Grant to '...'@'127.0.0.1', not '...@localhost': MariaDB's ACL
         # matches the literal connecting host/IP, and a TCP connection to
         # 127.0.0.1 is not treated as 'localhost' (reserved for Unix-socket
