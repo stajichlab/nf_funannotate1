@@ -1,0 +1,18 @@
+asmbl_100	transdecoder	gene	1	5945	.	+	.	ID=GENE.asmbl_100~~asmbl_100.p3;Name="ORF type:complete (+),score=13.04"
+asmbl_100	transdecoder	mRNA	1	5945	.	+	.	ID=asmbl_100.p3;Parent=GENE.asmbl_100~~asmbl_100.p3;Name="ORF type:complete (+),score=13.04"
+asmbl_100	transdecoder	five_prime_UTR	1	2676	.	+	.	ID=asmbl_100.p3.utr5p1;Parent=asmbl_100.p3
+asmbl_100	transdecoder	exon	1	5945	.	+	.	ID=asmbl_100.p3.exon1;Parent=asmbl_100.p3
+asmbl_100	transdecoder	CDS	2677	3114	.	+	0	ID=cds.asmbl_100.p3;Parent=asmbl_100.p3
+asmbl_100	transdecoder	three_prime_UTR	3115	5945	.	+	.	ID=asmbl_100.p3.utr3p1;Parent=asmbl_100.p3
+asmbl_100	transdecoder	gene	1	5945	.	+	.	ID=GENE.asmbl_100~~asmbl_100.p1;Name="ORF type:complete (+),score=150.45"
+asmbl_100	transdecoder	mRNA	1	5945	.	+	.	ID=asmbl_100.p1;Parent=GENE.asmbl_100~~asmbl_100.p1;Name="ORF type:complete (+),score=150.45"
+asmbl_100	transdecoder	five_prime_UTR	1	3729	.	+	.	ID=asmbl_100.p1.utr5p1;Parent=asmbl_100.p1
+asmbl_100	transdecoder	exon	1	5945	.	+	.	ID=asmbl_100.p1.exon1;Parent=asmbl_100.p1
+asmbl_100	transdecoder	CDS	3730	5784	.	+	0	ID=cds.asmbl_100.p1;Parent=asmbl_100.p1
+asmbl_100	transdecoder	three_prime_UTR	5785	5945	.	+	.	ID=asmbl_100.p1.utr3p1;Parent=asmbl_100.p1
+asmbl_100	transdecoder	gene	1	5945	.	+	.	ID=GENE.asmbl_100~~asmbl_100.p2;Name="ORF type:complete (+),score=52.86"
+asmbl_100	transdecoder	mRNA	1	5945	.	+	.	ID=asmbl_100.p2;Parent=GENE.asmbl_100~~asmbl_100.p2;Name="ORF type:complete (+),score=52.86"
+asmbl_100	transdecoder	five_prime_UTR	1	130	.	+	.	ID=asmbl_100.p2.utr5p1;Parent=asmbl_100.p2
+asmbl_100	transdecoder	exon	1	5945	.	+	.	ID=asmbl_100.p2.exon1;Parent=asmbl_100.p2
+asmbl_100	transdecoder	CDS	131	700	.	+	0	ID=cds.asmbl_100.p2;Parent=asmbl_100.p2
+asmbl_100	transdecoder	three_prime_UTR	701	5945	.	+	.	ID=asmbl_100.p2.utr3p1;Parent=asmbl_100.p2
