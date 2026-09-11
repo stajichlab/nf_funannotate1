@@ -457,6 +457,22 @@ process FUNANNOTATE_TRAIN {
             exit 0
         fi
         echo "[ERROR] funannotate train failed for ${out} (exit \$TRAIN_STATUS)" >&2
+        # Trinity's genome-guided checkpoint files under trinity_gg/ hardcode
+        # this job's node-local \$SCRATCH path (e.g. /scratch/\$USER/\$SLURM_JOB_ID).
+        # A retry runs as a brand-new SLURM job with a brand-new \$SCRATCH, so
+        # resuming from these checkpoints fails with "mkdir: cannot create
+        # directory '/scratch/.../<dead job id>': Permission denied" and
+        # silently produces "0 transcripts derived from Trinity" -- an
+        # infinite failure loop across retries. hisat2/ has the same
+        # cross-job staleness risk if the alignment was interrupted mid-write
+        # (an empty/truncated BAM gets trusted as "existing alignments found"
+        # on resume). Wipe both here so a retry always re-aligns and
+        # re-assembles from scratch instead of trusting a checkpoint tied to
+        # this now-dead job. Discovered 2026-09-11 in
+        # BFD/Funannotate_benchmarking's conda-provisioned cells.
+        TRAINDIR="${params.training_target}/${out}/training"
+        rm -rf "\$TRAINDIR/hisat2"
+        rm -rf "\$TRAINDIR/trinity_gg"
         if [ "${params.pasa_mysql}" = "true" ]; then stop_mysqldb; fi
         exit "\$TRAIN_STATUS"
     fi
