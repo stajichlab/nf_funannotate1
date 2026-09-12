@@ -38,6 +38,14 @@ process RNASEQ_PREPARE {
     def stopTrinity = params.stop_after_trinity.toBoolean()
     def OUTDIR      = stopTrinity ? "\$SCRATCH/${out}" : "${params.training_target}/${out}"
     def TRINITY     = stopTrinity ? '--stop_after_trinity --no_trimmomatic' : ''
+    // See the matching comment in funannotate_train.nf: funannotate 1.8.17's
+    // train.py strips minimap2 back out of PASA's own --ALIGNERS list, so
+    // passing only "minimap2" (below) leaves --ALIGNERS empty and
+    // Launch_PASA_pipeline.pl fails immediately -- hit here too since
+    // stopTrinity=false (the 1.8.x branch) runs the full train, including the
+    // PASA alignment step, for the representative strain.
+    def is_funannotate_1_8_17 = (params.conda_env?.contains('1.8.17') || params.container_funannotate?.contains('1.8.17'))
+    def aligners_arg = is_funannotate_1_8_17 ? 'minimap2 gmap' : 'minimap2'
     def STAGE       = stopTrinity ? 'scratch' : 'persistent (full train, no --stop_after_trinity)'
     """
     # ── Empty-reads sentinel: no RNA-seq found by SRA_FETCH / SRA_FETCH_SE ──
@@ -91,7 +99,7 @@ process RNASEQ_PREPARE {
     if [ -s "${r1}" ]; then
         echo "[INFO] RNASEQ_PREPARE: funannotate train (PE, ${STAGE}) for representative ${out}"
         funannotate train -i "\$GENOME_IN" -o ${OUTDIR} \\
-            --left_norm ${r1} --right_norm ${r2} --aligners minimap2 \\
+            --left_norm ${r1} --right_norm ${r2} --aligners ${aligners_arg} \\
             --species "${species}" --strain "${strain}" \\
             --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
             --header_length ${header_length} \\
@@ -101,7 +109,7 @@ process RNASEQ_PREPARE {
     else
         echo "[INFO] RNASEQ_PREPARE: funannotate train (SE, ${STAGE}) for representative ${out}"
         funannotate train -i "\$GENOME_IN" -o ${OUTDIR} \\
-            --single_norm ${se} --aligners minimap2 \\
+            --single_norm ${se} --aligners ${aligners_arg} \\
             --species "${species}" --strain "${strain}" \\
             --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
             --header_length ${header_length} \\

@@ -34,6 +34,19 @@ process FUNANNOTATE_TRAIN {
     def locustag      = meta.locustag
     def header_length = params.header_length
     def pasa_db_arg = "--pasa_db sqlite"
+    // funannotate's own --aligners handling of 'minimap2' changed between
+    // versions: 1.8.17's train.py explicitly STRIPS minimap2 back out when
+    // building PASA's own --ALIGNERS list (it only imports minimap2
+    // alignments via --IMPORT_CUSTOM_ALIGNMENTS, treating --ALIGNERS as "what
+    // PASA should align itself"), whereas 1.9.0-beta.11(+) keeps it. Passing
+    // just "minimap2" (as below) leaves 1.8.17 with an EMPTY --ALIGNERS,
+    // which Launch_PASA_pipeline.pl then fails on immediately. Add gmap for
+    // 1.8.17 specifically so --ALIGNERS is never empty there; every conda_env
+    // this could match ships gmap (confirmed present in the 1.8.17 env's
+    // bin/). Discovered 2026-09-11 in BFD/Funannotate_benchmarking's
+    // v1.8.17_conda cell.
+    def is_funannotate_1_8_17 = (params.conda_env?.contains('1.8.17') || params.container_funannotate?.contains('1.8.17'))
+    def aligners_arg = is_funannotate_1_8_17 ? 'minimap2 gmap' : 'minimap2'
     """
     # ── Skip if no RNA-seq data at all ────────────────────────────────────────
     if [ ! -s "${r1}" ] && [ ! -s "${se}" ] && [ ! -s "${trinity_fa}" ]; then
@@ -415,7 +428,7 @@ process FUNANNOTATE_TRAIN {
     elif [ -s "${r1}" ]; then
         echo "[INFO] Running funannotate train (full PE, no shared Trinity) for ${out}"
         funannotate train -i "\$GENOME_IN" -o ${params.training_target}/${out} \\
-            --left_norm ${r1} --right_norm ${r2} --aligners minimap2 \\
+            --left_norm ${r1} --right_norm ${r2} --aligners ${aligners_arg} \\
             --species "${species}" --strain "${strain}" \\
             --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
             --header_length ${header_length} \\
@@ -425,7 +438,7 @@ process FUNANNOTATE_TRAIN {
     else
         echo "[INFO] Running funannotate train (full SE, no shared Trinity) for ${out}"
         funannotate train -i "\$GENOME_IN" -o ${params.training_target}/${out} \\
-            --single_norm ${se} --aligners minimap2 \\
+            --single_norm ${se} --aligners ${aligners_arg} \\
             --species "${species}" --strain "${strain}" \\
             --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
             --header_length ${header_length} \\
