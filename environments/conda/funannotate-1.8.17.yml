@@ -49,7 +49,13 @@ dependencies:
   - pigz
   - proteinortho
   - raxml
-  - salmon
+  # Pinned <2: salmon 2.x is the Rust rewrite and dropped/changed the classic
+  # CLI flags (--minAssignedFrags, -l U) that Trinity's bundled
+  # salmon_runner.pl calls during genome-guided isoform filtering -- salmon
+  # 2.7.0 (unpinned resolve, 2026-09-07) makes every Trinity assembly fail
+  # with "unexpected argument '--minAssignedFrags' found" after burning
+  # hours on the assembly itself. 1.10.3 is the last classic-CLI LTS release.
+  - salmon =1.10.3
   - samtools
   - snap
   - stringtie
@@ -61,5 +67,13 @@ dependencies:
   - trnascan-se
   - ucsc-blat
   - ucsc-pslcdnafilter
+  # perl-dbd-mysql's .so needs libmysqlclient.so.24 (PASA's mysql backend
+  # loads it via DBD::mysql) -- confirmed 2026-09-08 that an unpinned fresh
+  # solve lands on mysql-libs 8.3.0 (ships only .so.23/.so.18), breaking
+  # PASA at the create_mysql_cdnaassembly_db.dbi step ("install_driver(mysql)
+  # failed ... libmysqlclient.so.24: cannot open shared object file").
+  # funannotate-1.9.0-beta.11.yml already pins this for the same reason.
+  - mysql-libs =8.4.2
+  - mysql-common =8.4.2
   # The package itself (latest 1.8.x build):
   - funannotate =1.8.17
