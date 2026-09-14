@@ -1,0 +1,129 @@
+# funannotate-1.9.0-beta.11.yml — conda deps + the 1.9.0-beta.11 release, PERL EVM.
+#
+# There is NO conda package for 1.9.0-beta.11 (bioconda tops out at 1.8.17; the
+# beta is published only as a ghcr.io/nextgenusfs/funannotate:1.9.0-beta.11
+# container). This env installs the conda runtime toolchain then pip-installs the
+# beta tag on top, keeping the PERL evidencemodeler (conda `evidencemodeler`) as
+# funannotate's EVM backend — the "without RUST" configuration.
+# Build (once) and select at runtime:
+#   mamba env create -f environments/conda/funannotate-1.9.0-beta.11.yml \
+#       -p /rhome/jstajich/conda/envs/funannotate-1.9.0-beta.11
+#   nextflow run ... -profile annotate,slurm,conda --conda_env funannotate-1.9.0-beta.11
+#
+# IMPORTANT: conda and bioconda cannot resolve a tag-pinned git dependency; the
+# pip step below must run AFTER the conda create (it is a pip:-block list, which
+# conda/mamba handles, but the funannotate python deps are NOT enumerated here —
+# the 1.9.0-beta.11 branch's setup.py supplies them at pip time). If they clash
+# with the pins below, `conda install` the conflicting ones explicitly afterward.
+name: funannotate-1.9.0-beta.11
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python >=3.6,<3.9   # match reference pixi.toml + 1.8.17 recipe; 1.9 branch tested on <3.9
+  - setuptools <81
+  - biopython <1.80
+  # Pinned >=1.4.12: unpinned resolves to 1.2.3 (bioconda), which uniquely
+  # among goatools builds hard-depends on bioconductor-goseq ->
+  # bioconductor-genelendatabase, whose r42 post-link script is broken in
+  # the current channel state (dyn.load: libicui18n.so.58 missing --
+  # icu/stringi ABI mismatch, channel drift since beta.10 was built weeks
+  # ago). Every other goatools version has no R/bioconductor dependency at
+  # all; 1.4.12 matches the pin already proven working in
+  # funannotate-1.9.0-beta.11-rust.yml.
+  - goatools >=1.4.12,<2
+  # trinity itself hard-depends on bioconductor-goseq (-> genelendatabase,
+  # among other R/bioconductor packages) transitively. Left unpinned, the
+  # solver can pick an r42-tagged genelendatabase build whose post-link
+  # script is broken against a newer icu resolved elsewhere in the env
+  # (dyn.load: libicui18n.so.58 missing). funannotate-1.8.17.yml's solve
+  # happens to land on r-base 4.3.3 + r-stringi 1.8.4 (r43-tagged,
+  # icu 73.x) and works cleanly -- pin the same combo here so beta.11
+  # resolves the identical, verified-working R stack instead of leaving it
+  # to solver luck.
+  - r-base =4.3.3
+  - seaborn-base
+  - psutil
+  - pandas
+  - matplotlib-base
+  - natsort
+  - numpy
+  - requests
+  - scikit-learn
+  - scipy
+  - distro
+  # 3rd-party runtime tools (1.8.17 recipe pins as a known-good base).
+  - augustus ==3.5.0
+  - bamtools !=2.5.2
+  - bedtools
+  - blast
+  - codingquarry
+  - diamond
+  - evidencemodeler =1.1.1
+  - ete3
+  - exonerate
+  - glimmerhmm
+  - fasta3
+  - hisat2
+  - hmmer
+  - kallisto >=0.46.0,<0.46.2
+  - mafft >=7
+  - minimap2
+  - pasa
+  # Pinned <6: transdecoder 6.0.0 replaced the old two-binary CLI
+  # (TransDecoder.LongOrfs / TransDecoder.Predict) with a single unified
+  # `TransDecoder` wrapper script, and the bioconda 6.0.0 build leaves
+  # bin/TransDecoder.LongOrfs as a BROKEN symlink (its target,
+  # opt/transdecoder/TransDecoder.LongOrfs, no longer exists in that
+  # package). PASA still shells out to TransDecoder.LongOrfs directly
+  # during its own transcript-merge step, which only fires on the
+  # hybrid pasa_tier path (stringtie GTF present) -- this env's earlier
+  # successful runs never hit that path, but the identical broken
+  # symlink was confirmed present here 2026-09-14 after the same bug
+  # broke funannotate-1.8.17.yml's env outright. Pinned preemptively,
+  # matching the fix already applied there.
+  - transdecoder =5.7.1
+  - phyml
+  - pigz
+  - proteinortho
+  - raxml
+  # Pinned <2: salmon 2.x is the Rust rewrite and dropped/changed the classic
+  # CLI flags (--minAssignedFrags, -l U) that Trinity's bundled
+  # salmon_runner.pl calls during genome-guided isoform filtering -- salmon
+  # 2.7.0 (unpinned resolve, 2026-09-07) makes every Trinity assembly fail
+  # with "unexpected argument '--minAssignedFrags' found" after burning
+  # hours on the assembly itself. 1.10.3 is the last classic-CLI LTS release.
+  - salmon =1.10.3
+  - samtools
+  - snap
+  - stringtie
+  - tantan
+  - tbl2asn
+  - trimal
+  - trimmomatic
+  - trinity
+  - trnascan-se
+  - ucsc-blat
+  - ucsc-pslcdnafilter
+  # Perl modules funannotate needs at runtime. The bioconda `funannotate`
+  # recipe declares these as run deps, but this env pip-installs 1.9 (no conda
+  # package), so they must be listed explicitly here or `funannotate check`
+  # reports them missing and the perl EVM/PASA workers fail at runtime.
+  - perl-dbd-mysql
+  - perl-hash-merge
+  - perl-libwww-perl
+  - perl-local-lib
+  - perl-logger-simple
+  - perl-scalar-util-numeric
+  - perl-text-soundex
+  # perl-dbd-mysql's .so needs libmysqlclient.so.24, shipped by mysql-libs
+  # (8.3.0 provides only .so.23 and DBD::mysql fails to load — pin to 8.4.x).
+  - mysql-libs 8.4.2
+  - mysql-common 8.4.2
+  - pip
+  - pip:
+    # This git tag. NOTE: the release tag is 'v1.9.0-beta.11' (with the 'v' —
+    # '1.9.0-beta.11' does NOT exist upstream and pip's `git checkout` fails).
+    # Pin to a full commit hash to make the build deterministic:
+    #   - git+https://github.com/nextgenusfs/funannotate.git@17c58f5da60da7b3778518fc3ff5902d50e5168e
+    - git+https://github.com/nextgenusfs/funannotate.git@17c58f5da60da7b3778518fc3ff5902d50e5168e
