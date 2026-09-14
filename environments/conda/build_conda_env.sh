@@ -69,10 +69,10 @@ build_one() {
 
 if [[ "${1:-}" == "--all" ]]; then
     for m in "${MANIFEST_DIR}"/*.yml; do
-        build_one "${m}"
+        build_one "${m}" "${2:-}"
     done
 elif [[ -n "${1:-}" ]]; then
-    build_one "${MANIFEST_DIR}/${1}.yml"
+    build_one "${MANIFEST_DIR}/${1}.yml" "${2:-}"
 else
     echo "Usage: $0 <env-name> [--refresh] | --all" >&2
     exit 2

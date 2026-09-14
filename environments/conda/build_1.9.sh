@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build the funannotate 1.9.0-beta.10 conda env -- PERL EVM backend, no Rust.
+# Build the funannotate 1.9.0-beta.11 conda env -- PERL EVM backend, no Rust.
 #
 # This is the "no rust" 1.9 variant: every external is a conda package
 # (trinity, pasa, evidencemodeler, augustus, snap, ...) installed by the
-# manifest funannotate-1.9.0-beta.10.yml, with the 1.9.0-beta.10 funannotate
+# manifest funannotate-1.9.0-beta.11.yml, with the 1.9.0-beta.11 funannotate
 # pip-installed on top (no conda package exists for the beta -- bioconda tops
 # at 1.8.17).
 #
@@ -26,7 +26,7 @@
 #   ./build_1.9.sh --sbatch              # self-submit as one SLURM job
 #
 # Env var knobs:
-#   FUNANNOTATE_ENV     env name to build (default funannotate-1.9.0-beta.10)
+#   FUNANNOTATE_ENV     env name to build (default funannotate-1.9.0-beta.11)
 #   CONDA_ENVS_ROOT     shared conda root (default /bigdata/stajichlab/shared/condaenv)
 #   SLURM_PARTITION     --sbatch queue   (default stajichlab)
 #   SLURM_CPUS, SLURM_MEM, SLURM_TIME    --sbatch resources (defaults below)
@@ -55,7 +55,7 @@ MANIFEST_DIR="${REPO_ROOT}/environments/conda"
 LOG_DIR="${REPO_ROOT}/logs/conda_builds"
 mkdir -p "${LOG_DIR}"
 
-ENV_NAME="${FUNANNOTATE_ENV:-funannotate-1.9.0-beta.10}"
+ENV_NAME="${FUNANNOTATE_ENV:-funannotate-1.9.0-beta.11}"
 ENVS_ROOT="${CONDA_ENVS_ROOT:-/bigdata/stajichlab/shared/condaenv}"
 PREFIX="${ENVS_ROOT}/${ENV_NAME}"
 

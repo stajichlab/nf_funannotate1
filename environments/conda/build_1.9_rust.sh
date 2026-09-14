@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Build the funannotate 1.9.0-beta.10 "Rust EVM/PASA/Trinity" conda env end-to-end.
+# Build the funannotate 1.9.0-beta.11 "Rust EVM/PASA/Trinity" conda env end-to-end.
 #
 # Two phases:
-#   1) Create the pure-conda env (funannotate-1.9.0-beta.10-rust.yml, no
+#   1) Create the pure-conda env (funannotate-1.9.0-beta.11-rust.yml, no
 #      trinity/pasa/evidencemodeler packages) via build_conda_env.sh, same as
 #      every other frozen env.
 #   2) Source-build the hyphaltip Rust `rust_optimize` forks INTO that env,
@@ -10,7 +10,7 @@
 #      packaging paths use (pixi [task] install-externals, Dockerfile.base,
 #      conda-recipe/build.sh) so the three paths can't drift apart.
 #
-# This scripts the steps the 1.9.0-beta.10-rust.yml header documents by hand:
+# This scripts the steps the 1.9.0-beta.11-rust.yml header documents by hand:
 #   bowtie2 -> trinity -> evm -> pasa (Dockerfile build order; bowtie2 first
 #   so a regression there fails in seconds instead of after Trinity's
 #   multi-minute make), then installs an etc/conda/activate.d snippet that
@@ -31,7 +31,7 @@
 #
 # Env var knobs:
 #   FUNANNOTATE_LIVE    dir with install_scripts/ (default ~/projects/funannotate/funannotate-live)
-#   FUNANNOTATE_ENV     env name to build    (default funannotate-1.9.0-beta.10-rust)
+#   FUNANNOTATE_ENV     env name to build    (default funannotate-1.9.0-beta.11-rust)
 #   CONDA_ENVS_ROOT     shared conda root    (default /bigdata/stajichlab/shared/condaenv)
 #   SLURM_PARTITION     --sbatch queue       (default stajichlab)
 #   SLURM_CPUS, SLURM_MEM, SLURM_TIME        --sbatch resources (defaults below)
@@ -60,7 +60,7 @@ MANIFEST_DIR="${REPO_ROOT}/environments/conda"
 LOG_DIR="${REPO_ROOT}/logs/conda_builds"
 mkdir -p "${LOG_DIR}"
 
-ENV_NAME="${FUNANNOTATE_ENV:-funannotate-1.9.0-beta.10-rust}"
+ENV_NAME="${FUNANNOTATE_ENV:-funannotate-1.9.0-beta.11-rust}"
 ENVS_ROOT="${CONDA_ENVS_ROOT:-/bigdata/stajichlab/shared/condaenv}"
 PREFIX="${ENVS_ROOT}/${ENV_NAME}"
 FA_LIVE="${FUNANNOTATE_LIVE:-${HOME}/projects/funannotate/funannotate-live}"
@@ -222,7 +222,7 @@ glibc_smoke() {
         # than "2.4", but 2.28 < 2.4 numerically (28 > 4 should win).
         if awk -v a="${host_ver}" -v b="${req}" \
             'BEGIN{ split(a,A,"."); split(b,B,".");
-                   m=(A[1]<B[1])||(A[1]==B[1]&&A[2]<B[2]); exit m ? 0 : 1 }'; then
+                   m=(A[1]+0<B[1]+0)||(A[1]+0==B[1]+0&&A[2]+0<B[2]+0); exit m ? 0 : 1 }'; then
             echo "  FAIL ${bin##*/} needs glibc ${req} > host ${host_ver}" >&2
             fail=1
         fi
