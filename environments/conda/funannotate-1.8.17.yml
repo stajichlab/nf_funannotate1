@@ -16,7 +16,18 @@ dependencies:
   - python >=3.6,<3.12
   - setuptools <81
   - biopython <1.80
-  - goatools
+  # Pinned >=1.4.12: unpinned can resolve to 1.2.3 (bioconda), which uniquely
+  # among goatools builds hard-depends on bioconductor-goseq ->
+  # bioconductor-genelendatabase, whose r42 post-link script is broken
+  # against a newer icu resolved elsewhere in the env (dyn.load:
+  # libicui18n.so.58 missing -- icu/stringi ABI mismatch from channel drift).
+  # Every other goatools version has no R/bioconductor dependency at all.
+  # Confirmed 2026-09-14: this env's own solve is no longer immune to it
+  # (funannotate-1.9.0-beta.11.yml's comment assumed 1.8.17 reliably landed
+  # on a clean r-base 4.3.3 solve by luck -- that luck ran out). Pin the same
+  # combo proven working there.
+  - goatools >=1.4.12,<2
+  - r-base =4.3.3
   - seaborn-base
   - psutil
   - pandas
