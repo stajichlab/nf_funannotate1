@@ -56,6 +56,21 @@ dependencies:
   - mafft >=7
   - minimap2
   - pasa
+  # Pinned <6: transdecoder 6.0.0 replaced the old two-binary CLI
+  # (TransDecoder.LongOrfs / TransDecoder.Predict) with a single unified
+  # `TransDecoder` wrapper script, and the bioconda 6.0.0 build leaves
+  # bin/TransDecoder.LongOrfs as a BROKEN symlink (its target,
+  # opt/transdecoder/TransDecoder.LongOrfs, no longer exists in that
+  # package). PASA 2.5.3 (bundled with this funannotate release) still
+  # shells out to TransDecoder.LongOrfs directly during its own
+  # transcript-merge step ("Can't exec TransDecoder.LongOrfs: No such
+  # file or directory"), so it needs the old interface. 5.7.1 is the
+  # last release with separate LongOrfs/Predict binaries. Confirmed
+  # 2026-09-14 in this cell; the same broken symlink exists identically
+  # in funannotate-1.9.0-beta.11.yml's env (untested there so far --
+  # PASA's TransDecoder.LongOrfs call only fires on the hybrid
+  # pasa_tier path, with a stringtie GTF present).
+  - transdecoder =5.7.1
   - phyml
   - pigz
   - proteinortho
