@@ -486,6 +486,25 @@ process FUNANNOTATE_TRAIN {
         TRAINDIR="${params.training_target}/${out}/training"
         rm -rf "\$TRAINDIR/hisat2"
         rm -rf "\$TRAINDIR/trinity_gg"
+        # pasa/ has the identical cross-job staleness problem, one level
+        # worse: PASA's own -R recovery checkpoints under
+        # pasa/__pasa_<species>_pasa_mysql_chkpts/*.ok persist in this
+        # same reused TRAINDIR, but the MariaDB instance they refer to is
+        # started fresh (empty datadir under this job's own \$MYSQL_SCRATCH)
+        # every single task execution -- see the mariadb-install-db block
+        # above. So a retry sees "create_db.ok" / "upload_transcripts.ok"
+        # etc. from the PREVIOUS (dead) MariaDB instance, skips re-creating
+        # and re-populating the database against the new empty one, and
+        # dies later with "Unknown database '<species>_pasa'" the moment it
+        # tries to actually query it (e.g. update_fli_status.dbi after
+        # TransDecoder). Wipe pasa/ too so a retry always starts PASA's
+        # alignment/database pipeline from scratch against the fresh
+        # MariaDB instance instead of trusting checkpoints tied to a now-dead
+        # one. Discovered 2026-09-14 in BFD/Funannotate_benchmarking's
+        # v1.8.17_conda cell, same root cause class as hisat2/trinity_gg
+        # above; only relevant when using the ephemeral per-task mysql
+        # sidecar, not the sqlite backend.
+        if [ "${params.pasa_mysql}" = "true" ]; then rm -rf "\$TRAINDIR/pasa"; fi
         if [ "${params.pasa_mysql}" = "true" ]; then stop_mysqldb; fi
         exit "\$TRAIN_STATUS"
     fi
