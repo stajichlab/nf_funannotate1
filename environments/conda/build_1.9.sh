@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build the funannotate 1.9.0-beta.11 conda env -- PERL EVM backend, no Rust.
+# Build the funannotate 1.9.0-beta.12 conda env -- PERL EVM backend, no Rust.
 #
 # This is the "no rust" 1.9 variant: every external is a conda package
 # (trinity, pasa, evidencemodeler, augustus, snap, ...) installed by the
-# manifest funannotate-1.9.0-beta.11.yml, with the 1.9.0-beta.11 funannotate
+# manifest funannotate-1.9.0-beta.12.yml, with the 1.9.0-beta.12 funannotate
 # pip-installed on top (no conda package exists for the beta -- bioconda tops
 # at 1.8.17).
 #
@@ -26,7 +26,7 @@
 #   ./build_1.9.sh --sbatch              # self-submit as one SLURM job
 #
 # Env var knobs:
-#   FUNANNOTATE_ENV     env name to build (default funannotate-1.9.0-beta.11)
+#   FUNANNOTATE_ENV     env name to build (default funannotate-1.9.0-beta.12)
 #   CONDA_ENVS_ROOT     shared conda root (default /bigdata/stajichlab/shared/condaenv)
 #   SLURM_PARTITION     --sbatch queue   (default stajichlab)
 #   SLURM_CPUS, SLURM_MEM, SLURM_TIME    --sbatch resources (defaults below)
@@ -55,14 +55,22 @@ MANIFEST_DIR="${REPO_ROOT}/environments/conda"
 LOG_DIR="${REPO_ROOT}/logs/conda_builds"
 mkdir -p "${LOG_DIR}"
 
-ENV_NAME="${FUNANNOTATE_ENV:-funannotate-1.9.0-beta.11}"
+ENV_NAME="${FUNANNOTATE_ENV:-funannotate-1.9.0-beta.12}"
 ENVS_ROOT="${CONDA_ENVS_ROOT:-/bigdata/stajichlab/shared/condaenv}"
 PREFIX="${ENVS_ROOT}/${ENV_NAME}"
 
 # ── Optional SLURM self-submission ───────────────────────────────────────────
-if [[ "${1:-}" == "--sbatch" && -z "${SLURM_JOB_ID:-}" ]]; then
+# The re-entry guard is FUNANNOTATE_BUILD_JOB (set by the sbatch --export below),
+# NOT SLURM_JOB_ID. SLURM_JOB_ID is set inside ANY allocation -- an interactive
+# `srun`/`salloc` shell, or another job that shells out to this script -- so
+# gating on it made `--sbatch` silently fall through and build INLINE on whatever
+# allocation the caller happened to hold. That is how the beta.12-rust build came
+# to run on an 8-CPU/24G interactive job instead of its own 32-CPU/64G one
+# (2026-09-19). The sentinel is true only for the job this script itself
+# submitted, which is the case the guard is actually for.
+if [[ "${1:-}" == "--sbatch" && -z "${FUNANNOTATE_BUILD_JOB:-}" ]]; then
     shift
-    exec sbatch --export=ALL,PROJ_ROOT="${REPO_ROOT}" \
+    exec sbatch --export=ALL,PROJ_ROOT="${REPO_ROOT}",FUNANNOTATE_BUILD_JOB=1 \
         --job-name="build-${ENV_NAME}" \
         --partition="${SLURM_PARTITION:-stajichlab}" \
         --cpus-per-task="${SLURM_CPUS:-8}" \

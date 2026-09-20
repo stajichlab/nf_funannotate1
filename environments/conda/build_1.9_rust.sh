@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Build the funannotate 1.9.0-beta.11 "Rust EVM/PASA/Trinity" conda env end-to-end.
+# Build the funannotate 1.9.0-beta.12 "Rust EVM/PASA/Trinity" conda env end-to-end.
 #
 # Two phases:
-#   1) Create the pure-conda env (funannotate-1.9.0-beta.11-rust.yml, no
+#   1) Create the pure-conda env (funannotate-1.9.0-beta.12-rust.yml, no
 #      trinity/pasa/evidencemodeler packages) via build_conda_env.sh, same as
 #      every other frozen env.
 #   2) Source-build the hyphaltip Rust `rust_optimize` forks INTO that env,
@@ -10,7 +10,7 @@
 #      packaging paths use (pixi [task] install-externals, Dockerfile.base,
 #      conda-recipe/build.sh) so the three paths can't drift apart.
 #
-# This scripts the steps the 1.9.0-beta.11-rust.yml header documents by hand:
+# This scripts the steps the 1.9.0-beta.12-rust.yml header documents by hand:
 #   bowtie2 -> trinity -> evm -> pasa (Dockerfile build order; bowtie2 first
 #   so a regression there fails in seconds instead of after Trinity's
 #   multi-minute make), then installs an etc/conda/activate.d snippet that
@@ -31,7 +31,7 @@
 #
 # Env var knobs:
 #   FUNANNOTATE_LIVE    dir with install_scripts/ (default ~/projects/funannotate/funannotate-live)
-#   FUNANNOTATE_ENV     env name to build    (default funannotate-1.9.0-beta.11-rust)
+#   FUNANNOTATE_ENV     env name to build    (default funannotate-1.9.0-beta.12-rust)
 #   CONDA_ENVS_ROOT     shared conda root    (default /bigdata/stajichlab/shared/condaenv)
 #   SLURM_PARTITION     --sbatch queue       (default stajichlab)
 #   SLURM_CPUS, SLURM_MEM, SLURM_TIME        --sbatch resources (defaults below)
@@ -60,7 +60,7 @@ MANIFEST_DIR="${REPO_ROOT}/environments/conda"
 LOG_DIR="${REPO_ROOT}/logs/conda_builds"
 mkdir -p "${LOG_DIR}"
 
-ENV_NAME="${FUNANNOTATE_ENV:-funannotate-1.9.0-beta.11-rust}"
+ENV_NAME="${FUNANNOTATE_ENV:-funannotate-1.9.0-beta.12-rust}"
 ENVS_ROOT="${CONDA_ENVS_ROOT:-/bigdata/stajichlab/shared/condaenv}"
 PREFIX="${ENVS_ROOT}/${ENV_NAME}"
 FA_LIVE="${FUNANNOTATE_LIVE:-${HOME}/projects/funannotate/funannotate-live}"
@@ -71,10 +71,18 @@ INSTALL_SCRIPTS=(pixi_install_bowtie2.sh pixi_install_trinity.sh pixi_install_ev
 SYMLINK_SCRIPT="pixi_setup_symlinks.sh"
 
 # ── Optional SLURM self-submission ───────────────────────────────────────────
-if [[ "${1:-}" == "--sbatch" && -z "${SLURM_JOB_ID:-}" ]]; then
+# The re-entry guard is FUNANNOTATE_BUILD_JOB (set by the sbatch --export below),
+# NOT SLURM_JOB_ID. SLURM_JOB_ID is set inside ANY allocation -- an interactive
+# `srun`/`salloc` shell, or another job that shells out to this script -- so
+# gating on it made `--sbatch` silently fall through and build INLINE on whatever
+# allocation the caller happened to hold. That is how the beta.12-rust build came
+# to run on an 8-CPU/24G interactive job instead of its own 32-CPU/64G one
+# (2026-09-19). The sentinel is true only for the job this script itself
+# submitted, which is the case the guard is actually for.
+if [[ "${1:-}" == "--sbatch" && -z "${FUNANNOTATE_BUILD_JOB:-}" ]]; then
     shift
     mkdir -p "${LOG_DIR}"
-    exec sbatch --export=ALL,PROJ_ROOT="${REPO_ROOT}" \
+    exec sbatch --export=ALL,PROJ_ROOT="${REPO_ROOT}",FUNANNOTATE_BUILD_JOB=1 \
         --job-name="build-${ENV_NAME}" \
         --partition="${SLURM_PARTITION:-stajichlab}" \
         --cpus-per-task="${SLURM_CPUS:-32}" \

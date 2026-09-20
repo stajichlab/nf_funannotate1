@@ -70,11 +70,15 @@ declare -A COMPAT_DIR=(
     [funannotate-1.8.17]="opt/transdecoder/util"
     [funannotate-1.9.0-beta.11]="opt/transdecoder/util"
     [funannotate-1.9.0-beta.11-rust]="opt/pasa/src/pasa-plugins/transdecoder/util"
+    [funannotate-1.9.0-beta.12]="opt/transdecoder/util"
+    [funannotate-1.9.0-beta.12-rust]="opt/pasa/src/pasa-plugins/transdecoder/util"
 )
 declare -A INCOMPAT_DIR=(
     [funannotate-1.8.17]="opt/pasa-2.5.3/scripts/Coding"
     [funannotate-1.9.0-beta.11]="opt/pasa-2.5.3/scripts/Coding"
     [funannotate-1.9.0-beta.11-rust]="opt/pasa/src/scripts/Coding"
+    [funannotate-1.9.0-beta.12]="opt/pasa-2.5.3/scripts/Coding"
+    [funannotate-1.9.0-beta.12-rust]="opt/pasa/src/scripts/Coding"
 )
 
 FAILS=0

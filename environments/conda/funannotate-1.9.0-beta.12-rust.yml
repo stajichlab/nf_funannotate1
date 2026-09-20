@@ -1,8 +1,14 @@
-# funannotate-1.9.0-beta.11-rust.yml — conda deps + 1.9.0-beta.11 with Rust
+# funannotate-1.9.0-beta.12-rust.yml — conda deps + 1.9.0-beta.12 with Rust
 # EVM / PASA / Trinity.
 #
+# Derived from funannotate-1.9.0-beta.11-rust.yml (2026-09-19), including that
+# file's salmon =1.10.3 correction. ONLY the funannotate release changed: the pip
+# pin moves from 17c58f5 to 627b6220 (tag v1.9.0-beta.12), which fixes the
+# beta.11 augustus_parallel.py crash on zero-evidence predict runs (see the
+# non-rust beta.12 yml header). Every conda pin below is unchanged.
+#
 # The "with RUST" configuration. Same funannotate package as the perl-EVM
-# beta.11 file, but the three heavy ab-initio/splice-assembly tools are the
+# beta.12 file, but the three heavy ab-initio/splice-assembly tools are the
 # Rust-optimized `rust_optimize` forks (hyphaltip: EVidenceModeler, PASApipeline,
 # trinityrnaseq) source-built into the env, instead of the conda perl builds.
 #
@@ -32,8 +38,8 @@
 # per version.
 #
 # Build (once):
-#   mamba env create -f environments/conda/funannotate-1.9.0-beta.11-rust.yml \
-#       -p /rhome/jstajich/conda/envs/funannotate-1.9.0-beta.11-rust
+#   mamba env create -f environments/conda/funannotate-1.9.0-beta.12-rust.yml \
+#       -p /rhome/jstajich/conda/envs/funannotate-1.9.0-beta.12-rust
 #   # then source-build the Rust forks INTO the new env (heavy; do once):
 #   # copy the four install_scripts/pixi_install_*.sh + pixi_setup_symlinks.sh
 #   # from ~/projects/funannotate/funannotate-live/, then, with the env active:
@@ -47,12 +53,12 @@
 #   # PASA, and Trinity (not evidence_modeler.pl).
 #
 # before running the pipeline:
-#   nextflow run ... -profile annotate,slurm,conda --conda_env funannotate-1.9.0-beta.11-rust
+#   nextflow run ... -profile annotate,slurm,conda --conda_env funannotate-1.9.0-beta.12-rust
 #
 # NOTE: the funannotate python code itself still pip-installs from the git tag
-# (no conda package exists for the 1.9.0-beta.11 release; bioconda tops at
+# (no conda package exists for the 1.9.0-beta.12 release; bioconda tops at
 # 1.8.17). Pin to a full commit hash for a deterministic build.
-name: funannotate-1.9.0-beta.11-rust
+name: funannotate-1.9.0-beta.12-rust
 channels:
   - bioconda
   - conda-forge
@@ -106,7 +112,7 @@ dependencies:
   - hisat2 >=2.2.2,<3
   - kallisto ==0.46.1
   - stringtie >=3.0.3,<4
-  # Pinned =1.10.3, same as funannotate-1.9.0-beta.11.yml.
+  # Pinned =1.10.3, same as funannotate-1.9.0-beta.12.yml.
   #
   # CORRECTION 2026-09-19: the previous note here claimed the hyphaltip
   # rust_optimize Trinity fork was immune to the salmon 2.x problem and that
@@ -132,7 +138,7 @@ dependencies:
   # which ships 2.3.1 and whose cell assembles Trinity fine). So FASTA -r
   # input broke somewhere between 2.3.1 and 2.7.0. An upper-bounded pin such
   # as `salmon <2.7` would therefore also work -- 1.10.3 is chosen instead to
-  # MATCH funannotate-1.9.0-beta.11.yml exactly, so the perl-vs-rust cell pair
+  # MATCH funannotate-1.9.0-beta.12.yml exactly, so the perl-vs-rust cell pair
   # (benchmark question 2) differs only in the EVM/PASA/Trinity axis. The
   # container cells keep whatever salmon their image ships; that version skew
   # is inherent to the conda-vs-container axis and is not something to "fix".
@@ -215,7 +221,7 @@ dependencies:
   - libffi >=3.5.2,<4
   - sqlite
 
-  # ── funannotate itself from git (no conda 1.9.0-beta.11 package) ────────────
-  # NOTE: release tag is 'v1.9.0-beta.11' (with 'v'); commit pinned for determinism.
+  # ── funannotate itself from git (no conda 1.9.0-beta.12 package) ────────────
+  # NOTE: release tag is 'v1.9.0-beta.12' (with 'v'); commit pinned for determinism.
   - pip:
-    - git+https://github.com/nextgenusfs/funannotate.git@17c58f5da60da7b3778518fc3ff5902d50e5168e
+    - git+https://github.com/nextgenusfs/funannotate.git@627b6220c36642ca70c3ab6aa06e8ebde5c52e70
