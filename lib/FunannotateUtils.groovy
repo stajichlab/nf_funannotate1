@@ -84,6 +84,67 @@ class FunannotateUtils {
     // GENEMARK_RUN's ET mode derives RNA-seq-informed intron hints from this.
     // Returns '' (not null) when absent/empty: GENEMARK_RUN's script checks for a
     // non-empty string, and an absent file is the safe signal to fall back to ES.
+    // Returns true when the genome's TRAINING evidence is newer than its existing
+    // predict GBK -- i.e. it has been re-trained since it was last annotated, so
+    // the published annotation no longer reflects the evidence and must be
+    // regenerated.
+    //
+    // WHY: the predict completion filter in train_predict.nf skips any genome
+    // that already has a GBK unless staleRnaseq() or staleGenome() fires. Those
+    // key off the READS and the SOURCE ASSEMBLY, not the training output, so
+    // re-training a genome (new PASA models from the same reads, a repaired
+    // pipeline, a fixed tool) leaves the filter satisfied and predict is never
+    // instantiated. That is a SEPARATE blocker from the Nextflow cache issue
+    // that trainingFingerprint() addresses, and it fires FIRST: without this
+    // check the predict task is never created, so the cache never even gets
+    // consulted. Confirmed 2026-09-20 on Chaetomium globosum in
+    // v1.9.0-beta12_container_rust -- training was modified and the rerun
+    // reported only "Cached process > FETCH_RNASEQ:COLLECT_SRA_QUERY", with no
+    // FUNANNOTATE_PREDICT task in the DAG at all.
+    static boolean staleTraining(String id, String trainingTarget, String target) {
+        def gbk = gbkResult("${target}/${id}/predict_results", id)
+        if (gbk == null) return false
+        def gbkMod = gbk.lastModified()
+        return ['funannotate_train.pasa.gff3', 'funannotate_train.transcripts.gff3'].any { name ->
+            def f = new File("${trainingTarget}/${id}/training/${name}")
+            f.exists() && f.size() > 0 && f.lastModified() > gbkMod
+        }
+    }
+
+    // Fingerprint of the training evidence FUNANNOTATE_PREDICT will consume.
+    //
+    // WHY THIS EXISTS: FUNANNOTATE_PREDICT's inputs are all `val`
+    // (meta, genome_fa, genemark_gtf, other_gff) and it reaches the training
+    // directory at runtime through params.training_target, symlinking it into
+    // the task dir. The training evidence is therefore INVISIBLE to Nextflow's
+    // task hash -- so improving a genome's training set and re-running produces
+    // a CACHE HIT on the old prediction and the new evidence is silently
+    // ignored. Observed three times on 2026-09-19/20 in
+    // BFD/Funannotate_benchmarking: Malassezia globosa was re-trained from 335
+    // to 1,893 PASA models (after re-sourcing its RNA-seq) and predict was
+    // skipped as cached against the old 227k-read result; Chaetomium globosum
+    // hit the same thing in both beta.12 arms after an EVM-isolation test had
+    // populated the cache. Note `-w <newdir>` does NOT avoid this: the resume
+    // database lives in the launch dir, not the work dir.
+    //
+    // Passing this string into the predict input tuple puts the evidence into
+    // the hash, so a changed training set correctly invalidates the cache.
+    // Cheap by design (length + mtime, not a content digest) because it is
+    // evaluated at channel-build time for every genome; funannotate rewrites
+    // these files wholesale on each train, so length+mtime moves whenever the
+    // evidence does. Returns "no-training" when the genome has none (no-RNAseq
+    // assemblies), which is itself a stable, correct key.
+    static String trainingFingerprint(String out, String trainingTarget) {
+        def parts = []
+        ['funannotate_train.pasa.gff3', 'funannotate_train.transcripts.gff3'].each { name ->
+            def f = new File("${trainingTarget}/${out}/training/${name}")
+            if (f.exists() && f.size() > 0) {
+                parts << "${name}:${f.size()}:${f.lastModified()}"
+            }
+        }
+        return parts ? parts.join('|') : 'no-training'
+    }
+
     static String trainingTranscriptBamFor(String out, String trainingTarget) {
         def bam = new File("${trainingTarget}/${out}/training/transcript.alignments.bam")
         return (bam.exists() && bam.size() > 0) ? bam.toString() : ''

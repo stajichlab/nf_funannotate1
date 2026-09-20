@@ -8,7 +8,13 @@ process FUNANNOTATE_PREDICT {
     tag "${meta.id}"
 
     input:
-    tuple val(meta), val(genome_fa), val(genemark_gtf), val(other_gff)
+    // train_fp: fingerprint of the training evidence this predict will consume
+    // (FunannotateUtils.trainingFingerprint). It is NOT used by the script -- it
+    // exists solely so the training evidence participates in Nextflow's task
+    // hash. Without it, re-training a genome leaves the predict hash unchanged
+    // and -resume serves the OLD annotation. See the helper's comment for the
+    // three occurrences that motivated this.
+    tuple val(meta), val(genome_fa), val(genemark_gtf), val(other_gff), val(train_fp)
 
     output:
     val meta, emit: metadata

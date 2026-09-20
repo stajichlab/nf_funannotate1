@@ -131,10 +131,14 @@ workflow PREDICT_REUSE {
     if (runProdigal) {
         PRODIGAL_RUN(fresh_todo)
         fresh_final = fresh_with_gtf.join(PRODIGAL_RUN.out.gff3, by: 0)
-            .map { meta, gfa, gtf, other_gff -> tuple(meta, gfa, gtf, other_gff) }
+            .map { meta, gfa, gtf, other_gff ->
+                tuple(meta, gfa, gtf, other_gff,
+                      FunannotateUtils.trainingFingerprint(meta.id as String, params.training_target as String)) }
     } else {
         fresh_final = fresh_with_gtf
-            .map { meta, gfa, gtf -> tuple(meta, gfa, gtf, '') }
+            .map { meta, gfa, gtf ->
+                tuple(meta, gfa, gtf, '',
+                      FunannotateUtils.trainingFingerprint(meta.id as String, params.training_target as String)) }
     }
     FUNANNOTATE_PREDICT(fresh_final)
 

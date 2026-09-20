@@ -152,6 +152,7 @@ workflow TRAIN_PREDICT {
         .filter { meta, _gfa ->
             FunannotateUtils.gbkResult("${params.target}/${meta.id}/predict_results", meta.id as String) == null ||
             FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString()) ||
+            FunannotateUtils.staleTraining(meta.id as String, params.training_target as String, params.target as String) ||
             FunannotateUtils.staleGenome(meta.id as String, meta.asmid as String, params.source as String, params.target as String)
         }
 
@@ -212,10 +213,14 @@ workflow TRAIN_PREDICT {
     if (runProdigal) {
         PRODIGAL_RUN(predict_ch)
         predict_final = gtf_ch.join(PRODIGAL_RUN.out.gff3, by: 0)
-            .map { meta, genome_fa, genemark_gtf, other_gff -> tuple(meta, genome_fa, genemark_gtf, other_gff) }
+            .map { meta, genome_fa, genemark_gtf, other_gff ->
+                tuple(meta, genome_fa, genemark_gtf, other_gff,
+                      FunannotateUtils.trainingFingerprint(meta.id as String, params.training_target as String)) }
     } else {
         predict_final = gtf_ch
-            .map { meta, genome_fa, genemark_gtf -> tuple(meta, genome_fa, genemark_gtf, '') }
+            .map { meta, genome_fa, genemark_gtf ->
+                tuple(meta, genome_fa, genemark_gtf, '',
+                      FunannotateUtils.trainingFingerprint(meta.id as String, params.training_target as String)) }
     }
 
     FUNANNOTATE_PREDICT(predict_final)
