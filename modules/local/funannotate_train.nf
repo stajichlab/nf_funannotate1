@@ -45,6 +45,19 @@ process FUNANNOTATE_TRAIN {
     // this could match ships gmap (confirmed present in the 1.8.17 env's
     // bin/). Discovered 2026-09-11 in BFD/Funannotate_benchmarking's
     // v1.8.17_conda cell.
+    // 2026-09-20: --aligners is now passed on ALL FIVE `funannotate train`
+    // invocations below. Previously only the two no-shared-Trinity branches
+    // carried it, so whether a genome got an explicit aligner list depended on
+    // whether a shared Trinity assembly happened to exist for it. That silently
+    // made arms non-comparable: for Botrytis, v1.8.17 took the no-shared-Trinity
+    // branch and got `--aligners minimap2 gmap` (funannotate strips minimap2 ->
+    // PASA `--ALIGNERS gmap`), while v1.9.0-beta.12 took a shared-Trinity branch,
+    // received no --aligners at all, and fell through to funannotate's argparse
+    // default ['minimap2','blat'] (beta.12 forces minimap2 in -> PASA
+    // `--ALIGNERS minimap2,blat`). Never leave this to the default again: PASA's
+    // splice validation requires an exact 3 bp match on both sides of every
+    // intron (NUM_BP_PERFECT_SPLICE_BOUNDARY), so aligner choice changes which
+    // spliced alignments survive, and the loss scales with exon count.
     def is_funannotate_1_8_17 = (params.conda_env?.contains('1.8.17') || params.container_funannotate?.contains('1.8.17'))
     def aligners_arg = is_funannotate_1_8_17 ? 'minimap2 gmap' : 'minimap2'
     """
@@ -487,6 +500,7 @@ process FUNANNOTATE_TRAIN {
             echo "[INFO] Running funannotate train (PASA+PE) for ${out} using shared Trinity (pasa_tier=${pasa_tier})"
             funannotate train -i "\$GENOME_IN" -o ${params.training_target}/${out} \\
                 --trinity ${trinity_fa} --left_norm ${r1} --right_norm ${r2} \\
+                --aligners ${aligners_arg} \\
                 --species "${species}" --strain "${strain}" \\
                 --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
                 --header_length ${header_length} \\
@@ -498,6 +512,7 @@ process FUNANNOTATE_TRAIN {
             echo "[INFO] Running funannotate train (PASA+SE) for ${out} using shared Trinity (pasa_tier=${pasa_tier})"
             funannotate train -i "\$GENOME_IN" -o ${params.training_target}/${out} \\
                 --trinity ${trinity_fa} --single_norm ${se} \\
+                --aligners ${aligners_arg} \\
                 --species "${species}" --strain "${strain}" \\
                 --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
                 --header_length ${header_length} \\
@@ -515,6 +530,7 @@ process FUNANNOTATE_TRAIN {
             echo "[INFO] Running funannotate train (PASA only, no reads) for ${out} using shared Trinity (pasa_tier=${pasa_tier})"
             funannotate train -i "\$GENOME_IN" -o ${params.training_target}/${out} \\
                 --trinity ${trinity_fa} \\
+                --aligners ${aligners_arg} \\
                 --species "${species}" --strain "${strain}" \\
                 --cpus ${task.cpus} --memory ${task.memory.toGiga()}G \\
                 --header_length ${header_length} \\
