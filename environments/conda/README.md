@@ -76,23 +76,25 @@ way.
 
 The pin only takes effect when the env is (re)built. Manifest pins and the
 versions actually present under `/bigdata/stajichlab/shared/condaenv`, checked
-2026-09-19:
+2026-09-20:
 
 | env | manifest pin | installed in built env |
 |---|---|---|
 | `funannotate-1.8.17` | `salmon =1.10.3` | 1.10.3 ✅ |
 | `funannotate-1.9.0-beta.11` | `salmon =1.10.3` | 1.10.3 ✅ |
-| `funannotate-1.9.0-beta.11-rust` | `salmon =1.10.3` | **2.7.0 ❌ — env predates the pin (built 2026-08-30), never rebuilt** |
-| `funannotate-1.9.0-beta.12` | `salmon =1.10.3` | not built yet |
-| `funannotate-1.9.0-beta.12-rust` | `salmon =1.10.3` | not built yet |
-| `funannotate-master`, `funannotate-1.9.0-beta.10` | unpinned (`salmon`) | not built / stale — an unpinned solve resolves to 2.x today |
-| `funannotate-1.9.0-beta.10-rust` | `salmon >=1.0` | not built / stale — same, `>=1.0` does not exclude 2.x |
+| `funannotate-1.9.0-beta.12` | `salmon =1.10.3` | 1.10.3 ✅ |
+| `funannotate-1.9.0-beta.12-rust` | `salmon =1.10.3` | 1.10.3 ✅ |
+| `funannotate-master`, `funannotate-1.9.0-beta.10` | unpinned (`salmon`) | not built — an unpinned solve resolves to 2.x today |
+| `funannotate-1.9.0-beta.10-rust` | `salmon >=1.0` | not built — same, `>=1.0` does not exclude 2.x |
 
-**`funannotate-1.9.0-beta.11-rust` is therefore still broken on disk** and will
-keep emitting empty Trinity assemblies until it is rebuilt. Rebuilding it, or
-building the beta.12 envs, picks up the correct pin.
+`funannotate-1.9.0-beta.11-rust` was built 2026-08-30, before the pin existed,
+so it kept salmon 2.7.0 and kept emitting empty Trinity assemblies. It was
+**deleted 2026-09-20**, superseded by `funannotate-1.9.0-beta.12-rust`. Rebuild
+it from `funannotate-1.9.0-beta.11-rust.yml` if an older benchmark cell needs
+it; the manifest now carries the correct pin.
 
-Check any env before trusting it:
+Check any env before trusting it — the manifest is a claim, the binary is the
+fact:
 
 ```bash
 /bigdata/stajichlab/shared/condaenv/<env>/bin/salmon --version   # want: salmon 1.10.3
