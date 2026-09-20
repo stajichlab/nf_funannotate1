@@ -54,16 +54,59 @@ process FUNANNOTATE_TRAIN {
         exit 0
     fi
 
-    # ── Skip if the shared Trinity-GG assembly is too thin to train on ────────
-    # A too-few-transcripts trinity_fa usually means it was assembled against the
-    # wrong reference strain (same species name, divergent genome) rather than a
-    # real expression signal -- PASA has nothing to build a training set from and
-    # funannotate train either crashes or emits junk models. See
-    # train_min_trinity_transcripts in conf/profile_annotate.config.
-    if [ -s "${trinity_fa}" ] && [ "${params.train_min_trinity_transcripts}" -gt 0 ]; then
-        TRINITY_TX_COUNT=\$(grep -c '^>' "${trinity_fa}" || true)
+    # ── Skip if the transcript evidence is too thin to train on ───────────────
+    # A too-few-transcripts assembly usually means either (a) it was assembled
+    # against the wrong reference strain (same species name, divergent genome),
+    # or (b) the RNA-seq library is far too shallow. Either way PASA has nothing
+    # to build a usable training set from, and funannotate train does NOT fail --
+    # it happily trains Augustus on junk and silently under-calls the genome.
+    # See train_min_trinity_transcripts in conf/profile_annotate.config.
+    #
+    # This check used to test ONLY \${trinity_fa} (the SHARED Trinity-GG input).
+    # In deployments that do not pre-supply a shared assembly that path is an
+    # empty placeholder, so `[ -s ... ]` was false and the ENTIRE gate was dead
+    # code -- confirmed 2026-09-19 in BFD/Funannotate_benchmarking, where every
+    # runs/<cell>/rnaseq_data/*.trinity-GG.fasta is 0 bytes and
+    # Malassezia_globosa_CBS_7966 sailed through with 507 transcripts against a
+    # threshold of 2000, then under-called the genome 4x (1,031 genes vs a RefSeq
+    # truth of 4,278). Now checks the shared input AND the real per-genome
+    # Trinity output from any previous run.
+    TRAINDIR_PRE="${params.training_target}/${out}/training"
+    for _tfa in "${trinity_fa}" "\$TRAINDIR_PRE/trinity.fasta"; do
+        [ -s "\$_tfa" ] || continue
+        [ "${params.train_min_trinity_transcripts}" -gt 0 ] || continue
+        TRINITY_TX_COUNT=\$(grep -c '^>' "\$_tfa" || true)
         if [ "\$TRINITY_TX_COUNT" -lt "${params.train_min_trinity_transcripts}" ]; then
-            echo "[WARN] ${out}: shared Trinity-GG assembly has only \$TRINITY_TX_COUNT transcripts (< ${params.train_min_trinity_transcripts}); likely assembled against the wrong reference strain. Skipping funannotate train." >&2
+            echo "[WARN] ${out}: transcript assembly \$_tfa has only \$TRINITY_TX_COUNT transcripts (< ${params.train_min_trinity_transcripts}); too thin to train on (wrong reference strain, or a far too shallow library). Skipping funannotate train." >&2
+            mkdir -p "\$TRAINDIR_PRE"
+            : > "\$TRAINDIR_PRE/.pasa_train_failed"
+            printf "out\\tspecies\\tpasa_tier\\texit_code\\ttimestamp\\n%s\\t%s\\t%s\\t%s\\t%s\\n" \\
+                "${out}" "${species}" "${pasa_tier}" "thin_transcripts:\$TRINITY_TX_COUNT" "\$(date -Iseconds)" \\
+                > "${out}.pasa_train_failed.tsv"
+            exit 0
+        fi
+    done
+
+    # ── Skip if the RNA-seq libraries themselves are too small ────────────────
+    # Cheapest possible guard: catches a dead/empty library BEFORE spending hours
+    # on hisat2 + Trinity. Measured 2026-09-19 across 9 genomes: the two that
+    # failed had 0 bytes (Rhodotorula_toruloides -- no reads at all) and 13.8 MB
+    # single-end (Malassezia_globosa), while all seven that trained cleanly had
+    # 147-1020 MB of compressed reads. Compressed size is a crude proxy for depth
+    # but the separation is ~10x, and it costs nothing to evaluate.
+    if [ "${params.train_min_rnaseq_bytes}" -gt 0 ] && [ ! -s "${trinity_fa}" ]; then
+        RNA_BYTES=0
+        for _fq in "${r1}" "${r2}" "${se}"; do
+            [ -s "\$_fq" ] || continue
+            RNA_BYTES=\$(( RNA_BYTES + \$(stat -Lc %s "\$_fq" 2>/dev/null || echo 0) ))
+        done
+        if [ "\$RNA_BYTES" -lt "${params.train_min_rnaseq_bytes}" ]; then
+            echo "[WARN] ${out}: RNA-seq libraries total only \$RNA_BYTES compressed bytes (< ${params.train_min_rnaseq_bytes}); too shallow to train on. Skipping funannotate train -- predict will proceed ab-initio." >&2
+            mkdir -p "\$TRAINDIR_PRE"
+            : > "\$TRAINDIR_PRE/.pasa_train_failed"
+            printf "out\\tspecies\\tpasa_tier\\texit_code\\ttimestamp\\n%s\\t%s\\t%s\\t%s\\t%s\\n" \\
+                "${out}" "${species}" "${pasa_tier}" "thin_rnaseq:\$RNA_BYTES" "\$(date -Iseconds)" \\
+                > "${out}.pasa_train_failed.tsv"
             exit 0
         fi
     fi
@@ -115,6 +158,61 @@ process FUNANNOTATE_TRAIN {
     fi
 
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
+
+    # ── Put TransDecoder's util/ on PATH for PASA's training-set step ─────────
+    # PASA's scripts/pasa_asmbls_to_training_set.dbi (which funannotate train
+    # shells out to for "Getting PASA models for training with TransDecoder")
+    # calls cdna_alignment_orf_to_genome_orf.pl and gff3_file_to_bed.pl by BARE
+    # NAME, relying on them being on PATH. They are not: both conda TransDecoder
+    # builds ship them ONLY under <prefix>/opt/transdecoder/util/, and nothing
+    # in the env's activate.d adds that directory. The dbi therefore dies at its
+    # line 150 with "sh: cdna_alignment_orf_to_genome_orf.pl: command not found"
+    # AFTER TransDecoder itself has succeeded -- leaving a 0-byte
+    # <db>.assemblies.fasta.transdecoder.genome.gff3 (the shell redirect had
+    # already created it) and failing the whole train. Root-caused 2026-09-19 on
+    # v1.8.17_conda, where it had blocked every genome for a week.
+    #
+    # Resolve the directory rather than hardcoding a prefix, so this works for
+    # conda and container provisioning and across TransDecoder layouts:
+    # 5.7.1 puts the launchers in opt/transdecoder/ with utils in
+    # opt/transdecoder/util/, while bioconda's 6.0.0 build moved the launchers
+    # into util/ but left bin/TransDecoder.* symlinked at the 5.x path (they
+    # dangle -- so probing `command -v TransDecoder.LongOrfs` is NOT reliable).
+    # Probe for the script we actually need instead.
+    # Candidate list is layout-driven, then the two container layouts actually
+    # verified in this project's images (2026-09-19):
+    #   funannotate-1.8.17.sif      conda-style /venv, and it ALREADY has the
+    #                               script on PATH at /venv/bin -- so this loop
+    #                               is a no-op there, kept for robustness.
+    #   funannotate-1.9.0-beta.11.sif  pixi-based, everything under
+    #                               /pixi/.pixi/envs/base.
+    # \$PASAHOME/pasa-plugins/transdecoder/util is PASA's own bundled copy --
+    # the very path the dbi's \$FindBin::Bin/../pasa-plugins/transdecoder refers
+    # to. It is absent in both conda envs but present in the beta.11 image.
+    # Only intervene when the script is genuinely unreachable. Environments
+    # that already resolve it (e.g. funannotate-1.8.17.sif, which ships it at
+    # /venv/bin) are left exactly as they were -- prepending a different
+    # TransDecoder copy there could silently change results for cells that
+    # already produced good training sets.
+    if command -v cdna_alignment_orf_to_genome_orf.pl >/dev/null 2>&1; then
+        echo "[INFO] cdna_alignment_orf_to_genome_orf.pl already on PATH: \$(command -v cdna_alignment_orf_to_genome_orf.pl)"
+    else
+    for _td in "\${CONDA_PREFIX:-}/opt/transdecoder/util" \\
+               "\${PASAHOME:-}/pasa-plugins/transdecoder/util" \\
+               /venv/opt/transdecoder/util \\
+               /pixi/.pixi/envs/base/opt/transdecoder/util \\
+               /opt/transdecoder/util \\
+               /usr/local/opt/transdecoder/util; do
+        if [ -f "\$_td/cdna_alignment_orf_to_genome_orf.pl" ]; then
+            export PATH="\$_td:\$PATH"
+            echo "[INFO] added TransDecoder util dir to PATH: \$_td"
+            break
+        fi
+    done
+    if ! command -v cdna_alignment_orf_to_genome_orf.pl >/dev/null 2>&1; then
+        echo "[WARN] cdna_alignment_orf_to_genome_orf.pl not on PATH -- PASA's pasa_asmbls_to_training_set.dbi will fail at its final step" >&2
+    fi
+    fi
     export FUNANNOTATE_DB=${params.funannotate_db}
     # Node-local scratch may not exist / be writable if an inherited \$SCRATCH
     # points at another node's path — fall back to the task workdir.
@@ -449,6 +547,27 @@ process FUNANNOTATE_TRAIN {
     } 2>&1 | tee funannotate_train_capture.log
     TRAIN_STATUS=\${PIPESTATUS[0]}
     if [ "\$TRAIN_STATUS" -ne 0 ]; then
+        # ── Preserve PASA/TransDecoder diagnostics BEFORE the wipe below ──────
+        # funannotate's train.py hands PASA's stdout+stderr to per-step logs
+        # INSIDE pasa/ (pasa-assembly.log for Launch_PASA_pipeline.pl,
+        # pasa-transdecoder.log for pasa_asmbls_to_training_set.dbi). The
+        # capture log this process tees only ever sees funannotate's own
+        # one-line "CMD ERROR: <command>" summary, never the underlying tool's
+        # stderr. Wiping pasa/ (below) therefore destroyed the ONLY copy of
+        # why PASA failed, on every attempt -- which is why the v1.8.17_conda
+        # TransDecoder failure stayed un-root-caused across a week of
+        # relaunches (2026-09-19). Copy the logs somewhere durable first; they
+        # are a few KB each.
+        PASA_LOGDIR="${params.training_target}/${out}/logfiles"
+        mkdir -p "\$PASA_LOGDIR"
+        for _pl in "${params.training_target}/${out}/training"/pasa/pasa-*.log \\
+                   "${params.training_target}/${out}/training"/pasa/*.cmds_log; do
+            [ -f "\$_pl" ] || continue
+            cp -f "\$_pl" "\$PASA_LOGDIR/\$(basename "\$_pl")" 2>/dev/null || true
+            # also leave a copy in the failed task workdir, next to .command.err
+            cp -f "\$_pl" "./\$(basename "\$_pl")" 2>/dev/null || true
+            echo "[INFO] preserved PASA log \$(basename "\$_pl") -> \$PASA_LOGDIR/" >&2
+        done
         # One chance to degrade gracefully instead of the usual hard-fail+retry,
         # PROVIDED PASA itself actually completed its alignment/assignment step
         # (its own "PASA assigned N transcripts to M loci" summary line appears
@@ -459,7 +578,14 @@ process FUNANNOTATE_TRAIN {
         # exactly the kind of infra failure that SHOULD keep retrying with more
         # memory/resources, not get silently absorbed into "this strain isn't
         # trainable".
-        if grep -qE 'PASA assigned [0-9]+ transcripts to [0-9]+ loci' funannotate_train_capture.log; then
+        # NB the counts funannotate prints are thousands-separated ('PASA assigned
+        # 2,406 transcripts to 2,259 loci' -- train.py formats them with {:,}), so
+        # the character class MUST include the comma. With a bare [0-9]+ this test
+        # silently never matched for any genome with >=1,000 transcripts, i.e. all
+        # of them, so every PASA-completed-but-TransDecoder-failed run took the
+        # hard-fail path below and burned its full retry budget instead of
+        # degrading once. Found 2026-09-19 on v1.8.17_conda.
+        if grep -qE 'PASA assigned [0-9,]+ transcripts to [0-9,]+ loci' funannotate_train_capture.log; then
             echo "[WARN] ${out}: funannotate train failed (exit \$TRAIN_STATUS) but PASA completed alignment/assignment for this run (pasa_tier=${pasa_tier}) -- treating as 'not enough usable transcript evidence' rather than an infra failure. Degrading to ab-initio-only; predict will proceed without PASA evidence for this strain." >&2
             mkdir -p "${params.training_target}/${out}/training"
             : > "${params.training_target}/${out}/training/.pasa_train_failed"
