@@ -25,14 +25,15 @@ process RNASEQ_PREPARE {
     // rebuilds it. If they are not rescued here they are lost, and PASA then
     // runs without --trans_gtf and minimap2 without --junc-bed, silently.
     // Carrying these (~10 MB) rather than the BAM (multi-GB) is the point.
-    // Always emitted, zero-byte when unavailable: storeDir requires its outputs
-    // to exist or the process re-runs on every resume, and funannotate's own
-    // lib.checkannotations() treats a zero-byte file as absent, so an empty
-    // placeholder is correctly ignored downstream.
+    // OPTIONAL, deliberately. storeDir skips a process only when EVERY declared output
+    // exists, so a new non-optional output makes the process re-run against every
+    // existing rnaseq_data/ store (tested: required -> re-runs, optional -> skipped).
+    // That would silently rebuild Trinity-GG for every species. Older stores simply
+    // have no StringTie/junction files, which is the pre-existing behaviour.
     tuple val(species_tag),
-            path("${species_tag}.stringtie.gtf"), emit: stringtie
+            path("${species_tag}.stringtie.gtf"), optional: true, emit: stringtie
     tuple val(species_tag),
-            path("${species_tag}.junctions.bed"), emit: junctions
+            path("${species_tag}.junctions.bed"), optional: true, emit: junctions
 
     script:
     def out           = meta.id
@@ -148,7 +149,6 @@ process RNASEQ_PREPARE {
         echo "[INFO] rescued StringTie GTF (\$(wc -l < "\$ST_GTF") lines) for ${species_tag}"
     else
         echo "[WARN] ${species_tag}: no StringTie GTF under \$TRAINDIR -- PASA will run without --trans_gtf" >&2
-        : > ${species_tag}.stringtie.gtf
     fi
 
     JUNC_BED="\$TRAINDIR/rnaseq.junctions.bed"
@@ -157,7 +157,6 @@ process RNASEQ_PREPARE {
         echo "[INFO] rescued \$(wc -l < "\$JUNC_BED") splice junctions for ${species_tag}"
     else
         echo "[WARN] ${species_tag}: no junction BED under \$TRAINDIR -- minimap2 will run without --junc-bed" >&2
-        : > ${species_tag}.junctions.bed
     fi
 
     # Scratch (stop_after_trinity) runs clean up; full persistent runs keep the
