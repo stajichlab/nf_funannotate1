@@ -20,6 +20,19 @@ process RNASEQ_PREPARE {
     output:
     tuple val(species_tag),
             path("${species_tag}.trinity-GG.fasta"), emit: shared
+    // Both derive from hisat2.coordSorted.bam, which exists ONLY inside this
+    // Trinity step -- a later `funannotate train --trinity <shared>` never
+    // rebuilds it. If they are not rescued here they are lost, and PASA then
+    // runs without --trans_gtf and minimap2 without --junc-bed, silently.
+    // Carrying these (~10 MB) rather than the BAM (multi-GB) is the point.
+    // Always emitted, zero-byte when unavailable: storeDir requires its outputs
+    // to exist or the process re-runs on every resume, and funannotate's own
+    // lib.checkannotations() treats a zero-byte file as absent, so an empty
+    // placeholder is correctly ignored downstream.
+    tuple val(species_tag),
+            path("${species_tag}.stringtie.gtf"), emit: stringtie
+    tuple val(species_tag),
+            path("${species_tag}.junctions.bed"), emit: junctions
 
     script:
     def out           = meta.id
@@ -128,6 +141,25 @@ process RNASEQ_PREPARE {
         touch ${species_tag}.trinity-GG.fasta
     fi
 
+    # ── Rescue the shortBAM-derived evidence before scratch is wiped ─────────
+    ST_GTF="\$TRAINDIR/funannotate_train.stringtie.gtf"
+    if [ -s "\$ST_GTF" ]; then
+        cp "\$ST_GTF" ${species_tag}.stringtie.gtf
+        echo "[INFO] rescued StringTie GTF (\$(wc -l < "\$ST_GTF") lines) for ${species_tag}"
+    else
+        echo "[WARN] ${species_tag}: no StringTie GTF under \$TRAINDIR -- PASA will run without --trans_gtf" >&2
+        : > ${species_tag}.stringtie.gtf
+    fi
+
+    JUNC_BED="\$TRAINDIR/rnaseq.junctions.bed"
+    if [ -s "\$JUNC_BED" ]; then
+        cp "\$JUNC_BED" ${species_tag}.junctions.bed
+        echo "[INFO] rescued \$(wc -l < "\$JUNC_BED") splice junctions for ${species_tag}"
+    else
+        echo "[WARN] ${species_tag}: no junction BED under \$TRAINDIR -- minimap2 will run without --junc-bed" >&2
+        : > ${species_tag}.junctions.bed
+    fi
+
     # Scratch (stop_after_trinity) runs clean up; full persistent runs keep the
     # training dir for FUNANNOTATE_PREDICT (via symlink) and so FUNANNOTATE_TRAIN
     # can skip the already-trained representative.
@@ -141,6 +173,8 @@ process RNASEQ_PREPARE {
     def out = meta.id
     """
     echo ">stub_trinity_${species_tag}" > ${species_tag}.trinity-GG.fasta
+    : > ${species_tag}.stringtie.gtf
+    : > ${species_tag}.junctions.bed
     mkdir -p ${params.training_target}/${out}/training
     touch ${params.training_target}/${out}/training/funannotate_train.pasa.gff3
     """
