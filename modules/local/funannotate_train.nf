@@ -59,7 +59,13 @@ process FUNANNOTATE_TRAIN {
     // intron (NUM_BP_PERFECT_SPLICE_BOUNDARY), so aligner choice changes which
     // spliced alignments survive, and the loss scales with exon count.
     def is_funannotate_1_8_17 = (params.conda_env?.contains('1.8.17') || params.container_funannotate?.contains('1.8.17'))
-    def aligners_arg = is_funannotate_1_8_17 ? 'minimap2 gmap' : 'minimap2'
+    // params.pasa_aligners (e.g. --pasa_aligners gmap) states the aligner list
+    // explicitly for every genome in a run. Leave it unset for the historical
+    // per-version defaults. Do NOT rely on the default for a benchmark arm: under
+    // funannotate beta.13 a bare 'minimap2' is stripped to an empty PASA list and
+    // silently replaced by gmap-else-blat, so the aligner PASA actually uses would
+    // not be visible in the launch command.
+    def aligners_arg = params.pasa_aligners ? params.pasa_aligners.toString() : (is_funannotate_1_8_17 ? 'minimap2 gmap' : 'minimap2')
     """
     # ── Skip if no RNA-seq data at all ────────────────────────────────────────
     if [ ! -s "${r1}" ] && [ ! -s "${se}" ] && [ ! -s "${trinity_fa}" ]; then
