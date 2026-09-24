@@ -96,7 +96,15 @@ process RNASEQ_PREPARE {
     if [ ! -d "\$SCRATCH" ] || [ ! -w "\$SCRATCH" ]; then
         SCRATCH="\$PWD"
     fi
-    TMPDIR=\$SCRATCH
+    # funannotate 1.9's trinity.py passes \$TMPDIR as Trinity's --workdir, and
+    # stock Trinity (2.15.2, the conda perl env) dies unless that path's
+    # basename contains "trinity". A bare \$SCRATCH (/scratch/<user>/<jobid>)
+    # failed every species in v1.9.0-rc1_conda (confirmed 2026-09-24); the
+    # patched 2.16.1_rust Trinity appends trinity_workdir.<tag> itself, so only
+    # the perl env hit it. Same fix as funannotate_train.nf (2026-09-08).
+    TMPDIR="\$SCRATCH/trinity_work"
+    mkdir -p "\$TMPDIR"
+    export TMPDIR
 
     echo "[INFO] RNASEQ_PREPARE: running funannotate train for representative ${out} (species: ${species_tag})"
     if [ "${params.debug.toBoolean()}" = "true" ]; then

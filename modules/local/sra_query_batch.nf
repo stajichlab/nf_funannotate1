@@ -36,6 +36,17 @@
 // accessions against SRA runinfo/BioSample directly if verifying).
 // Resources overridden per-profile by withName: '.*:SRA_QUERY_BATCH' in
 // conf/profile_annotate.config (short queue, retry on failure).
+// Community samples are excluded too: LibrarySource (runinfo col 15)
+// METATRANSCRIPTOMIC / METAGENOMIC, rumen/microbiome/fecal keywords, and an
+// explicit study denylist. Confirmed 2026-09-24: two Sichuan Agricultural
+// University goat-rumen metatranscriptome studies -- SRP500439/PRJNA1097788 and
+// SRP606484/PRJNA1301529 -- file one run per microbe taxon ("Microbe sample
+// from <species>", SampleName like H.RUEMN.5.1) under 12 taxa each, 6 of them
+// fungi (Aspergillus calidoustus, Batrachochytrium dendrobatidis, Rhizophagus
+// irregularis, Rhizopus microsporus, Rozella allomycis, Spizellomyces
+// punctatus). Their recent ReleaseDate ranked them first: R. microsporus got
+// 100% rumen reads (26 of 49.2M hisat2-mapped, Trinity-GG 0 transcripts) and
+// B. dendrobatidis 86%. Runs from the same CenterName are kept but warned.
 process SRA_QUERY_BATCH {
     label 'edirect'
     label 'process_single'
@@ -94,10 +105,23 @@ process SRA_QUERY_BATCH {
             # then most-recent ReleaseDate first, then spot count desc as a final tiebreaker.
             # Best-effort keyword filter on LibraryName/SampleName excludes likely
             # host-associated/co-infection samples -- see module header comment.
-            awk -F',' '
+            awk -F',' -v BL="${launchDir}/rnaseq_blacklist.csv" '
+                BEGIN {
+                    # rnaseq_blacklist.csv 'skip' rows (action col 4; col 5 tolerated for rows that
+                    # carry spots in col 4). Dropped here so the top-N backfills with a clean run.
+                    while ((getline l < BL) > 0) { if (l ~ /^#/) continue; split(l, f, ","); if (f[4] == "skip" || f[5] == "skip") skip[f[1]] = 1 }
+                    close(BL)
+                }
                 NR>1 && \$13=="RNA-Seq" && \$16=="PAIRED" && \$1~/^[SDE]RR/ && \$4+0>=250000 {
                     meta = " " tolower(\$12 " " \$30) " "
-                    if (meta ~ /(mouse|murine| mice | rat |rabbit|macrophage|phagocyt|in.?vivo|infect|co.?infec|co.?cultur|amoeba|acanthamoeba|galleria|zebrafish|elegans| host |blood|serum|plasma|csf|cerebrospinal|lung|brain|spleen|kidney| liver |tissue|biopsy|patient|clinical|autopsy|necropsy|bronch)/) next
+                    if (meta ~ /(mouse|murine| mice | rat |rabbit|macrophage|phagocyt|in.?vivo|infect|co.?infec|co.?cultur|amoeba|acanthamoeba|galleria|zebrafish|elegans| host |blood|serum|plasma|csf|cerebrospinal|lung|brain|spleen|kidney| liver |tissue|biopsy|patient|clinical|autopsy|necropsy|bronch|rumen|ruemn|rumin|microbiom|metagenom|metatranscript|faec|fecal|feces|sludge|compost)/) next
+                    # LibrarySource (col 15) METATRANSCRIPTOMIC/METAGENOMIC = community sample, not this species.
+                    if (\$15 ~ /^META/) next
+                    # Known mislabeled studies (SRAStudy col 21 / BioProject col 22) -- see header comment.
+                    if (\$21 ~ /^(SRP500439|SRP606484)\$/ || \$22 ~ /^(PRJNA1097788|PRJNA1301529)\$/) next
+                    if (\$1 in skip) next
+                    # Same submitter as those studies (CenterName; runinfo has no author field): keep, but warn.
+                    if (toupper(\$0) ~ /SICHUAN AGRICULTURAL UNIVERSITY/) print "[WARN] SRA_QUERY: " \$1 " (" \$21 ") is from SICHUAN AGRICULTURAL UNIVERSITY -- check it is not a rumen/community sample" > "/dev/stderr"
                     rank = (\$19 ~ /[Ii]llumina/) ? 0 : 1
                     printf "%d,%s,%s,%s,%s\\n", rank, \$2, \$1, \$4, \$19
                 }' "_runinfo_\${species_tag}.tmp" | \\
@@ -115,10 +139,23 @@ process SRA_QUERY_BATCH {
                 if timeout 300 bash -c \\
                         "esearch -db sra -query 'txid\${taxonid}[Organism:noexp] AND RNA-Seq[Strategy] AND SINGLE[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND Illumina[Platform]' | efetch -format runinfo -start 1 -stop 250" \\
                         < /dev/null > "_runinfo_se_\${species_tag}.tmp"; then
-                    awk -F',' '
+                    awk -F',' -v BL="${launchDir}/rnaseq_blacklist.csv" '
+                        BEGIN {
+                            # rnaseq_blacklist.csv 'skip' rows (action col 4; col 5 tolerated for rows that
+                            # carry spots in col 4). Dropped here so the top-N backfills with a clean run.
+                            while ((getline l < BL) > 0) { if (l ~ /^#/) continue; split(l, f, ","); if (f[4] == "skip" || f[5] == "skip") skip[f[1]] = 1 }
+                            close(BL)
+                        }
                         NR>1 && \$13=="RNA-Seq" && \$16=="SINGLE" && \$1~/^[SDE]RR/ && \$4+0>=250000 {
                             meta = " " tolower(\$12 " " \$30) " "
-                            if (meta ~ /(mouse|murine| mice | rat |rabbit|macrophage|phagocyt|in.?vivo|infect|co.?infec|co.?cultur|amoeba|acanthamoeba|galleria|zebrafish|elegans| host |blood|serum|plasma|csf|cerebrospinal|lung|brain|spleen|kidney| liver |tissue|biopsy|patient|clinical|autopsy|necropsy|bronch)/) next
+                            if (meta ~ /(mouse|murine| mice | rat |rabbit|macrophage|phagocyt|in.?vivo|infect|co.?infec|co.?cultur|amoeba|acanthamoeba|galleria|zebrafish|elegans| host |blood|serum|plasma|csf|cerebrospinal|lung|brain|spleen|kidney| liver |tissue|biopsy|patient|clinical|autopsy|necropsy|bronch|rumen|ruemn|rumin|microbiom|metagenom|metatranscript|faec|fecal|feces|sludge|compost)/) next
+                            # LibrarySource (col 15) METATRANSCRIPTOMIC/METAGENOMIC = community sample, not this species.
+                            if (\$15 ~ /^META/) next
+                            # Known mislabeled studies (SRAStudy col 21 / BioProject col 22) -- see header comment.
+                            if (\$21 ~ /^(SRP500439|SRP606484)\$/ || \$22 ~ /^(PRJNA1097788|PRJNA1301529)\$/) next
+                            if (\$1 in skip) next
+                            # Same submitter as those studies (CenterName; runinfo has no author field): keep, but warn.
+                            if (toupper(\$0) ~ /SICHUAN AGRICULTURAL UNIVERSITY/) print "[WARN] SRA_QUERY: " \$1 " (" \$21 ") is from SICHUAN AGRICULTURAL UNIVERSITY -- check it is not a rumen/community sample" > "/dev/stderr"
                             printf "%s,%s,%s,%s\\n", \$2, \$1, \$4, \$19
                         }' "_runinfo_se_\${species_tag}.tmp" | \\
                         sort -t',' -k1,1r -k3,3rn | \\
