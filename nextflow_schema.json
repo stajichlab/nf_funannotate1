@@ -600,7 +600,7 @@
         },
         "container_mariadb": {
           "type": "string",
-          "description": "MariaDB image for PASA's mysql backend (params.pasa_mysql). Invoked directly via `apptainer exec`, not a process container= directive."
+          "description": "MariaDB image for PASA's mysql backend (params.pasa_mysql). Default (unset): params.container_funannotate, which bundles MariaDB. A docker:// URI resolves to Nextflow's cache file in sif_dir (pulled once). Invoked directly via `apptainer exec`, not a process container= directive."
         },
         "pixi_manifest": {
           "type": "string",

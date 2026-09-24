@@ -65,6 +65,12 @@ process FUNANNOTATE_TRAIN {
     // funannotate beta.13 a bare 'minimap2' is stripped to an empty PASA list and
     // silently replaced by gmap-else-blat, so the aligner PASA actually uses would
     // not be visible in the launch command.
+    // PASA MariaDB image (container_mariadb, else container_funannotate), as the
+    // local file in params.sif_dir -- a docker:// URI maps to Nextflow's own
+    // cache file, pulled once if missing, never converted on every call.
+    def mariadb_image      = FunannotateUtils.mariadbImage(params)
+    def mariadb_img        = FunannotateUtils.localImageFile(mariadb_image, params.sif_dir as String)
+    def ensure_mariadb_img = FunannotateUtils.ensureLocalImageScript(mariadb_image, params.sif_dir as String)
     def aligners_arg = params.pasa_aligners ? params.pasa_aligners.toString() : (is_funannotate_1_8_17 ? 'minimap2 gmap' : 'minimap2')
     """
     # ── Skip if no RNA-seq data at all ────────────────────────────────────────
@@ -389,13 +395,14 @@ process FUNANNOTATE_TRAIN {
             # for the same rationale on the main container axis. The
             # `singularity` binary used below is apptainer's own compat symlink.
             module load apptainer
+            ${ensure_mariadb_img}
             # Fresh init via the sidecar image's OWN bundled install-db tool
             # (same rationale as the in-image branch above: no external
             # datadir template needed) -- NOT yet verified that
-            # params.container_mariadb actually has mariadb-install-db/
+            # the MariaDB image actually has mariadb-install-db/
             # mysql_install_db on its PATH; confirm before relying on this.
             singularity exec -B \$MYSQL_SCRATCH/db/:/var/lib/mysql \\
-                ${params.container_mariadb} sh -c \\
+                '${mariadb_img}' sh -c \\
                 'command -v mariadb-install-db || command -v mysql_install_db' \\
                 > /tmp/mysql_install_bin_\$\$.txt 2>/dev/null
             MYSQL_INSTALL_BIN=\$(cat /tmp/mysql_install_bin_\$\$.txt 2>/dev/null)
@@ -412,17 +419,27 @@ process FUNANNOTATE_TRAIN {
                 # "Can't connect to MySQL server ... (111)" despite
                 # `instance start` itself reporting success).
                 singularity exec -B \$MYSQL_SCRATCH/db/:/var/lib/mysql \\
-                    ${params.container_mariadb} \\
+                    '${mariadb_img}' \\
                     "\$MYSQL_INSTALL_BIN" --datadir=/var/lib/mysql \\
                     --auth-root-authentication-method=normal || \\
                     { echo "ERROR: sidecar \$MYSQL_INSTALL_BIN failed" >&2; exit 1; }
             else
-                echo "ERROR: no mariadb-install-db/mysql_install_db found in ${params.container_mariadb}" >&2
+                echo "ERROR: no mariadb-install-db/mysql_install_db found in ${mariadb_img}" >&2
                 exit 1
             fi
             singularity instance start --writable-tmpfs \\
                 -B \$MYSQL_SCRATCH/conf/my.cnf:/etc/mysql/my.cnf,\$MYSQL_SCRATCH/db/:/var/lib/mysql,\$MYSQL_SCRATCH/conf:/usr/conf \\
-                ${params.container_mariadb} mysqldb_${asmid}_\${SLURM_JOB_ID:-\$\$} /usr/bin/mysqld_safe
+                '${mariadb_img}' mysqldb_${asmid}_\${SLURM_JOB_ID:-\$\$} /usr/bin/mysqld_safe
+            # The trailing /usr/bin/mysqld_safe above is only an argument to the
+            # image's %startscript. The old mariadb.sif startscript runs
+            # mysqld_safe itself; the funannotate image (the default MariaDB
+            # image now) has Apptainer's empty default startscript, so nothing
+            # starts and every connection is refused (confirmed 2026-09-24).
+            # Start the server inside the instance when the startscript won't.
+            if ! singularity inspect --startscript '${mariadb_img}' 2>/dev/null | grep -Eq 'mysqld|mariadbd'; then
+                singularity exec instance://mysqldb_${asmid}_\${SLURM_JOB_ID:-\$\$} \\
+                    sh -c 'nohup /usr/bin/mysqld_safe >/dev/null 2>&1 &'
+            fi
         fi
         trap "stop_mysqldb; exit 130" SIGHUP SIGINT SIGTERM
         trap "stop_mysqldb" EXIT
@@ -430,8 +447,8 @@ process FUNANNOTATE_TRAIN {
         if command -v mariadb >/dev/null 2>&1 || command -v mysql >/dev/null 2>&1; then
             MYSQL_CLIENT_BIN=\$(command -v mariadb || command -v mysql)
         else
-            MYSQL_CLIENT_BIN=\$(singularity exec ${params.container_mariadb} sh -c 'command -v mariadb || command -v mysql' 2>/dev/null)
-            MYSQL_CLIENT_BIN="singularity exec ${params.container_mariadb} \$MYSQL_CLIENT_BIN"
+            MYSQL_CLIENT_BIN=\$(singularity exec '${mariadb_img}' sh -c 'command -v mariadb || command -v mysql' 2>/dev/null)
+            MYSQL_CLIENT_BIN="singularity exec ${mariadb_img} \$MYSQL_CLIENT_BIN"
         fi
         if [ -z "\$MYSQL_CLIENT_BIN" ]; then
             echo "ERROR: no mariadb/mysql client found" >&2

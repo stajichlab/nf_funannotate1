@@ -198,4 +198,61 @@ class FunannotateUtils {
         }
         return m
     }
+
+    // Image for the PASA MariaDB steps (SETUP_MARIADB_DATADIR and the sidecar
+    // branch of FUNANNOTATE_TRAIN / FUNANNOTATE_UPDATE). An explicit
+    // params.container_mariadb wins; otherwise use params.container_funannotate,
+    // which bundles MariaDB (mariadbd, mariadb-install-db, /usr/bin/mysqld_safe).
+    static String mariadbImage(Map params) {
+        return (params.container_mariadb ?: params.container_funannotate) as String
+    }
+
+    // Local file for an image. A plain path is returned unchanged. A URI
+    // (docker://, oras://, library://, ...) maps to the file Nextflow's
+    // apptainer cache uses for it under cacheDir (apptainer.cacheDir =
+    // params.sif_dir), with the same naming as Nextflow's
+    // SingularityCache.simpleName: strip the scheme, ':' and '/' -> '-', add
+    // '.img'. e.g. docker://ghcr.io/nextgenusfs/funannotate:1.9.0-rc.1 ->
+    // <cacheDir>/ghcr.io-nextgenusfs-funannotate-1.9.0-rc.1.img
+    // Scripts that call `apptainer exec` directly (outside Nextflow's
+    // container handling) use this so they reuse the image Nextflow already
+    // pulled instead of converting the URI on every call.
+    static String localImageFile(String image, String cacheDir) {
+        int p = image.indexOf('://')
+        if (p == -1) return image
+        String name = image.substring(p + 3)
+        String ext = '.img'
+        if (name.contains('.sif:')) {
+            ext = '.sif'
+            name = name.replace('.sif:', '-')
+        } else if (name.endsWith('.sif')) {
+            ext = '.sif'
+            name = name.substring(0, name.length() - 4)
+        }
+        return "${cacheDir}/${name.replace(':', '-').replace('/', '-')}${ext}" as String
+    }
+
+    // Bash that makes sure localImageFile(image, cacheDir) exists before a
+    // direct `apptainer exec`. A plain path must already exist. For a URI, the
+    // image is pulled ONCE into the Nextflow cache file under a lock (so
+    // parallel tasks do not pull it twice); later tasks and Nextflow itself
+    // reuse that file.
+    static String ensureLocalImageScript(String image, String cacheDir) {
+        String f = localImageFile(image, cacheDir)
+        if (f == image) {
+            return """[ -e '${f}' ] || { echo "ERROR: container image not found: ${f}" >&2; exit 1; }"""
+        }
+        return """if [ ! -s '${f}' ]; then
+    mkdir -p '${cacheDir}'
+    (
+        flock -w 7200 9 || { echo "ERROR: timed out waiting for the pull lock on ${f}" >&2; exit 1; }
+        if [ ! -s '${f}' ]; then
+            echo "[INFO] Pulling ${image} once into ${f}"
+            _APPT=\$(command -v apptainer || command -v singularity)
+            "\$_APPT" pull '${f}.pulling.'\$\$ '${image}' && mv -f '${f}.pulling.'\$\$ '${f}' \\
+                || { rm -f '${f}.pulling.'\$\$; echo "ERROR: failed to pull ${image}" >&2; exit 1; }
+        fi
+    ) 9>'${f}.lock' || exit 1
+fi"""
+    }
 }

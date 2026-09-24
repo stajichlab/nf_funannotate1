@@ -19,6 +19,12 @@ process FUNANNOTATE_UPDATE {
     def locustag      = meta.locustag
     def busco_lineage = meta.busco
     def header_length = params.header_length
+    // PASA MariaDB image (container_mariadb, else container_funannotate), as the
+    // local file in params.sif_dir -- a docker:// URI maps to Nextflow's own
+    // cache file, pulled once if missing, never converted on every call.
+    def mariadb_image      = FunannotateUtils.mariadbImage(params)
+    def mariadb_img        = FunannotateUtils.localImageFile(mariadb_image, params.sif_dir as String)
+    def ensure_mariadb_img = FunannotateUtils.ensureLocalImageScript(mariadb_image, params.sif_dir as String)
     def pasa_db_arg = "--pasa_db sqlite"
     """
     # ── Skip if no reads (empty marker file from SRA_FETCH) ──────────────────
@@ -106,8 +112,9 @@ process FUNANNOTATE_UPDATE {
         else
             stop_mysqldb() { singularity instance stop mysqldb_${asmid}_\${SLURM_JOB_ID:-\$\$} 2>/dev/null || true; }
             module load apptainer
+            ${ensure_mariadb_img}
             singularity exec -B \$MYSQL_SCRATCH/db/:/var/lib/mysql \\
-                ${params.container_mariadb} sh -c \\
+                '${mariadb_img}' sh -c \\
                 'command -v mariadb-install-db || command -v mysql_install_db' \\
                 > /tmp/mysql_install_bin_\$\$.txt 2>/dev/null
             MYSQL_INSTALL_BIN=\$(cat /tmp/mysql_install_bin_\$\$.txt 2>/dev/null)
@@ -115,17 +122,27 @@ process FUNANNOTATE_UPDATE {
             if [ -n "\$MYSQL_INSTALL_BIN" ]; then
                 echo "[INFO] Initializing fresh MariaDB system tables via sidecar image's \$MYSQL_INSTALL_BIN"
                 singularity exec -B \$MYSQL_SCRATCH/db/:/var/lib/mysql \\
-                    ${params.container_mariadb} \\
+                    '${mariadb_img}' \\
                     "\$MYSQL_INSTALL_BIN" --datadir=/var/lib/mysql \\
                     --auth-root-authentication-method=normal || \\
                     { echo "ERROR: sidecar \$MYSQL_INSTALL_BIN failed" >&2; exit 1; }
             else
-                echo "ERROR: no mariadb-install-db/mysql_install_db found in ${params.container_mariadb}" >&2
+                echo "ERROR: no mariadb-install-db/mysql_install_db found in ${mariadb_img}" >&2
                 exit 1
             fi
             singularity instance start --writable-tmpfs \\
                 -B \$MYSQL_SCRATCH/conf/my.cnf:/etc/mysql/my.cnf,\$MYSQL_SCRATCH/db/:/var/lib/mysql,\$MYSQL_SCRATCH/conf:/usr/conf \\
-                ${params.container_mariadb} mysqldb_${asmid}_\${SLURM_JOB_ID:-\$\$} /usr/bin/mysqld_safe
+                '${mariadb_img}' mysqldb_${asmid}_\${SLURM_JOB_ID:-\$\$} /usr/bin/mysqld_safe
+            # The trailing /usr/bin/mysqld_safe above is only an argument to the
+            # image's %startscript. The old mariadb.sif startscript runs
+            # mysqld_safe itself; the funannotate image (the default MariaDB
+            # image now) has Apptainer's empty default startscript, so nothing
+            # starts and every connection is refused (confirmed 2026-09-24).
+            # Start the server inside the instance when the startscript won't.
+            if ! singularity inspect --startscript '${mariadb_img}' 2>/dev/null | grep -Eq 'mysqld|mariadbd'; then
+                singularity exec instance://mysqldb_${asmid}_\${SLURM_JOB_ID:-\$\$} \\
+                    sh -c 'nohup /usr/bin/mysqld_safe >/dev/null 2>&1 &'
+            fi
         fi
         trap "stop_mysqldb; exit 130" SIGHUP SIGINT SIGTERM
         trap "stop_mysqldb" EXIT
@@ -133,8 +150,8 @@ process FUNANNOTATE_UPDATE {
         if command -v mariadb >/dev/null 2>&1 || command -v mysql >/dev/null 2>&1; then
             MYSQL_CLIENT_BIN=\$(command -v mariadb || command -v mysql)
         else
-            MYSQL_CLIENT_BIN=\$(singularity exec ${params.container_mariadb} sh -c 'command -v mariadb || command -v mysql' 2>/dev/null)
-            MYSQL_CLIENT_BIN="singularity exec ${params.container_mariadb} \$MYSQL_CLIENT_BIN"
+            MYSQL_CLIENT_BIN=\$(singularity exec '${mariadb_img}' sh -c 'command -v mariadb || command -v mysql' 2>/dev/null)
+            MYSQL_CLIENT_BIN="singularity exec ${mariadb_img} \$MYSQL_CLIENT_BIN"
         fi
         if [ -z "\$MYSQL_CLIENT_BIN" ]; then
             echo "ERROR: no mariadb/mysql client found" >&2

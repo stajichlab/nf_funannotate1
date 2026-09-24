@@ -367,22 +367,22 @@ and `/usr/bin/mysqld_safe`. With `--pasa_mysql true` under `-profile singularity
 binaries on `PATH`, and start MariaDB in the image. They do not use a separate
 MariaDB container.
 
-One step still uses a separate image setting: `SETUP_MARIADB_DATADIR` runs
-`mariadb-install-db` in `params.container_mariadb`. Its default is
-`<sif_dir>/mariadb.sif`, which exists only on UCR HPCC. At another site, pull
-the funannotate image once as a SIF and point `--container_mariadb` at it:
+The other MariaDB steps use `params.container_mariadb`: `SETUP_MARIADB_DATADIR`
+(runs `mariadb-install-db`), and the sidecar branch of `FUNANNOTATE_TRAIN` /
+`FUNANNOTATE_UPDATE` (used when the task itself has no MariaDB, e.g. under
+`-profile ucr_hpcc` or `conda`). These steps call `apptainer exec` directly.
 
-```bash
-apptainer pull "$sif_dir/funannotate-1.9.0-rc.1.sif" \
-    docker://ghcr.io/nextgenusfs/funannotate:1.9.0-rc.1
-nextflow run ... --pasa_mysql true \
-    --container_mariadb "$sif_dir/funannotate-1.9.0-rc.1.sif"
-```
-
-Use a local `.sif` path here, not a `docker://` URI. `SETUP_MARIADB_DATADIR`
-calls `apptainer exec` directly, outside Nextflow's image cache, so a
-`docker://` URI converts the full funannotate image on every call (more than
-10 minutes and about 15 GB of temporary space, measured on UCR HPCC).
+- **Default:** `container_mariadb` is unset, so these steps use
+  `params.container_funannotate`. No separate MariaDB image is needed at any site.
+- **Override:** `--container_mariadb <path.sif | docker://uri>`. The old UCR
+  image (MariaDB 10.3.9) still works:
+  `--container_mariadb /bigdata/stajichlab/shared/lib/singularity_cache/mariadb.sif`.
+- **`docker://` URIs are not converted on every call.** The pipeline maps the URI
+  to the file Nextflow's own image cache uses in `sif_dir` (for example
+  `ghcr.io-nextgenusfs-funannotate-1.9.0-rc.1.img`). If that file is missing,
+  the first task pulls it once under a file lock; later tasks and Nextflow
+  reuse it. (A direct `apptainer exec docker://...` of the funannotate image
+  took 885 s and about 15 GB of temporary space on UCR HPCC.)
 
 ## Running at another site
 
@@ -419,8 +419,8 @@ like the `slurm` one in `nextflow.config`.
    (or use the `skip_fcs` workaround in the quick start),
    `signalp6-fast.sif` + converted GPU weights and `DeepTMHMM-1.0.sif`
    (licensed), and `antismash-standalone-8.0.4-procps.sif`. No `mariadb.sif`
-   is needed: with `--pasa_mysql true`, set `--container_mariadb` to a local
-   SIF of the funannotate image (see [PASA MySQL backend](#pasa-mysql-backend-mariadb)).
+   is needed: MariaDB comes from the funannotate image (see
+   [PASA MySQL backend](#pasa-mysql-backend-mariadb)).
 2. **Reference databases** — everything the pipeline can auto-download
    (taxonkit taxdump, funannotate DBs, antiSMASH DBs, BUSCO lineages) is
    storeDir-cached under `launchDir` and needs no manual step. What a site
