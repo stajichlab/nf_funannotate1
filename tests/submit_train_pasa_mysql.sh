@@ -25,6 +25,8 @@
 #   FUNANNOTATE_VERSION  default 1.9.0-rc.1
 #   ARMS                 default "singularity conda"
 #   TEST_ROOT            default /bigdata/stajichlab/jstajich/projects/nf/test_runs/train_pasa_mysql
+#   GENEMARK_DIR         conda arm only; dir with gmes_petap.pl
+#                        (default: UCR genemarkESET 4.72_lic install)
 #   PREVIEW=1            run `nextflow run -preview` per arm instead of sbatch
 #                        (checks config + workflow graph, runs no task)
 # Each arm gets its own launch directory:
@@ -53,6 +55,10 @@ PREVIEW="${PREVIEW:-0}"
 
 IMAGE="docker://ghcr.io/nextgenusfs/funannotate:${FUNANNOTATE_VERSION}"
 CONDA_ENV="funannotate-${FUNANNOTATE_VERSION}"
+# conda arm: GeneMark-ES/ET has no conda package, so GENEMARK_RUN needs a host
+# install (it failed with "GeneMark-ES/ET not found" without one, 2026-09-24).
+# Default: the UCR HPCC genemarkESET module's install dir (= its $GENEMARK_PATH).
+GENEMARK_DIR="${GENEMARK_DIR:-/opt/linux/rocky/8.x/x86_64/pkgs/genemarkESET/4.72_lic}"
 
 # Test inputs: one genome, plus RNA-seq reads and the Trinity-GG assembly that
 # an earlier run of this pipeline already fetched/built for this species
@@ -83,6 +89,8 @@ for arm in $ARMS; do
         singularity) ;;
         conda)
             [ -d "${CONDA_ENVS_ROOT}/${CONDA_ENV}" ] || { echo "ERROR: conda env not found: ${CONDA_ENVS_ROOT}/${CONDA_ENV}" >&2; exit 1; }
+            [ -x "${GENEMARK_DIR}/gmes_petap.pl" ] || { echo "ERROR: GeneMark not found: ${GENEMARK_DIR}/gmes_petap.pl (set GENEMARK_DIR)" >&2; exit 1; }
+            [ -e "${HOME}/.gm_key" ] || echo "WARNING: no ~/.gm_key; GeneMark needs its license key there" >&2
             ;;
         *) echo "ERROR: unknown arm '$arm' (use singularity and/or conda)" >&2; exit 1 ;;
     esac
@@ -131,7 +139,7 @@ EOF
         echo "arm:         ${arm}"
         echo "funannotate: ${FUNANNOTATE_VERSION}"
         echo "image:       ${IMAGE}"
-        if [ "$arm" = conda ]; then echo "conda_env:   ${CONDA_ENVS_ROOT}/${CONDA_ENV}"; fi
+        if [ "$arm" = conda ]; then echo "conda_env:   ${CONDA_ENVS_ROOT}/${CONDA_ENV}"; echo "genemark:    ${GENEMARK_DIR}"; fi
         echo "pipeline:    ${PROJECT_DIR} @ $(git -C "${PROJECT_DIR}" rev-parse HEAD)"
         echo "uncommitted: $(git -C "${PROJECT_DIR}" status --porcelain --untracked-files=no -- modules lib conf nextflow.config subworkflows workflows funannotate.nf | wc -l) file(s) in pipeline code"
     } > "${LAUNCH}/run_info.txt"
@@ -142,7 +150,8 @@ EOF
             CONFIGS+=(-c "${PROJECT_DIR}/conf/site_ucr_hpcc_singularity.config")
             VERSION_ARGS=(--container_funannotate "${IMAGE}") ;;
         conda)
-            VERSION_ARGS=(--conda_env "${CONDA_ENV}" --container_funannotate "${IMAGE}") ;;
+            VERSION_ARGS=(--conda_env "${CONDA_ENV}" --container_funannotate "${IMAGE}"
+                          --genemark_path "${GENEMARK_DIR}") ;;
     esac
     # conda arm: --container_funannotate sets the sidecar MariaDB image
     # (container_mariadb follows it).
