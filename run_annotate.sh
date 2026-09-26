@@ -26,7 +26,7 @@
 #   PROVISION=singularity sbatch run_annotate.sh   # portable containers
 #   PROVISION=conda       sbatch run_annotate.sh   # shared conda envs
 #   EXECUTOR=local        sbatch run_annotate.sh   # head + tasks local
-#   REVISION=v0.1.0       sbatch run_annotate.sh   # pin a release
+#   REVISION=v0.3.0       sbatch run_annotate.sh   # pin a release
 #
 # Common overrides (passed straight through to nextflow):
 #   sbatch run_annotate.sh --run_annotate true --run_antismash true
