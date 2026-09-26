@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Kubernetes execution (test mode): `-profile annotate,k8s` and
+  `-profile annotate,nrp` (NRP Nautilus), via `conf/executor_k8s.config` and
+  `conf/site_nrp.config`, plus `k8s/` manifests (PVC, head pod), smoke-test
+  params and a README. SignalP/DeepTMHMM/antiSMASH and the FCS-GX purge are
+  not provisioned on k8s yet.
+- `params.mariadb_setup_in_image`: SETUP_MARIADB_DATADIR can run
+  mariadb-install-db inside its own image (no nested apptainer).
+
 ### Changed
 - `slurm` + `singularity` profiles are now site-neutral for SignalP and
   DeepTMHMM. `conf/provision_singularity.config` no longer sets the UCR

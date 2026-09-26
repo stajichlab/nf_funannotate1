@@ -1,0 +1,28 @@
+# First NRP smoke test: clean -> tantan mask -> funannotate predict on the repo's
+# own samples.csv (Debaryomyces hansenii CDA1, ~12 Mb), public images only.
+# samples.csv GENOME paths are launchDir-relative, so launch from a run dir
+# holding a copy of samples.csv + test_run/ (k8s/README.md, step 3):
+#
+#   cd /data/runs/nrp_test
+#   nextflow run /data/src/nf_funannotate1 -profile annotate,nrp \
+#       -params-file /data/src/nf_funannotate1/k8s/params_nrp_test.yaml
+#
+# Turn features back on one at a time once this passes (see k8s/README.md).
+
+# FCS-GX needs its ~470 GB DB staged into /dev/shm; not realistic on NRP.
+skip_fcs: true
+
+# No RNA-seq for the first pass -> no Trinity/PASA training (so pasa_mysql is
+# never exercised). Next step: run_sra_fetch: true.
+run_sra_fetch: false
+
+# GeneMark (run_genemark, default true) runs from the public braker3 image and
+# needs no license key there: gmes_petap.pl --ES --fungus on this genome
+# completed as root with no ~/.gm_key (NRP test pod, 2026-09-26).
+
+# Not provisioned on k8s yet (locally built / licensed .sif images).
+run_annotate: false
+run_antismash: false
+run_signalp: false
+run_deeptmhmm: false
+run_interpro: false

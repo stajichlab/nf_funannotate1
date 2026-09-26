@@ -334,6 +334,10 @@ Compose one option from each of three axes: `-profile <pipeline>,<executor>,<pro
 | **executor** | `slurm` · `local` |
 | **provisioning** | `ucr_hpcc` (default; institutional Lmod modules) · `conda` (shared frozen envs) · `pixi` · `singularity` (containers) |
 
+Kubernetes is the exception: `k8s` / `nrp` replaces both the executor and
+provisioning picks (`-profile annotate,nrp`), because task pods need OCI images.
+See [`k8s/README.md`](k8s/README.md).
+
 ```bash
 nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,ucr_hpcc -resume
 nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,conda -resume
@@ -452,6 +456,9 @@ nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,singularity
 
 # ...or project-local pixi envs instead of containers (any executor):
 nextflow run stajichlab/nf_funannotate1 -profile annotate,local,pixi
+
+# Kubernetes (NRP Nautilus), launched from a head pod in the cluster -- k8s/README.md:
+nextflow run /data/src/nf_funannotate1 -profile annotate,nrp
 ```
 
 `local` is the portable executor; the `slurm` profile was already generic

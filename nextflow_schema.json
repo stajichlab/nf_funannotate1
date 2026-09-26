@@ -606,6 +606,35 @@
           "type": "string",
           "description": "pixi.toml used by the pixi provisioning profile.",
           "default": "${projectDir}/pixi.toml"
+        },
+        "mariadb_setup_in_image": {
+          "type": "boolean",
+          "default": false,
+          "description": "SETUP_MARIADB_DATADIR runs mariadb-install-db directly inside its own image instead of via host apptainer. Set true by -profile k8s/nrp."
+        },
+        "gm_key": {
+          "type": "string",
+          "description": "k8s/nrp only: GeneMark license key on the shared PVC, copied to $HOME/.gm_key in the GENEMARK_RUN pod."
+        },
+        "k8s_max_cpus": {
+          "type": "integer",
+          "default": 32,
+          "description": "k8s/nrp only: cap on cpus for any single task pod (process.resourceLimits)."
+        },
+        "k8s_max_memory": {
+          "type": "string",
+          "default": "128.GB",
+          "description": "k8s/nrp only: cap on memory for any single task pod (process.resourceLimits)."
+        },
+        "k8s_pvc": {
+          "type": "string",
+          "default": "funannotate-work-pvc",
+          "description": "nrp only: shared ReadWriteMany PVC mounted in the head pod and every task pod."
+        },
+        "k8s_mount": {
+          "type": "string",
+          "default": "/data",
+          "description": "nrp only: mount path of k8s_pvc in every pod."
         }
       }
     }
