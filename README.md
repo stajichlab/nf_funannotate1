@@ -218,6 +218,9 @@ process {
     // queue          = 'batch'                     // your default partition
     // clusterOptions = '-N 1 -n 1 --account=mylab' // keep "-N 1 -n 1"
     // withName: '.*:FUNANNOTATE_PREDICT' { queue = 'long' }
+    // SignalP / DeepTMHMM ask for --gres=gpu:1 when signalp_gpu /
+    // deeptmhmm_gpu is true. Name your GPU partition here if SLURM needs it:
+    // withName: '.*:SIGNALP_RUN|.*:DEEPTMHMM_ANNOTATION' { queue = 'gpu' }
 }
 
 // Optional: bind shared directories into every container. Use this when

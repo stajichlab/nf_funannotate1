@@ -6,6 +6,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- `slurm` + `singularity` profiles are now site-neutral for SignalP and
+  DeepTMHMM. `conf/provision_singularity.config` no longer sets the UCR
+  partitions (`short_gpu`, `epyc`) or `--exclude=gpu13,gpu14`. The generic
+  `slurm` profile asks for `--gres=gpu:1` when `signalp_gpu` /
+  `deeptmhmm_gpu` is true, with no partition. The UCR partitions and node
+  excludes moved to `conf/provision_ucr_hpcc.config` and
+  `conf/site_ucr_hpcc_singularity.config`.
+- UCR: `SIGNALP_RUN` on the Lmod axis (no container) keeps the `gpu`
+  queue. In a container (`-profile ...,ucr_hpcc,singularity`) it goes to
+  `short_gpu` with the gpu13/gpu14 exclude in GPU mode, or `epyc` in CPU
+  mode, as before. `DEEPTMHMM_ANNOTATION` (container only) gets the same
+  container routing under `ucr_hpcc`.
+
+### Fixed
+- `docs/output.md`: output directories and file prefixes under
+  `genome_annotation/` and `genome_annotation_training/` are
+  `<SPECIES>_<STRAIN>`, not `<ASMID>`. Corrected the RNA-seq paths
+  (reads in `rnaseq_reads/`, species-only tag, `.sra_query.csv`), the
+  antiSMASH/InterProScan/SignalP/DeepTMHMM locations, and the trace file name.
+  Added missing outputs (SRA manifests, GeneMark model, BUSCO, ANI, EarlGrey
+  `strains/`, database caches) and corrected the storeDir skip rule.
+
 ## [0.3.0] - 2026-09-25
 
 Changes since the last changelog update (2026-06-26, `1108471`) up to
