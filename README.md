@@ -61,7 +61,8 @@ directory. Example layout before the first run:
 ```
 my_annotation/                          # launch directory: run nextflow from here
 ├── samples.csv                         # sample sheet (step 3)
-├── mylab.config                        # site config (step 5)
+├── mylab_params.yaml                   # site parameters (step 5)
+├── mylab.config                        # site process/executor config (step 5)
 ├── lib/
 │   └── swissprot_fungi.faa             # protein evidence FASTA (required, step 5)
 ├── genomes/                            # your genome FASTA folder
@@ -155,41 +156,55 @@ Notes:
   `--run_sra_fetch false`. That setting also turns off RNA-seq training for
   all species.
 
-### 5. Write a site config (`mylab.config`)
+### 5. Write your site settings (two files)
 
 The defaults contain some paths for the developers' cluster. Put your own
-settings in one config file in the launch directory. Pass it with `-c`.
+settings in two files in the launch directory:
+
+| File | Holds | Pass it with |
+|---|---|---|
+| `mylab_params.yaml` | pipeline parameters (`params`) | `-params-file mylab_params.yaml` |
+| `mylab.config` | process, container and executor settings | `-c mylab.config` |
+
+Put parameters in the YAML file, not in a `params { }` block of the `-c`
+file. The pipeline config uses some parameters to set container paths and
+task resources (for example `sif_dir` and `skip_fcs`). Nextflow reads a
+`-params-file` before the pipeline config, so those settings take effect.
+It reads a `-c` file after the pipeline config, so a parameter there does
+not change those container paths or task resources.
 
 This example works on one workstation or a SLURM cluster. Change the values
-that are marked.
+that are marked `CHANGE`.
+
+```yaml
+# mylab_params.yaml -- use absolute paths (YAML does not expand ${launchDir})
+
+# Directory for container images; also the Apptainer pull cache.
+# Use shared storage on a cluster.
+sif_dir: /data/containers/singularity_cache                  # CHANGE
+
+# Protein evidence for funannotate predict (required). The default is
+# <launch dir>/lib/swissprot_fungi.faa. Set this only for another location.
+# proteins: /data/db/uniprot_sprot_fungi.faa
+
+# Skip the NCBI FCS-GX contamination screen. It needs a ~470 GB database
+# and 500 GB of RAM. With this setting, cleaning only removes short contigs.
+skip_fcs: true
+min_contig_len: 2000
+
+# Use the SQLite PASA backend. The MySQL backend (pasa_mysql: true) needs
+# no extra image: MariaDB is inside the funannotate image. See
+# "PASA MySQL backend (MariaDB)" below.
+pasa_mysql: false
+
+# Genome-clean image (AAFTF + taxonkit + FCS-GX client). The default is
+# <sif_dir>/AAFTF.sif. This line makes Nextflow pull the public image
+# instead. Remove it if you made AAFTF.sif (see "Container images" below).
+container_genome_clean: docker://ghcr.io/stajichlab/aaftf:latest
+```
 
 ```groovy
 // mylab.config
-params {
-    // Directory for container images. Use shared storage on a cluster.
-    sif_dir        = "/data/containers/singularity_cache"      // CHANGE
-
-    // Protein evidence for funannotate predict (required).
-    // Any protein FASTA works, e.g. UniProt/Swiss-Prot for your group.
-    proteins       = "${launchDir}/lib/swissprot_fungi.faa"
-
-    // Skip the NCBI FCS-GX contamination screen. It needs a ~470 GB database
-    // and 500 GB of RAM. With this setting, cleaning only removes short contigs.
-    skip_fcs       = true
-    min_contig_len = 2000
-
-    // Use the SQLite PASA backend. The MySQL backend (pasa_mysql = true)
-    // needs no extra image: MariaDB is inside the funannotate image. See
-    // "PASA MySQL backend (MariaDB)" below.
-    pasa_mysql     = false
-
-    // The default genome-clean image (AAFTF.sif) is not public. With
-    // skip_fcs = true, this step needs only python3 and pigz. The public
-    // funannotate image has both. Write the image name in full here:
-    // other params are not yet defined when this file is read.
-    container_genome_clean = 'docker://ghcr.io/nextgenusfs/funannotate:1.9.0-rc.1'
-}
-
 process {
     // ASM_STATS runs in a minimal image by default. That image does not
     // have the tools it needs. Use the funannotate image instead.
@@ -214,13 +229,43 @@ process {
 // executor { queueSize = 100; submitRateLimit = '20/1min' }
 ```
 
+**Container images.** Nextflow pulls public images into `sif_dir` on first
+use. To make the SIF files yourself (for example, on a login node with
+internet access, when compute nodes have none):
+
+```bash
+export SIF_DIR=/data/containers/singularity_cache      # same as sif_dir
+mkdir -p $SIF_DIR
+
+# Genome cleaning (AAFTF, taxonkit, FCS-GX client). Default path: <sif_dir>/AAFTF.sif
+apptainer pull $SIF_DIR/AAFTF.sif docker://ghcr.io/stajichlab/aaftf:latest
+
+# SRA download + read QC (sra-tools, fastp, bbtools, seqkit). Only for species
+# whose RNA-seq the pipeline downloads from NCBI SRA.
+# Source: https://github.com/hyphaltip/sra_tools_container
+apptainer pull $SIF_DIR/sra_tools-1.3.1.sif \
+    docker://ghcr.io/hyphaltip/sra_tools_container/sra_tools:1.3.1
+```
+
+If you made `AAFTF.sif`, remove the `container_genome_clean` line from
+`mylab_params.yaml`. To use the SRA SIF file, add
+`container_sra: /data/containers/singularity_cache/sra_tools-1.3.1.sif` to
+`mylab_params.yaml`. Without it, Nextflow pulls the same image from GHCR.
+The `aaftf:latest` tag can change over time. For a fixed version, pull once
+and keep the SIF file.
+
+To run the FCS-GX contamination screen, set `skip_fcs: false`. This also
+needs the NCBI FCS-GX database (about 470 GB), a node with about 500 GB of
+RAM, and `FCS_GX_DB_SRC` set to the database path (see
+`scripts/setup_fcs_shm.sh`).
+
 On a workstation, the `local` profile runs at most 4 tasks at the same time.
-To change this, add `executor { queueSize = 2 }`.
+To change this, add `executor { queueSize = 2 }` to `mylab.config`.
 
 The pipeline makes no other site-specific assumptions:
 
 - GeneMark runs from the public `teambraker/braker3` image. It does not need a license key.
-- The pipeline downloads the funannotate, taxonomy and BUSCO databases on the first run. It caches them in the launch directory. To use copies that you already have, set `funannotate_db`, `taxondb` or `busco_lineages`.
+- The pipeline downloads the funannotate, taxonomy and BUSCO databases on the first run. It caches them in the launch directory. To use copies that you already have, set `funannotate_db`, `taxondb` or `busco_lineages` in `mylab_params.yaml`.
 - The functional steps are off by default: `--run_annotate`, `--run_antismash`, `--run_interpro` and `--run_signalp`. `--run_annotate` also needs an eggNOG database (`--eggnog_db`). SignalP 6 and DeepTMHMM need licensed images that you must build. See [One-time site artifacts](#one-time-site-artifacts-checklist).
 
 For more settings, copy `conf/site_template.config` from the pipeline
@@ -237,12 +282,12 @@ cd my_annotation
 # Workstation or single server:
 nextflow run stajichlab/nf_funannotate1 \
     -profile annotate,local,singularity \
-    -c mylab.config -resume
+    -params-file mylab_params.yaml -c mylab.config -resume
 
 # SLURM cluster: run the Nextflow head process in a long, small job.
 # It needs about 2 CPUs and 32 GB of RAM, because image pulls run in the head process.
 sbatch -c 2 --mem 32G --time 7-00:00:00 --wrap \
-  "nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,singularity -c mylab.config -resume"
+  "nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,singularity -params-file mylab_params.yaml -c mylab.config -resume"
 ```
 
 To test one genome first, add `--n_test 1`. To select one genome, use
@@ -348,12 +393,16 @@ PROVISION=singularity sbatch run_annotate.sh \
 Nextflow pulls these public images automatically into the `sif_dir` cache:
 
 - `funannotate` — `ghcr.io/nextgenusfs/funannotate:1.9.0-rc.1` (includes MariaDB, see below)
-- `sra` — `ghcr.io/hyphaltip/sra_tools_container/sra_tools:1.3.1`
+- `sra` — `ghcr.io/hyphaltip/sra_tools_container/sra_tools:1.3.1` ([source](https://github.com/hyphaltip/sra_tools_container))
+- `genome_clean` — `ghcr.io/stajichlab/aaftf:latest`. The default path is
+  `<sif_dir>/AAFTF.sif`, so make the SIF once:
+  `apptainer pull <sif_dir>/AAFTF.sif docker://ghcr.io/stajichlab/aaftf:latest`,
+  or pass `--container_genome_clean docker://ghcr.io/stajichlab/aaftf:latest`.
 - edirect, prodigal, skani, busco, interproscan, setup, braker3 (biocontainers / Docker Hub)
 
 These images are not public. Build them and point at them with
 `--container_*` (defaults under `/bigdata/stajichlab/shared/lib/singularity_cache`):
-`AAFTF` (genome_clean), `signalp6-fast.sif` (fast mode, licensed),
+`signalp6-fast.sif` (fast mode, licensed),
 `DeepTMHMM-1.0.sif` (licensed), and the antismash-procps image. Build
 one-liners live in `conf/provision_singularity.config` next to each
 `container_*` param.
@@ -414,9 +463,10 @@ like the `slurm` one in `nextflow.config`.
    `nextflow.config`). Export one of those env vars. Nextflow pulls the public
    images on first use: `funannotate:1.9.0-rc.1` (ghcr.io, includes MariaDB),
    `sra_tools:1.3.1` (ghcr.io), and the biocontainers (edirect, prodigal,
-   skani, busco, interproscan, setup, braker3). You must build the non-public
-   images listed in `conf/provision_singularity.config` yourself: `AAFTF`
-   (or use the `skip_fcs` workaround in the quick start),
+   skani, busco, interproscan, setup, braker3). Make `AAFTF.sif` from the
+   public image: `apptainer pull <sif_dir>/AAFTF.sif
+   docker://ghcr.io/stajichlab/aaftf:latest`. You must build the non-public
+   images listed in `conf/provision_singularity.config` yourself:
    `signalp6-fast.sif` + converted GPU weights and `DeepTMHMM-1.0.sif`
    (licensed), and `antismash-standalone-8.0.4-procps.sif`. No `mariadb.sif`
    is needed: MariaDB comes from the funannotate image (see
