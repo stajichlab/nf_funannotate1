@@ -49,8 +49,8 @@ launchDir/
 │   │   ├── annotate_results/     # funannotate annotate outputs (run_annotate=true)
 │   │   │   ├── <tag>.gbk
 │   │   │   └── <tag>.gff3
-│   │   └── update_results/       # funannotate update outputs (run_update=true)
-│   └── <ASMID>/busco_completeness/   # BUSCO on predicted proteins (keyed by ASMID, not <tag>)
+│   │   ├── update_results/       # funannotate update outputs (run_update=true)
+│   │   └── busco_completeness/<tag>/  # BUSCO on the predicted proteins (short_summary*.txt)
 │
 ├── genome_annotation_training/   # funannotate train output (params.training_target)
 │   └── <tag>/
