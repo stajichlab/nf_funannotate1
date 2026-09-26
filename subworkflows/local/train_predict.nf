@@ -229,11 +229,13 @@ workflow TRAIN_PREDICT {
     // See modules/local/busco_completeness.nf for why this reruns BUSCO rather
     // than reusing funannotate's own busco.log. Built directly from the
     // published predict_results path ("Option B persistence" -- FUNANNOTATE_PREDICT
-    // writes straight to params.target/<asmid>/, no publishDir), filtered to
+    // writes straight to params.target/<id>/, no publishDir; id = SPECIES_STRAIN
+    // tag, NOT asmid -- keying on asmid made the exists() filter drop every
+    // genome whose asmid differs from its tag), filtered to
     // genomes that actually have a lineage configured and finished predict.
     def busco_completeness_input = FUNANNOTATE_PREDICT.out.metadata
         .filter { meta -> meta.busco }
-        .map { meta -> tuple(meta, file("${params.target}/${meta.asmid}/predict_results/${meta.asmid}.proteins.fa")) }
+        .map { meta -> tuple(meta, file("${params.target}/${meta.id}/predict_results/${meta.id}.proteins.fa")) }
         .filter { meta, proteins -> proteins.exists() }
     BUSCO_COMPLETENESS(busco_completeness_input)
 

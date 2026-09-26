@@ -21,6 +21,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   container routing under `ucr_hpcc`.
 
 ### Fixed
+- `BUSCO_COMPLETENESS` did not run for genomes whose `ASMID` differs from
+  the `SPECIES_STRAIN` tag. `train_predict.nf` looked for the proteins at
+  `genome_annotation/<ASMID>/predict_results/<ASMID>.proteins.fa`, but
+  predict writes them under `<SPECIES_STRAIN>/`, so the `exists()` filter
+  dropped those genomes. It now uses the tag. The output also moved from
+  `genome_annotation/<ASMID>/busco_completeness/` to
+  `genome_annotation/<SPECIES_STRAIN>/busco_completeness/<SPECIES_STRAIN>/`,
+  next to `predict_results/`.
 - `docs/output.md`: output directories and file prefixes under
   `genome_annotation/` and `genome_annotation_training/` are
   `<SPECIES>_<STRAIN>`, not `<ASMID>`. Corrected the RNA-seq paths
