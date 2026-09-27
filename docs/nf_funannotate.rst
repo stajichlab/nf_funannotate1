@@ -187,7 +187,7 @@ Samplesheet (``samples.csv``)
 
     SPECIES,STRAIN,ASMID,LOCUSTAG,BUSCO_LINEAGE,TRANSL_TABLE,NCBI_TAXONID,GENOME
     Aspergillus fumigatus,Af293,GCA_000002655.1,AFUA,eurotiomycetes_odb10,1,746128,
-    Saccharomyces cerevisiae,S288C,GCA_000146045.2,YAL,saccharomycetes_odb12,12,4932,genomes/S288C.fa.gz
+    Saccharomyces cerevisiae,S288C,GCA_000146045.2,YAL,saccharomycetes_odb10,12,4932,genomes/S288C.fa.gz
 
 Filtering and dry runs
 -------------------------

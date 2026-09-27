@@ -2,7 +2,7 @@
 
 `-profile annotate,nrp` runs every task as its own pod through Nextflow's
 built-in k8s executor. No SLURM layer is involved. Nextflow itself runs in a
-long-lived **head pod** inside the cluster. The head pod and every task pod
+long-lived **head pod** (a Deployment) inside the cluster. The head pod and every task pod
 mount one shared ReadWriteMany PVC at `/data`, which holds the source checkout,
 launch dirs, `work/`, reference DBs and results.
 
@@ -28,8 +28,8 @@ ServiceAccount/RBAC and the `nrp-s3-creds` Secret from the BFD project
 
 ```bash
 kubectl apply -f k8s/pvc.yaml
-kubectl apply -f k8s/head-pod.yaml
-kubectl exec -it -n ucr-stajichlab funannotate-nextflow-head -- bash
+kubectl apply -f k8s/head-deployment.yaml
+kubectl exec -it -n ucr-stajichlab deploy/funannotate-nextflow-head -- bash
 ```
 
 Inside the head pod:
@@ -87,6 +87,30 @@ a key-gated `--container_genemark` image).
 - **prodigal** (`--run_prodigal`): host mode needs prodigal and python in one
   image. The funannotate image is the default and has not been checked for
   prodigal.
+
+## NRP limits on pods
+
+NRP's admission policy treats pods without a controller (which is what the
+k8s executor creates by default) specially: at most **16 cores / 32 GB**, and
+a **6 h lifetime** (activeDeadline). `conf/site_nrp.config` caps tasks at
+16 / 32 GB accordingly, and the head runs as a Deployment so it isn't killed
+at 6 h. For bigger or longer tasks (Trinity, large-genome predict), run tasks
+as Jobs instead: apply `k8s/rbac.yaml` (adds `batch/jobs` to the
+`nextflow-runner` Role; needs a namespace admin), then set
+`k8s.computeResourceType = 'Job'` and raise `k8s_max_cpus` / `k8s_max_memory`.
+
+## Reference DB archive
+
+`s3://stajichlab/refdb/funannotate_db.tar.gz` is the fully built
+`/data/refdb/funannotate_db` (funannotate setup `-i all` plus all 28 funannotate
+BUSCO sets, plus `*_odb10` / `*_odb12` lineages). Restoring it skips the ~2 h
+SETUP_FUNANNOTATE_DB build:
+
+```bash
+# from a pod with the PVC at /data, aws creds and tar (e.g. amazon/aws-cli + yum install tar gzip)
+aws --endpoint-url https://s3-west.nrp-nautilus.io s3 cp s3://stajichlab/refdb/funannotate_db.tar.gz - \
+    | tar -xzf - -C /data/refdb
+```
 
 ## Known risks / untested
 
