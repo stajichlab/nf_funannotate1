@@ -148,13 +148,19 @@ workflow TRAIN_PREDICT {
         metadata_out = PREDICT_REUSE.out.metadata
         done_out     = PREDICT_REUSE.out.done
     } else {
+    // FunannotateUtils.needsPredict: no GBK yet, or any input is newer than it.
     def predict_ch = predict_input_ch
         .filter { meta, _gfa ->
-            FunannotateUtils.gbkResult("${params.target}/${meta.id}/predict_results", meta.id as String) == null ||
-            FunannotateUtils.staleRnaseq(meta.id as String, meta.species as String, params.target as String, launchDir.toString()) ||
-            FunannotateUtils.staleTraining(meta.id as String, params.training_target as String, params.target as String) ||
-            FunannotateUtils.staleGenome(meta.id as String, meta.asmid as String, params.source as String, params.target as String)
+            FunannotateUtils.needsPredict(meta, params.target as String, params.training_target as String, params.source as String, launchDir.toString())
         }
+    // Already predicted and current: skipped by predict, but still routed to
+    // BUSCO_COMPLETENESS below so a missing result gets filled in (storeDir makes
+    // it a no-op when the result is already there).
+    def predict_complete_meta = predict_input_ch
+        .filter { meta, _gfa ->
+            !FunannotateUtils.needsPredict(meta, params.target as String, params.training_target as String, params.source as String, launchDir.toString())
+        }
+        .map { meta, _gfa -> meta }
 
     // ── GENEMARK_RUN (standalone, host-side) — or an external sidecar ────────
     // params.genemark_sidecar_dir (default unset): when set, GeneMark is NOT
@@ -233,7 +239,9 @@ workflow TRAIN_PREDICT {
     // tag, NOT asmid -- keying on asmid made the exists() filter drop every
     // genome whose asmid differs from its tag), filtered to
     // genomes that actually have a lineage configured and finished predict.
+    // Fresh predictions plus already-complete genomes (predict_complete_meta).
     def busco_completeness_input = FUNANNOTATE_PREDICT.out.metadata
+        .mix(predict_complete_meta)
         .filter { meta -> meta.busco }
         .map { meta -> tuple(meta, file("${params.target}/${meta.id}/predict_results/${meta.id}.proteins.fa")) }
         .filter { meta, proteins -> proteins.exists() }

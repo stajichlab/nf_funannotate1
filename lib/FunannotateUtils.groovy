@@ -111,6 +111,17 @@ class FunannotateUtils {
         }
     }
 
+    // True when a genome needs (re-)prediction: no GBK yet, or RNA-seq, training
+    // evidence or the genome itself is newer than it. TRAIN_PREDICT uses it both
+    // to pick genomes for FUNANNOTATE_PREDICT and, negated, to route
+    // already-complete genomes to BUSCO_COMPLETENESS.
+    static boolean needsPredict(Map meta, String target, String trainingTarget, String source, String launchDir) {
+        return gbkResult("${target}/${meta.id}/predict_results", meta.id as String) == null ||
+            staleRnaseq(meta.id as String, meta.species as String, target, launchDir) ||
+            staleTraining(meta.id as String, trainingTarget, target) ||
+            staleGenome(meta.id as String, meta.asmid as String, source, target)
+    }
+
     // Fingerprint of the training evidence FUNANNOTATE_PREDICT will consume.
     //
     // WHY THIS EXISTS: FUNANNOTATE_PREDICT's inputs are all `val`
