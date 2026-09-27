@@ -382,7 +382,13 @@ process FUNANNOTATE_TRAIN {
                 exit 1
             fi
             echo "[INFO] Using in-image \$MYSQLD_BIN for the PASA MariaDB backend (no sidecar container needed)"
-            "\$MYSQLD_BIN" --defaults-file=\$MYSQL_SCRATCH/conf/my.cnf \\
+            # mariadbd refuses to start as root unless told to ("Please consult
+            # the Knowledge Base to find out how to run mysqld as root!"). Tasks
+            # run as root on Kubernetes (conf/executor_k8s.config), as a normal
+            # user under apptainer/SLURM; pass --user=root only in the first case.
+            MYSQLD_USER_ARG=""
+            [ "\$(id -u)" = "0" ] && MYSQLD_USER_ARG="--user=root"
+            "\$MYSQLD_BIN" --defaults-file=\$MYSQL_SCRATCH/conf/my.cnf \$MYSQLD_USER_ARG \\
                 --datadir=\$MYSQL_SCRATCH/db/mysql \\
                 --socket=\$MYSQL_SCRATCH/mysqld.sock \\
                 --pid-file=\$MYSQL_SCRATCH/mysqld.pid &
