@@ -36,6 +36,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   antiSMASH/InterProScan/SignalP/DeepTMHMM locations, and the trace file name.
   Added missing outputs (SRA manifests, GeneMark model, BUSCO, ANI, EarlGrey
   `strains/`, database caches) and corrected the storeDir skip rule.
+- `BUSCO_COMPLETENESS` passed `-l <busco_lineages>/<lineage>`, which skips
+  the `lineages/` level of a BUSCO download tree. At UCR HPCC every call
+  failed (`/srv/projects/db/BUSCO/v10//fungi_odb10 does not exist`), and
+  after 3 attempts the global `errorStrategy 'finish'` stopped the run
+  from submitting new tasks. It now uses `-l <lineage> --offline
+  --download_path <busco_lineages>`, the same convention as `BUSCO_GENOME`.
+- `FUNANNOTATE_TRAIN`: funannotate 1.9.0-rc.3 stops train with exit 3 when
+  too few sampled RNA-seq reads map to the genome ("RNA-seq concordance
+  gate FAILED"). The module treated this as an infra failure and retried
+  it, then tripped `errorStrategy 'finish'`. It now writes the
+  `.pasa_train_failed` marker (`pasa_tier` = `rnaseq_gate`) and exits 0,
+  so predict runs ab initio for that strain. Exit 3 without the gate
+  message still hard-fails. Test: `tests/test_train_rnaseq_gate.sh`.
+- `tests/test_train_retry_cleanup.sh` did not parse the extracted block:
+  it unescaped Groovy `\$` but not `\\`, so line continuations broke the
+  rendered shell. It passes again.
 
 ## [0.3.0] - 2026-09-25
 

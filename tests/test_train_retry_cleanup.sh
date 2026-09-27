@@ -84,6 +84,7 @@ mkdir -p "${TRAINDIR}/hisat2" "${TRAINDIR}/trinity_gg"
 
 RENDERED=$(echo "$BLOCK" \
     | sed 's/\\\$/\$/g' \
+    | sed 's/\\\\/\\/g' \
     | sed "s#\${params.training_target}#${WORKDIR//#/\\#}/genome_annotation_training#g" \
     | sed 's/\${out}/TESTSTRAIN/g' \
     | sed 's/\${species}/Test species/g' \

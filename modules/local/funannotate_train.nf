@@ -624,6 +624,24 @@ process FUNANNOTATE_TRAIN {
         # of them, so every PASA-completed-but-TransDecoder-failed run took the
         # hard-fail path below and burned its full retry budget instead of
         # degrading once. Found 2026-09-19 on v1.8.17_conda.
+        # funannotate >= 1.9.0-rc.3 samples the reads, maps them to the genome
+        # and stops train with exit 3 when too few map (--min_rnaseq_map_rate,
+        # default 10%): the reads are most likely not from this organism. That
+        # is deterministic -- more memory on a retry cannot change it -- so
+        # degrade to ab-initio here instead of burning the retry budget and
+        # then tripping the global errorStrategy 'finish', which stops the
+        # whole run from submitting new tasks. Found 2026-09-26 in
+        # BFD/Funannotate_benchmarking (Pyrenophora_teres_0-1: 2.73% mapped).
+        if [ "\$TRAIN_STATUS" -eq 3 ] && grep -q 'RNA-seq concordance gate FAILED' funannotate_train_capture.log; then
+            echo "[WARN] ${out}: funannotate train's RNA-seq concordance gate rejected the reads (exit 3; too few sampled reads map to this genome -- see the TRAINING-DECISION rnaseq_gate line above). Degrading to ab-initio-only; predict will proceed without RNA-seq/PASA evidence for this strain. Replace the reads to train." >&2
+            mkdir -p "${params.training_target}/${out}/training"
+            : > "${params.training_target}/${out}/training/.pasa_train_failed"
+            printf "out\\tspecies\\tpasa_tier\\texit_code\\ttimestamp\\n%s\\t%s\\t%s\\t%s\\t%s\\n" \\
+                "${out}" "${species}" "rnaseq_gate" "\$TRAIN_STATUS" "\$(date -Iseconds)" \\
+                > "${out}.pasa_train_failed.tsv"
+            if [ "${params.pasa_mysql}" = "true" ]; then stop_mysqldb; fi
+            exit 0
+        fi
         if grep -qE 'PASA assigned [0-9,]+ transcripts to [0-9,]+ loci' funannotate_train_capture.log; then
             echo "[WARN] ${out}: funannotate train failed (exit \$TRAIN_STATUS) but PASA completed alignment/assignment for this run (pasa_tier=${pasa_tier}) -- treating as 'not enough usable transcript evidence' rather than an infra failure. Degrading to ab-initio-only; predict will proceed without PASA evidence for this strain." >&2
             mkdir -p "${params.training_target}/${out}/training"
