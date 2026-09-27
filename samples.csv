@@ -1,2 +1,2 @@
 SPECIES,STRAIN,ASMID,LOCUSTAG,BUSCO_LINEAGE,TRANSL_TABLE,NCBI_TAXONID,GENOME
-Debaryomyces hansenii,CDA1,CDA1_20250504,AC24UF,saccharomycetes_odb10,12,,test_run/genome/CDA1_20250504.fa.gz
+Debaryomyces hansenii,CDA1,CDA1_20250504,AC24UF,saccharomycetes_odb10,12,4959,test_run/genome/CDA1_20250504.fa.gz

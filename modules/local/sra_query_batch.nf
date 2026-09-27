@@ -72,13 +72,29 @@ process SRA_QUERY_BATCH {
 
     printf '${batch_args}\\n' > batch_input.tsv
 
+    # Entrez organism term: txid<N> when samples.csv has NCBI_TAXONID, else the
+    # species name from the tag (underscores -> spaces). A blank taxonid used to
+    # build 'txid[Organism:noexp]', which matches nothing, so species without an
+    # NCBI_TAXONID silently got "Found 0 accessions".
+    org_term() {
+        local stag="\$1" tid="\$2"
+        if [ -n "\$tid" ]; then
+            printf 'txid%s[Organism:noexp]' "\$tid"
+        else
+            printf '%s[Organism:noexp]' "\$(printf '%s' "\$stag" | tr '_' ' ')"
+        fi
+    }
+
     query_species() {
         local stag="\$1" tid="\$2" attempt
+        local ORG
+        ORG=\$(org_term "\$stag" "\$tid")
+        [ -n "\$tid" ] || echo "[WARN] \${stag}: no NCBI_TAXONID in samples.csv; querying SRA by name: \${ORG}"
 
         for attempt in 1 2 3; do
             rm -f "_runinfo_\${stag}.tmp"
             if timeout 300 bash -c \\
-                    "esearch -db sra -query 'txid\${tid}[Organism:noexp] AND RNA-Seq[Strategy] AND PAIRED[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND (BGISEQ[Platform] OR Illumina[Platform])' | efetch -format runinfo -start 1 -stop 250" \\
+                    "esearch -db sra -query '\${ORG} AND RNA-Seq[Strategy] AND PAIRED[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND (BGISEQ[Platform] OR Illumina[Platform])' | efetch -format runinfo -start 1 -stop 250" \\
                     < /dev/null > "_runinfo_\${stag}.tmp"; then
                 return 0
             fi
@@ -137,7 +153,7 @@ process SRA_QUERY_BATCH {
             if [ "${params.enable_single_end}" = "true" ] && [ "\$NHITS" -eq 0 ]; then
                 rm -f "_runinfo_se_\${species_tag}.tmp"
                 if timeout 300 bash -c \\
-                        "esearch -db sra -query 'txid\${taxonid}[Organism:noexp] AND RNA-Seq[Strategy] AND SINGLE[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND Illumina[Platform]' | efetch -format runinfo -start 1 -stop 250" \\
+                        "esearch -db sra -query '\$(org_term "\${species_tag}" "\${taxonid}") AND RNA-Seq[Strategy] AND SINGLE[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND Illumina[Platform]' | efetch -format runinfo -start 1 -stop 250" \\
                         < /dev/null > "_runinfo_se_\${species_tag}.tmp"; then
                     awk -F',' -v BL="${launchDir}/rnaseq_blacklist.csv" '
                         BEGIN {
