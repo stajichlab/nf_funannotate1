@@ -1,0 +1,81 @@
+# Long-lived head that runs `nextflow run ... -profile annotate,nrp`. Nextflow
+# has to run INSIDE the cluster: the k8s executor needs the shared PVC mounted
+# at the same path as in the task pods (kuberun from a laptop is deprecated).
+#
+# A Deployment, not a bare Pod: NRP gives controller-less pods a 6 h lifetime
+# (activeDeadline; the first head pod was killed at exactly 6 h) and caps them
+# at 16 cores / 32 GB. The Deployment's pod is recreated if it dies; everything
+# that matters (NXF_HOME, launch dirs, work/, results) lives on the PVC, so
+# re-run with -resume after a restart.
+#
+#   kubectl apply -f k8s/head-deployment.yaml
+#   kubectl exec -it -n ucr-stajichlab deploy/funannotate-nextflow-head -- bash
+#
+# Launch runs detached (setsid nohup nextflow run ... &, or inside tmux) so a
+# dropped exec session doesn't kill them.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: funannotate-nextflow-head
+  namespace: ucr-stajichlab
+  labels:
+    app: funannotate-nextflow-head
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: funannotate-nextflow-head
+  template:
+    metadata:
+      labels:
+        app: funannotate-nextflow-head
+      annotations:
+        nrp-nautilus.io/project: stajichlab-fungi-bfd
+    spec:
+      serviceAccountName: nextflow-runner
+      containers:
+        - name: nextflow
+          # 26.x: the v2 config parser applies -profile entries in command-line
+          # order, which `-profile annotate,nrp` relies on (see nextflow.config).
+          image: nextflow/nextflow:26.04.6
+          command: ["sleep", "infinity"]
+          lifecycle:
+            # The base image ships without git (needed to pull
+            # stajichlab/nf_funannotate1) or tmux.
+            postStart:
+              exec:
+                command: ["sh", "-c", "dnf install -y git tmux >/dev/null 2>&1 || true"]
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: nrp-s3-creds
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nrp-s3-creds
+                  key: AWS_SECRET_ACCESS_KEY
+            # Nextflow state, plugin cache and pulled pipeline source on the PVC,
+            # so it survives head-pod restarts and task pods can see projectDir
+            # (bin/, assets/ are referenced by absolute path from task scripts).
+            - name: NXF_HOME
+              value: /data/.nextflow
+            - name: HOME
+              value: /data/home
+          resources:
+            requests:
+              cpu: "1"
+              memory: 4Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          volumeMounts:
+            - name: work
+              mountPath: /data
+      volumes:
+        - name: work
+          persistentVolumeClaim:
+            claimName: funannotate-work-pvc

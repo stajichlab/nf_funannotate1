@@ -72,6 +72,23 @@ workflow {
     if( !params.taxondb || !params.funannotate_db )
         error "Missing params.taxondb / params.funannotate_db — add a pipeline profile, e.g. -profile annotate,slurm,module (or use: sbatch nextflow/run_annotate.sh)"
 
+    // The SRA fetch path needs two Rust helpers that are built at deploy time,
+    // not committed (scripts/build_tools.sh -> tools/bin/). Without this check a
+    // missing build only surfaced inside SRA_FETCH, after the reads had already
+    // downloaded (and after 5 retries SRA_FETCH's errorStrategy turns to
+    // 'ignore', so the run then continued with no RNA-seq at all).
+    if( params.run_sra_fetch.toBoolean() && !params.stop_after_sra_query.toBoolean() && !workflow.stubRun ) {
+        // Only paths are checked here. A bare command name (no '/') is resolved
+        // on the task container's PATH at run time (sra_tools >= 1.4.0 ships
+        // both helpers; see conf/provision_singularity.config).
+        def missing_tools = [params.fastq_hdr_script, params.readlen_script]
+            .findAll { !it || ((it as String).contains('/') && !file(it as String).canExecute()) }
+        if( missing_tools )
+            error "SRA fetch helper(s) not found or not executable: ${missing_tools.join(', ')}. " +
+                  "Build them once into this checkout's tools/bin: `bash ${projectDir}/scripts/build_tools.sh` " +
+                  "(Kubernetes: k8s/build-tools-pod.yaml), or point --fastq_hdr_script / --readlen_script at existing builds."
+    }
+
     // ── Samplesheet ingestion (INPUT_CHECK) ──────────────────────────────────
     // Parses samples CSV, applies taxon/asmid/suppress/n_test filters, builds
     // meta maps, and resolves genome paths. Two outputs:

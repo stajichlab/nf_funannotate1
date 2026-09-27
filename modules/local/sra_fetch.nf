@@ -196,8 +196,11 @@ process SRA_FETCH {
             fi
         done
         rm -rf reads
-        ENFORCE="${params.readlen_script}"
-        [[ -x "\$ENFORCE" ]] || { echo "[ERROR] enforce_seqpair_readlen not found or not executable at \$ENFORCE"; exit 1; }
+        # params.readlen_script is a path (tools/bin build) or a bare command name
+        # on the container's PATH (sra_tools >= 1.4.0 ships it); command -v
+        # resolves either, and fails for a missing / non-executable path.
+        ENFORCE=\$(command -v "${params.readlen_script}" || true)
+        [[ -n "\$ENFORCE" ]] || { echo "[ERROR] enforce_seqpair_readlen not found or not executable: ${params.readlen_script}"; exit 1; }
         if ! "\$ENFORCE" in=\$TMPDIR/${species_tag}_R1.fastq.gz \
                 in2=\$TMPDIR/${species_tag}_R2.fastq.gz \
                 out=\$TMPDIR/${species_tag}_trunc_R1.fastq.gz \

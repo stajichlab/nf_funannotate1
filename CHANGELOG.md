@@ -6,7 +6,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Kubernetes execution (test mode): `-profile annotate,k8s` and
+  `-profile annotate,nrp` (NRP Nautilus), via `conf/executor_k8s.config` and
+  `conf/site_nrp.config`, plus `k8s/` manifests (PVC, head pod), smoke-test
+  params and a README. SignalP/DeepTMHMM/antiSMASH and the FCS-GX purge are
+  not provisioned on k8s yet.
+- Kubernetes setup files in `k8s/`: `head-deployment.yaml` (the head runs as
+  a Deployment, since NRP ends controller-less pods after 6 h), `pvc.yaml`,
+  `rbac.yaml` (adds `batch/jobs`; not applied yet), `build-tools-pod.yaml`,
+  `s3-stage-pod.yaml`, and `params_nrp_test.yaml` for the D. hansenii CDA1
+  test. `site_nrp.config` caps tasks at 16 cpus / 32 GB (NRP's limit for pods
+  without a controller). Tested end to end on NRP: clean, mask, SRA fetch,
+  Trinity/PASA train, GeneMark, predict, BUSCO completeness.
+- `params.mariadb_setup_in_image`: SETUP_MARIADB_DATADIR can run
+  mariadb-install-db inside its own image (no nested apptainer).
+- `params.predict_local_scratch` (on for k8s/nrp, off elsewhere):
+  FUNANNOTATE_PREDICT works in node-local `$TMPDIR` and copies only the final
+  pruned tree to `params.target`. BUSCO/Augustus training writes thousands of
+  small files, which crawled on CephFS.
+- `funannotate.nf` stops at startup, with build instructions, when
+  `--run_sra_fetch` is on and `fix_fastq_header_trinity` /
+  `enforce_seqpair_readlen` are missing (skipped for `-stub-run`).
+
 ### Changed
+- Container profiles (`singularity`, `k8s`, `nrp`) use `sra_tools:1.4.0`,
+  which ships the two Rust read helpers, and call them by name. No
+  per-checkout `scripts/build_tools.sh` run is needed there; host-tool
+  profiles keep the `tools/bin` paths.
+- `GENEMARK_RUN` falls back to ES self-training when GeneMark-ET produces no
+  model, instead of failing the genome. ET cannot train on intron-poor
+  genomes (e.g. Saccharomycetes).
 - `slurm` + `singularity` profiles are now site-neutral for SignalP and
   DeepTMHMM. `conf/provision_singularity.config` no longer sets the UCR
   partitions (`short_gpu`, `epyc`) or `--exclude=gpu13,gpu14`. The generic
@@ -21,6 +51,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   container routing under `ucr_hpcc`.
 
 ### Fixed
+- SRA queries for species with a blank `NCBI_TAXONID` searched
+  `txid[Organism:noexp]`, matched nothing, and trained without RNA-seq. They
+  now fall back to the species name. `samples.csv` gets CDA1's taxon ID (4959).
+- `BUSCO_COMPLETENESS` kept a stale result after a genome was re-predicted
+  (storeDir skips on the directory existing). Predict now removes it after
+  writing new results, and already-predicted genomes are routed to
+  BUSCO_COMPLETENESS so a missing result is filled in.
+- PASA's in-image MariaDB failed to start when tasks run as root (k8s):
+  `mariadbd` now gets `--user=root` only in that case.
+- BUSCO lineage docs and `samples.csv` use odb10: predict's BUSCO training
+  needs `lengths_cutoff`, which odb12 datasets lack.
 - `BUSCO_COMPLETENESS` did not run for genomes whose `ASMID` differs from
   the `SPECIES_STRAIN` tag. `train_predict.nf` looked for the proteins at
   `genome_annotation/<ASMID>/predict_results/<ASMID>.proteins.fa`, but

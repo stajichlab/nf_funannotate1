@@ -334,6 +334,10 @@ Compose one option from each of three axes: `-profile <pipeline>,<executor>,<pro
 | **executor** | `slurm` · `local` |
 | **provisioning** | `ucr_hpcc` (default; institutional Lmod modules) · `conda` (shared frozen envs) · `pixi` · `singularity` (containers) |
 
+Kubernetes is the exception: `k8s` / `nrp` replaces both the executor and
+provisioning picks (`-profile annotate,nrp`), because task pods need OCI images.
+See [`k8s/README.md`](k8s/README.md).
+
 ```bash
 nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,ucr_hpcc -resume
 nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,conda -resume
@@ -452,6 +456,9 @@ nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,singularity
 
 # ...or project-local pixi envs instead of containers (any executor):
 nextflow run stajichlab/nf_funannotate1 -profile annotate,local,pixi
+
+# Kubernetes (NRP Nautilus), launched from a head pod in the cluster -- k8s/README.md:
+nextflow run /data/src/nf_funannotate1 -profile annotate,nrp
 ```
 
 `local` is the portable executor; the `slurm` profile was already generic
@@ -630,6 +637,11 @@ Tune `--cutoff_mb`, `--repeat_taxon`, and `--n_test`.
 
 ### Rust helpers (built on deploy, not committed)
 
+**Container profiles (`singularity`, `k8s`, `nrp`) need no build:** the `sra`
+image (`sra_tools` >= 1.4.0) ships both helpers on its PATH, and those profiles
+call them by name. The build below is only for the host-tool profiles
+(`ucr_hpcc`, `conda`, `pixi`).
+
 Two Rust binaries used by the SRA/RNA-seq steps are **built from source** into
 `tools/` (gitignored) rather than checked in (they are dynamically-linked,
 platform-specific ELFs). Build them inside the pipeline checkout — for a GitHub
@@ -644,6 +656,12 @@ bash scripts/build_tools.sh
 |---|---|---|
 | `fix_fastq_header_trinity` | https://github.com/hyphaltip/fix_fastq_header_trinity | `params.fastq_hdr_script` |
 | `enforce_seqpair_readlen` | https://github.com/hyphaltip/enforce_seqpair_readlen | `params.readlen_script` |
+
+Prerequisites: Rust >= 1.85, plus `cmake` and a C/C++ compiler for
+`enforce_seqpair_readlen` (its zlib-ng dependency is built from C). With
+`--run_sra_fetch true`, `funannotate.nf` checks for both binaries at startup
+and stops with build instructions if either is missing. On Kubernetes, build
+them with `k8s/build-tools-pod.yaml` (see `k8s/README.md`).
 
 Revisions are pinned in `build_tools.sh` (override with `FIXHDR_REV` /
 `ENFORCE_REV`). Each tool ships a Python fallback (`scripts/enforce_seqpair_readlen.py`,
