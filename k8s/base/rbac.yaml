@@ -24,8 +24,13 @@ rules:
     resources: ["configmaps"]
     verbs: ["create", "get", "list", "watch", "delete"]
   - apiGroups: ["batch"]
-    resources: ["jobs", "jobs/status"]
+    resources: ["jobs"]
     verbs: ["create", "get", "list", "watch", "delete"]
+  # Read-only: a namespace admin cannot grant create/delete on the status
+  # subresource (RBAC escalation check), and Nextflow only reads it.
+  - apiGroups: ["batch"]
+    resources: ["jobs/status"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
