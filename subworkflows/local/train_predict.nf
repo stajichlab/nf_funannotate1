@@ -139,6 +139,15 @@ workflow TRAIN_PREDICT {
     def metadata_out
     def done_out
 
+    // Already predicted and current: skipped by predict, but still routed to
+    // BUSCO_COMPLETENESS (after both prediction paths) so a missing result gets filled in (storeDir makes
+    // it a no-op when the result is already there).
+    def predict_complete_meta = predict_input_ch
+        .filter { meta, _gfa ->
+            !FunannotateUtils.needsPredict(meta, params.target as String, params.training_target as String, params.source as String, launchDir.toString())
+        }
+        .map { meta, _gfa -> meta }
+
     if (params.run_ani_reuse.toBoolean()) {
         // Representative-gated prediction (BFD FUNANNOTATE_PREDICTION port).
         // PREDICT_REUSE does its own not-yet-predicted/stale filtering internally
@@ -153,14 +162,6 @@ workflow TRAIN_PREDICT {
         .filter { meta, _gfa ->
             FunannotateUtils.needsPredict(meta, params.target as String, params.training_target as String, params.source as String, launchDir.toString())
         }
-    // Already predicted and current: skipped by predict, but still routed to
-    // BUSCO_COMPLETENESS below so a missing result gets filled in (storeDir makes
-    // it a no-op when the result is already there).
-    def predict_complete_meta = predict_input_ch
-        .filter { meta, _gfa ->
-            !FunannotateUtils.needsPredict(meta, params.target as String, params.training_target as String, params.source as String, launchDir.toString())
-        }
-        .map { meta, _gfa -> meta }
 
     // ── GENEMARK_RUN (standalone, host-side) — or an external sidecar ────────
     // params.genemark_sidecar_dir (default unset): when set, GeneMark is NOT
@@ -231,22 +232,6 @@ workflow TRAIN_PREDICT {
 
     FUNANNOTATE_PREDICT(predict_final)
 
-    // ── BUSCO_COMPLETENESS (final delivered gene set, not ab-initio training) ─
-    // See modules/local/busco_completeness.nf for why this reruns BUSCO rather
-    // than reusing funannotate's own busco.log. Built directly from the
-    // published predict_results path ("Option B persistence" -- FUNANNOTATE_PREDICT
-    // writes straight to params.target/<id>/, no publishDir; id = SPECIES_STRAIN
-    // tag, NOT asmid -- keying on asmid made the exists() filter drop every
-    // genome whose asmid differs from its tag), filtered to
-    // genomes that actually have a lineage configured and finished predict.
-    // Fresh predictions plus already-complete genomes (predict_complete_meta).
-    def busco_completeness_input = FUNANNOTATE_PREDICT.out.metadata
-        .mix(predict_complete_meta)
-        .filter { meta -> meta.busco }
-        .map { meta -> tuple(meta, file("${params.target}/${meta.id}/predict_results/${meta.id}.proteins.fa")) }
-        .filter { meta, proteins -> proteins.exists() }
-    BUSCO_COMPLETENESS(busco_completeness_input)
-
     // ── BACKFILL_ABINITIO_PARAMS (fresh .mod -> shared per-species store) ─────
     // Only when a shared ab-initio store is configured. Every species freshly
     // trained this run (GENEMARK_RUN emitted a new .mod because shared_mod was
@@ -274,6 +259,28 @@ workflow TRAIN_PREDICT {
     metadata_out = FUNANNOTATE_PREDICT.out.metadata
     done_out     = FUNANNOTATE_PREDICT.out.done
     } // end run_ani_reuse=false inline branch
+
+    // ── BUSCO_COMPLETENESS (final delivered gene set, not ab-initio training) ─
+    // See modules/local/busco_completeness.nf for why this reruns BUSCO rather
+    // than reusing funannotate's own busco.log. Built directly from the
+    // published predict_results path ("Option B persistence" -- FUNANNOTATE_PREDICT
+    // writes straight to params.target/<id>/, no publishDir; id = SPECIES_STRAIN
+    // tag, NOT asmid -- keying on asmid made the exists() filter drop every
+    // genome whose asmid differs from its tag), filtered to
+    // genomes that actually have a lineage configured and finished predict.
+    // Fresh predictions plus already-complete genomes (predict_complete_meta).
+    // Runs for both prediction paths (was inside the run_ani_reuse=false branch,
+    // so ANI-reuse runs never scored their gene sets).
+    def busco_completeness_input = metadata_out
+        .mix(predict_complete_meta)
+        // One task per genome: under run_ani_reuse a cached sibling predict is
+        // emitted by PREDICT_REUSE AND counted as already-complete, and two
+        // BUSCO_COMPLETENESS tasks then race on the same storeDir.
+        .unique { meta -> meta.id }
+        .filter { meta -> meta.busco }
+        .map { meta -> tuple(meta, file("${params.target}/${meta.id}/predict_results/${meta.id}.proteins.fa")) }
+        .filter { meta, proteins -> proteins.exists() }
+    BUSCO_COMPLETENESS(busco_completeness_input)
 
     emit:
     metadata = metadata_out

@@ -97,7 +97,10 @@ workflow ANI_REUSE {
         CONCAT_ANI_TSVS.out.out.ifEmpty(file('/dev/null')),
         predict_input_tsv,
         samples_csv,
-        busco_summaries,
+        // collect(): all summaries in ONE task. Uncollected, this queue channel
+        // paired a single (first-finished) summary with the other one-item
+        // inputs, so the "representative" was whichever BUSCO job ended first.
+        busco_summaries.collect(),
         asm_stats
     )
 
