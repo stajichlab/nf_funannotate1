@@ -1,0 +1,31 @@
+# Example site overlay. Copy this directory (ideally into your own, private
+# deployment repo) and fill in the values marked FILL IN. Then:
+#
+#   kubectl apply -k <overlay dir>                          # PVC, RBAC, head
+#   kubectl apply -k <overlay dir>/tools/build-rust-tools   # one-off pods
+#
+# From a separate repo, point `resources` at this repository by URL and pin a
+# tag or commit, e.g.
+#   - https://github.com/stajichlab/nf_funannotate1//k8s/base?ref=<tag-or-sha>
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# FILL IN: your Kubernetes namespace.
+namespace: my-namespace
+
+resources:
+  - ../../base
+
+# FILL IN (NRP): the project name your usage is accounted under; delete this
+# block on clusters that don't use it. Also goes on task pods via the Nextflow
+# config (params.nrp_project).
+commonAnnotations:
+  nrp-nautilus.io/project: my-nrp-project
+
+# Optional: PVC size / storage class for your cluster.
+# patches:
+#   - target: {kind: PersistentVolumeClaim, name: funannotate-work-pvc}
+#     patch: |-
+#       - op: replace
+#         path: /spec/resources/requests/storage
+#         value: 1Ti

@@ -1,20 +1,17 @@
-# ServiceAccount + Role for Nextflow's k8s executor in ucr-stajichlab. Shared
-# with the BFD project (../BFD/k8s/rbac.yaml); this copy adds batch/jobs,
-# needed to run tasks as Jobs (k8s.computeResourceType = 'Job'): NRP limits
-# controller-less pods to 16 cores / 32 GB and a 6 h lifetime.
-#
-# Apply (needs a namespace admin): kubectl apply -f k8s/rbac.yaml
+# ServiceAccount + Role for Nextflow's k8s executor. The namespace comes from
+# the overlay (kustomize sets it here and on the RoleBinding subject). Includes
+# batch/jobs, needed to run tasks as Jobs (k8s.computeResourceType = 'Job'):
+# NRP limits controller-less pods to 16 cores / 32 GB and a 6 h lifetime.
+# Applying RBAC needs a namespace admin.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: nextflow-runner
-  namespace: ucr-stajichlab
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: nextflow-runner
-  namespace: ucr-stajichlab
 rules:
   # One pod (or Job) per task; logs are tailed; task scripts go in ConfigMaps.
   - apiGroups: [""]
@@ -34,11 +31,9 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: nextflow-runner
-  namespace: ucr-stajichlab
 subjects:
   - kind: ServiceAccount
     name: nextflow-runner
-    namespace: ucr-stajichlab
 roleRef:
   kind: Role
   name: nextflow-runner

@@ -8,8 +8,8 @@
 # that matters (NXF_HOME, launch dirs, work/, results) lives on the PVC, so
 # re-run with -resume after a restart.
 #
-#   kubectl apply -f k8s/head-deployment.yaml
-#   kubectl exec -it -n ucr-stajichlab deploy/funannotate-nextflow-head -- bash
+#   kubectl apply -k <your overlay>        (see k8s/overlays/example)
+#   kubectl exec -it -n <namespace> deploy/funannotate-nextflow-head -- bash
 #
 # Launch runs detached (setsid nohup nextflow run ... &, or inside tmux) so a
 # dropped exec session doesn't kill them.
@@ -17,7 +17,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: funannotate-nextflow-head
-  namespace: ucr-stajichlab
   labels:
     app: funannotate-nextflow-head
 spec:
@@ -31,8 +30,6 @@ spec:
     metadata:
       labels:
         app: funannotate-nextflow-head
-      annotations:
-        nrp-nautilus.io/project: stajichlab-fungi-bfd
     spec:
       serviceAccountName: nextflow-runner
       containers:
@@ -53,11 +50,14 @@ spec:
                 secretKeyRef:
                   name: nrp-s3-creds
                   key: AWS_ACCESS_KEY_ID
+                  # optional: the head still starts without S3 credentials
+                  optional: true
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: nrp-s3-creds
                   key: AWS_SECRET_ACCESS_KEY
+                  optional: true
             # Nextflow state, plugin cache and pulled pipeline source on the PVC,
             # so it survives head-pod restarts and task pods can see projectDir
             # (bin/, assets/ are referenced by absolute path from task scripts).

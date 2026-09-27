@@ -4,9 +4,9 @@
 # deploy time, not committed (scripts/build_tools.sh); tools/ is gitignored, so
 # `git pull` keeps them, but a fresh clone needs this pod again.
 #
-#   kubectl apply -f k8s/build-tools-pod.yaml
-#   kubectl logs -f -n ucr-stajichlab build-rust-tools
-#   kubectl delete pod -n ucr-stajichlab build-rust-tools
+#   kubectl apply -k <your overlay>/tools/build-rust-tools   (see k8s/README.md)
+#   kubectl logs -f -n <namespace> build-rust-tools
+#   kubectl delete pod -n <namespace> build-rust-tools
 #
 # The binaries run inside the `sra` container (SRA_FETCH / SRA_FETCH_SE), not
 # in this image, so:
@@ -19,9 +19,6 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: build-rust-tools
-  namespace: ucr-stajichlab
-  annotations:
-    nrp-nautilus.io/project: stajichlab-fungi-bfd
 spec:
   restartPolicy: Never
   activeDeadlineSeconds: 3600

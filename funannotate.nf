@@ -72,6 +72,12 @@ workflow {
     if( !params.taxondb || !params.funannotate_db )
         error "Missing params.taxondb / params.funannotate_db — add a pipeline profile, e.g. -profile annotate,slurm,module (or use: sbatch nextflow/run_annotate.sh)"
 
+    // k8s / nrp profiles need a namespace; without one Nextflow would silently
+    // submit to the 'default' namespace and fail on RBAC / a missing PVC.
+    if( (workflow.profile.tokenize(',') as Set).intersect(['k8s', 'nrp'] as Set) && !params.k8s_namespace )
+        error "Kubernetes profile without a namespace: set params.k8s_namespace (and, on NRP, params.nrp_project) " +
+              "in your site config (template: k8s/overlays/example/site.config, passed with -c). See k8s/README.md."
+
     // The SRA fetch path needs two Rust helpers that are built at deploy time,
     // not committed (scripts/build_tools.sh -> tools/bin/). Without this check a
     // missing build only surfaced inside SRA_FETCH, after the reads had already
@@ -86,7 +92,7 @@ workflow {
         if( missing_tools )
             error "SRA fetch helper(s) not found or not executable: ${missing_tools.join(', ')}. " +
                   "Build them once into this checkout's tools/bin: `bash ${projectDir}/scripts/build_tools.sh` " +
-                  "(Kubernetes: k8s/build-tools-pod.yaml), or point --fastq_hdr_script / --readlen_script at existing builds."
+                  "(Kubernetes: the k8s/tools/build-rust-tools pod), or point --fastq_hdr_script / --readlen_script at existing builds."
     }
 
     // ── Samplesheet ingestion (INPUT_CHECK) ──────────────────────────────────
