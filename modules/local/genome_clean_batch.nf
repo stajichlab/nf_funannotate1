@@ -88,22 +88,38 @@ BATCH_EOF
         else
             cat "\$gz" > \$SCRATCH/\${asmid}.raw.fa
         fi
+        # AAFTF fcs_gx_purge's own exit code is NOT a reliable success signal:
+        # it can return 0 even when run_gx.py silently produced no report
+        # (confirmed 2026-09-26 -- a stale/corrupt /dev/shm/gxdb caused every
+        # genome in a batch to hit this: fcs_gx_purge exited 0, the downstream
+        # cat of the purge fasta failed on the missing file, yet the
+        # unconditional echo/manifest-append below still logged [OK] and
+        # recorded a target path that was never actually written). Gate
+        # success on the target file actually existing and non-empty,
+        # matching the same [FAIL]/fcs_fails bookkeeping the fcs_gx_purge
+        # branch already uses below.
         if AAFTF fcs_gx_purge --db /dev/shm/gxdb/all \\
             -i \$SCRATCH/\${asmid}.raw.fa --cpus ${task.cpus} \\
             -o \$SCRATCH/\${asmid}.purge.fasta \\
-            -t "\$phylum" -w \$SCRATCH/\${asmid}.fcs_report ; then
+            -t "\$phylum" -w \$SCRATCH/\${asmid}.fcs_report \\
+            && [ -s \$SCRATCH/\${asmid}.purge.fasta ] ; then
             cat \$SCRATCH/\${asmid}.purge.fasta | ${params.clean_script} --len ${params.min_contig_len} > \$SCRATCH/\${asmid}.clean.fa \\
                 && pigz -c \$SCRATCH/\${asmid}.clean.fa > \${target}.tmp \\
                 && mv \${target}.tmp \$target
             rm -f \$SCRATCH/\${asmid}.clean.fa
-            echo "[\$i/\$n_total][OK] \$asmid -> \$target (\$(du -sh \$target | cut -f1))"
-            pigz -f \$SCRATCH/\${asmid}.purge.fasta
-            [ -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv ] && pigz -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv
-            mv \$SCRATCH/\${asmid}.purge.fasta.gz \$DEST/clean/ 2>/dev/null || true
-            [ -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv.gz ] && mv \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv.gz \$DEST/clean/
-            printf '%s\\t%s\\n' "\$asmid" "\$target" >> \$MANIFEST
+            if [ -s \$target ]; then
+                echo "[\$i/\$n_total][OK] \$asmid -> \$target (\$(du -sh \$target | cut -f1))"
+                pigz -f \$SCRATCH/\${asmid}.purge.fasta
+                [ -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv ] && pigz -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv
+                mv \$SCRATCH/\${asmid}.purge.fasta.gz \$DEST/clean/ 2>/dev/null || true
+                [ -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv.gz ] && mv \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv.gz \$DEST/clean/
+                printf '%s\\t%s\\n' "\$asmid" "\$target" >> \$MANIFEST
+            else
+                echo "[\$i/\$n_total][FAIL] \$asmid: \$target was not produced (clean/compress/move step failed)" >&2
+                fcs_fails=\$((fcs_fails+1))
+            fi
         else
-            echo "[\$i/\$n_total][FAIL] fcs_gx_purge failed for \$asmid" >&2
+            echo "[\$i/\$n_total][FAIL] fcs_gx_purge failed for \$asmid (no report / empty purge.fasta)" >&2
             fcs_fails=\$((fcs_fails+1))
         fi
         rm -f \$SCRATCH/\${asmid}.raw.fa \$SCRATCH/\${asmid}.purge.fasta
