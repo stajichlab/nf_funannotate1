@@ -53,8 +53,9 @@ spec:
               valueFrom: {secretKeyRef: {name: nrp-s3-creds, key: AWS_ACCESS_KEY_ID, optional: true}}
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom: {secretKeyRef: {name: nrp-s3-creds, key: AWS_SECRET_ACCESS_KEY, optional: true}}
+          # NRP admission: cpu limit/request ratio must be <= 1.2.
           resources:
-            requests: {cpu: "1", memory: 4Gi}
+            requests: {cpu: "2", memory: 4Gi}
             limits: {cpu: "2", memory: 4Gi}
           volumeMounts:
             - {name: work, mountPath: /data}
