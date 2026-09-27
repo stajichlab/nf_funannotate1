@@ -47,13 +47,17 @@ process SRA_QUERY {
     tuple val(species_tag), path("${species_tag}.sra_query.csv"), emit: query_result
 
     script:
+    // Blank NCBI_TAXONID -> query by species name (txid[Organism] matches nothing).
+    def org = taxonid?.toString()?.trim() ? "txid${taxonid}[Organism:noexp]" : "${species_tag.replace('_', ' ')}[Organism:noexp]"
+    def warn_no_taxid = taxonid?.toString()?.trim() ? '' : "echo '[WARN] ${species_tag}: no NCBI_TAXONID in samples.csv; querying SRA by name: ${org}'"
     """
     set -euo pipefail
+    ${warn_no_taxid}
 
     printf 'species_tag,taxonid,sra_accession,spots,platform,layout\n' > ${species_tag}.sra_query.csv
 
     timeout 300 bash -c "esearch -db sra \\
-        -query 'txid${taxonid}[Organism:noexp] AND RNA-Seq[Strategy] AND PAIRED[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND (BGISEQ[Platform] OR Illumina[Platform])' | \\
+        -query '${org} AND RNA-Seq[Strategy] AND PAIRED[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND (BGISEQ[Platform] OR Illumina[Platform])' | \\
         efetch -format runinfo -start 1 -stop 250" > _runinfo.tmp
 
     # col 1=Run, col 2=ReleaseDate, col 4=spots, col 12=LibraryName, col 13=LibraryStrategy,
@@ -95,7 +99,7 @@ process SRA_QUERY {
     # SE fallback: if no PE hits found and enable_single_end is true, query SINGLE layout
     if [ "${params.enable_single_end}" = "true" ] && [ "\$NHITS" -eq 0 ]; then
         timeout 300 bash -c "esearch -db sra \\
-            -query 'txid${taxonid}[Organism:noexp] AND RNA-Seq[Strategy] AND SINGLE[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND Illumina[Platform]' | \\
+            -query '${org} AND RNA-Seq[Strategy] AND SINGLE[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND Illumina[Platform]' | \\
             efetch -format runinfo -start 1 -stop 250" > _runinfo_se.tmp
         awk -F',' -v BL="${launchDir}/rnaseq_blacklist.csv" '
             BEGIN {

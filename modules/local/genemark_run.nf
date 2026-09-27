@@ -217,6 +217,26 @@ process GENEMARK_RUN {
         grep -qi "input sequence size is too small" "\$GMES_LOG" 2>/dev/null
     }
 
+    # Fresh ES self-training: the no-RNA-seq path, and the fallback when ET
+    # cannot train (see the ET branch below).
+    run_es_training() {
+        echo "[INFO] GENEMARK_RUN ${out}: fresh ES self-training (force_independent=${force_independent}, shared_mod='${shared_mod}')"
+        run_gmes --ES --sequence genome.fa \\
+            --max_intron ${params.max_intronlen} --soft_mask 2000 \\
+            --cores ${task.cpus} --fungus "\${GCODE_ARGS[@]}" 2>&1 | tee "\$GMES_LOG"
+        if [ -f output/gmhmm.mod ]; then
+            cp output/gmhmm.mod "${out}.genemark.mod"
+        elif too_small_skip; then
+            echo "[WARN] GENEMARK_RUN ${out}: GeneMark-ES declined -- not enough usable (unmasked, >=10kb) training sequence after masking; skipping GeneMark for this genome" >&2
+            touch "${out}.genemark.gtf"
+            rm -f genome.fa
+            exit 0
+        else
+            echo "ERROR: GeneMark-ES did not produce output/gmhmm.mod" >&2
+            exit 1
+        fi
+    }
+
     if [ -n "${shared_mod}" ] && [ "${force_independent}" != "true" ]; then
         echo "[INFO] GENEMARK_RUN ${out}: fast-reuse (--predict_with) against shared model ${shared_mod}"
         cp "${shared_mod}" genemark-shared.mod
@@ -247,28 +267,21 @@ process GENEMARK_RUN {
             rm -f genome.fa
             exit 0
         else
-            echo "ERROR: GeneMark-ET did not produce output/gmhmm.mod" >&2
-            exit 1
+            # ET trains its initial model on introns inside RNA-seq-supported
+            # genes. Intron-poor genomes (e.g. Saccharomycetes yeasts) can have
+            # too few for its branch-point step ("no data in specified range",
+            # then bp_seq_select.pl "hash is empty") even with plenty of valid
+            # hints; ES self-training still works there. Fall back instead of
+            # failing the genome.
+            echo "[WARN] GENEMARK_RUN ${out}: GeneMark-ET did not produce output/gmhmm.mod (\$(wc -l < genemark.intron-hints.gff) intron hints; typical of intron-poor genomes) -- falling back to ES self-training" >&2
+            rm -rf output data run info
+            run_es_training
         fi
     else
         if [ "${mode}" = "ET" ]; then
             echo "[INFO] GENEMARK_RUN ${out}: mode=ET requested but no training_bam available (no RNA-seq for this genome) -- falling back to ES self-training"
         fi
-        echo "[INFO] GENEMARK_RUN ${out}: fresh ES self-training (force_independent=${force_independent}, shared_mod='${shared_mod}')"
-        run_gmes --ES --sequence genome.fa \\
-            --max_intron ${params.max_intronlen} --soft_mask 2000 \\
-            --cores ${task.cpus} --fungus "\${GCODE_ARGS[@]}" 2>&1 | tee "\$GMES_LOG"
-        if [ -f output/gmhmm.mod ]; then
-            cp output/gmhmm.mod "${out}.genemark.mod"
-        elif too_small_skip; then
-            echo "[WARN] GENEMARK_RUN ${out}: GeneMark-ES declined -- not enough usable (unmasked, >=10kb) training sequence after masking; skipping GeneMark for this genome" >&2
-            touch "${out}.genemark.gtf"
-            rm -f genome.fa
-            exit 0
-        else
-            echo "ERROR: GeneMark-ES did not produce output/gmhmm.mod" >&2
-            exit 1
-        fi
+        run_es_training
     fi
 
     if [ ! -s genemark.gtf ]; then

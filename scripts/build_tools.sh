@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # build_tools.sh — build the two Rust helper binaries used by the SRA/RNA-seq
-# steps of funannotate.nf, installing them into nextflow/tools/bin/.
+# steps of funannotate.nf, installing them into tools/bin/ (next to this scripts/ dir).
 #
 # These are NOT committed to the repo (they are dynamically-linked, platform-
 # specific ELFs). Run this once on a build node before running the pipeline with
 # the SRA path enabled (--run_sra_fetch true). params.fastq_hdr_script and
 # params.readlen_script (conf/profile_annotate.config) point at the results.
 #
-#   bash nextflow/scripts/build_tools.sh
+#   bash scripts/build_tools.sh
 #
-# Requires a Rust toolchain (cargo). On the UCR HPCC: `module load rust`.
+# Requires a Rust toolchain (cargo, rust >= 1.85). On the UCR HPCC: `module load rust`.
+# enforce_seqpair_readlen also needs cmake and a C/C++ compiler (its zlib-ng dependency
+# is built from C source). funannotate.nf checks for both binaries at startup when
+# --run_sra_fetch is on. On Kubernetes, use k8s/build-tools-pod.yaml instead.
 # Pins are overridable, e.g.:  FIXHDR_REV=<sha> ENFORCE_REV=<sha> bash ... build_tools.sh
 
 set -euo pipefail
@@ -20,7 +23,7 @@ FIXHDR_REV="${FIXHDR_REV:-ddfe9bdfa5d69c151247764aec702871b10ae291}"
 ENFORCE_URL="${ENFORCE_URL:-https://github.com/hyphaltip/enforce_seqpair_readlen}"
 ENFORCE_REV="${ENFORCE_REV:-a2bc290fe127dacc5b910dedc25bc40d1165b0cd}"
 
-# ── locate nextflow/tools (script lives in nextflow/scripts/) ─────────────────
+# ── locate tools/ (script lives in scripts/) ──────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOLS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)/tools"
 BIN_DIR="${TOOLS_DIR}/bin"

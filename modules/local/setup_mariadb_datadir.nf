@@ -11,6 +11,12 @@
 // site-specific pre-built datadir is needed -- this works under any provisioning
 // profile as long as an apptainer/singularity binary is on PATH (falling back to
 // the UCR HPCC Lmod module below when it isn't).
+//
+// params.mariadb_setup_in_image = true (set by conf/executor_k8s.config): the
+// task itself already runs INSIDE the MariaDB image (k8s pods can't nest
+// apptainer), so mariadb-install-db is called directly instead. Opt-in rather
+// than a PATH probe so a host that happens to have its own mariadb-install-db
+// never silently seeds with a different MariaDB version than the image's.
 process SETUP_MARIADB_DATADIR {
     label 'setup'
     label 'process_single'
@@ -28,6 +34,18 @@ process SETUP_MARIADB_DATADIR {
     def mariadb_image      = FunannotateUtils.mariadbImage(params)
     def mariadb_img        = FunannotateUtils.localImageFile(mariadb_image, params.sif_dir as String)
     def ensure_mariadb_img = FunannotateUtils.ensureLocalImageScript(mariadb_image, params.sif_dir as String)
+    if (params.mariadb_setup_in_image) {
+        """
+        set -euo pipefail
+        mkdir -p ${datadir_name} mariadb_tmp
+        export TMPDIR="\$PWD/mariadb_tmp"
+        DB=\$(command -v mariadb-install-db || command -v mysql_install_db || true)
+        [ -n "\$DB" ] || { echo "ERROR: no mariadb-install-db/mysql_install_db in this task's image (${mariadb_image})" >&2; exit 1; }
+        echo "[INFO] using in-image \$DB"
+        "\$DB" --datadir="\$PWD/${datadir_name}" --auth-root-authentication-method=normal
+        echo "[INFO] MariaDB seed datadir built at ${datadir_name}"
+        """
+    } else
     """
     set -euo pipefail
     APPTAINER_BIN=\$(command -v apptainer || command -v singularity || true)
