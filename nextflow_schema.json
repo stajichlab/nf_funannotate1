@@ -635,6 +635,11 @@
           "type": "string",
           "default": "/data",
           "description": "nrp only: mount path of k8s_pvc in every pod."
+        },
+        "predict_local_scratch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run funannotate predict in node-local $TMPDIR and copy only final results to params.target (avoids small-file I/O on network filesystems). Set true by -profile k8s/nrp."
         }
       }
     }

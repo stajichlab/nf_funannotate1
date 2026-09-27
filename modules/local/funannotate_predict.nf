@@ -77,6 +77,34 @@ process FUNANNOTATE_PREDICT {
 
     PREDICTDIR="${params.target}/${out}"
     PREDICT_GBK="\$PREDICTDIR/predict_results/${out}.gbk"
+    # RUNDIR is where funannotate predict actually writes (-o). Normally the
+    # persistent PREDICTDIR itself. With params.predict_local_scratch it is a
+    # node-local dir under \$TMPDIR instead: BUSCO/Augustus training there
+    # creates thousands of small files, which crawls on a network filesystem
+    # (CephFS: ~1 h blocked on metadata for one 12 Mb genome). Only the final,
+    # pruned tree is copied back to PREDICTDIR (see sync_back below).
+    RUNDIR="\$PREDICTDIR"
+    if [ "${params.predict_local_scratch.toBoolean()}" = "true" ]; then
+        RUNDIR="\$TMPDIR/funannotate_predict_${out}"
+    fi
+    RUN_GBK="\$RUNDIR/predict_results/${out}.gbk"
+    # Local-scratch mode: copy logs back on failure (for debugging), the whole
+    # pruned tree on success. No-ops when RUNDIR is PREDICTDIR.
+    copy_logs_back() {
+        if [ "\$RUNDIR" != "\$PREDICTDIR" ]; then
+            if [ -d "\$RUNDIR/logfiles" ]; then
+                mkdir -p "\$PREDICTDIR" && cp -a "\$RUNDIR/logfiles" "\$PREDICTDIR/"
+            fi
+            rm -rf "\$RUNDIR"
+        fi
+    }
+    sync_back() {
+        if [ "\$RUNDIR" != "\$PREDICTDIR" ]; then
+            rm -rf "\$PREDICTDIR/predict_results" "\$PREDICTDIR/predict_misc"
+            mkdir -p "\$PREDICTDIR" && cp -a "\$RUNDIR/." "\$PREDICTDIR/"
+            rm -rf "\$RUNDIR"
+        fi
+    }
 
     if [ "${params.debug.toBoolean()}" = "true" ]; then
         echo "[DEBUG] out=${out} asmid=${asmid} species=${species} strain=${strain}"
@@ -111,9 +139,17 @@ process FUNANNOTATE_PREDICT {
         rm -rf "\$PREDICTDIR/predict_results"
     fi
 
+    # Local-scratch mode: always start from a clean local dir. A partial
+    # predict_misc left in PREDICTDIR by an earlier non-local attempt is not
+    # copied in: it is thousands of small files, the exact cost this avoids.
+    if [ "\$RUNDIR" != "\$PREDICTDIR" ]; then
+        rm -rf "\$RUNDIR" && mkdir -p "\$RUNDIR"
+        echo "[INFO] funannotate predict working in node-local \$RUNDIR; results copied to \$PREDICTDIR at the end"
+    fi
+
     # Point funannotate at the persistent training dir via symlink.
     if [ -d "${params.training_target}/${out}/training" ]; then
-        ln -sfn "${params.training_target}/${out}/training" "\$PREDICTDIR/training"
+        ln -sfn "${params.training_target}/${out}/training" "\$RUNDIR/training"
     fi
 
     TBL2ASN_PARAMS="-l paired-ends"
@@ -151,7 +187,7 @@ process FUNANNOTATE_PREDICT {
     fi
 
     funannotate predict --name ${locustag} -i "\$GENOME_IN" --strain "${strain}" \\
-        -o "\$PREDICTDIR" -s "${species}" --cpu ${task.cpus} --busco_db ${busco_lineage} \\
+        -o "\$RUNDIR" -s "${species}" --cpu ${task.cpus} --busco_db ${busco_lineage} \\
         --AUGUSTUS_CONFIG_PATH \$AUGUSTUS_CONFIG_PATH -w ${weight_args} \\
         --min_training_models 30 --tmpdir \$TMPDIR --SeqCenter ${params.seqcenter} \\
         --keep_no_stops --header_length ${header_length} --protein_evidence ${params.proteins} \\
@@ -159,8 +195,9 @@ process FUNANNOTATE_PREDICT {
         --tbl2asn "\$TBL2ASN_PARAMS" ${genemark_cli} ${other_gff_cli} || true
 
     # ── Post-predict catch ────────────────────────────────────────────────────
-    if [ ! -s "\$PREDICT_GBK" ]; then
-        PLOG="\$PREDICTDIR/logfiles/funannotate-predict.log"
+    if [ ! -s "\$RUN_GBK" ]; then
+        copy_logs_back
+        PLOG="\$RUNDIR/logfiles/funannotate-predict.log"
         if [ -f "\$PLOG" ] && grep -q "Not enough gene models .* to train Augustus" "\$PLOG"; then
             NMODELS=\$(grep -oE "Not enough gene models [0-9]+" "\$PLOG" | grep -oE "[0-9]+" | tail -1)
             echo "[WARN] ${out}: funannotate found only \${NMODELS:-<min} training models (needs 30); too small/fragmented to annotate — skipping" >&2
@@ -171,18 +208,20 @@ process FUNANNOTATE_PREDICT {
             touch ${out}.predict.done
             exit 0
         fi
-        echo "ERROR: funannotate predict did not produce expected GBK: \$PREDICT_GBK" >&2
+        echo "ERROR: funannotate predict did not produce expected GBK: \$RUN_GBK" >&2
         exit 1
     fi
-    if [ -d "\$PREDICTDIR/predict_misc/ab_initio_parameters" ]; then
-        mv "\$PREDICTDIR/predict_misc/ab_initio_parameters" "\$PREDICTDIR"
-        mv "\$PREDICTDIR/predict_misc/trnascan.no-overlaps.gff3" "\$PREDICTDIR"
-        rm -rf "\$PREDICTDIR/predict_misc"
-        mkdir -p "\$PREDICTDIR/predict_misc"
-        mv "\$PREDICTDIR/ab_initio_parameters" "\$PREDICTDIR/trnascan.no-overlaps.gff3" "\$PREDICTDIR/predict_misc"
+    if [ -d "\$RUNDIR/predict_misc/ab_initio_parameters" ]; then
+        mv "\$RUNDIR/predict_misc/ab_initio_parameters" "\$RUNDIR"
+        mv "\$RUNDIR/predict_misc/trnascan.no-overlaps.gff3" "\$RUNDIR"
+        rm -rf "\$RUNDIR/predict_misc"
+        mkdir -p "\$RUNDIR/predict_misc"
+        mv "\$RUNDIR/ab_initio_parameters" "\$RUNDIR/trnascan.no-overlaps.gff3" "\$RUNDIR/predict_misc"
     fi
-    find "\$PREDICTDIR/predict_results/" -maxdepth 1 \\( -name "*.txt" -o -name "*.mrna-transcripts.fa" \\) -print0 \
+    find "\$RUNDIR/predict_results/" -maxdepth 1 \\( -name "*.txt" -o -name "*.mrna-transcripts.fa" \\) -print0 \
         | xargs -0 --no-run-if-empty pigz
+    sync_back
+    [ -s "\$PREDICT_GBK" ] || { echo "ERROR: copy of predict results to \$PREDICTDIR failed" >&2; exit 1; }
     sync
     touch ${out}.predict.done
     echo "[INFO] Prediction complete for ${out} at \$PREDICTDIR"

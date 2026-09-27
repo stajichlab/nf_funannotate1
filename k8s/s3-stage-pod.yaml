@@ -1,0 +1,44 @@
+# Short-lived aws-cli pod for staging reference data from s3://stajichlab onto
+# the shared PVC (/data/refdb). Credentials from the nrp-s3-creds Secret.
+#
+#   kubectl apply -f k8s/s3-stage-pod.yaml
+#   kubectl exec -n ucr-stajichlab funannotate-s3-stage -- \
+#     aws --endpoint-url https://s3-west.nrp-nautilus.io s3 ls s3://stajichlab/
+#   kubectl delete pod -n ucr-stajichlab funannotate-s3-stage
+apiVersion: v1
+kind: Pod
+metadata:
+  name: funannotate-s3-stage
+  namespace: ucr-stajichlab
+  annotations:
+    nrp-nautilus.io/project: stajichlab-fungi-bfd
+spec:
+  restartPolicy: Never
+  activeDeadlineSeconds: 21600
+  containers:
+    - name: aws
+      image: amazon/aws-cli:2.17.62
+      command: ["sleep", "21600"]
+      env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: nrp-s3-creds
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nrp-s3-creds
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_ENDPOINT_URL
+          value: https://s3-west.nrp-nautilus.io
+      resources:
+        requests: {cpu: "2", memory: 4Gi}
+        limits: {cpu: "2", memory: 4Gi}
+      volumeMounts:
+        - name: work
+          mountPath: /data
+  volumes:
+    - name: work
+      persistentVolumeClaim:
+        claimName: funannotate-work-pvc
