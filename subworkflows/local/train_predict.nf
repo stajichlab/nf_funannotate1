@@ -273,6 +273,10 @@ workflow TRAIN_PREDICT {
     // so ANI-reuse runs never scored their gene sets).
     def busco_completeness_input = metadata_out
         .mix(predict_complete_meta)
+        // One task per genome: under run_ani_reuse a cached sibling predict is
+        // emitted by PREDICT_REUSE AND counted as already-complete, and two
+        // BUSCO_COMPLETENESS tasks then race on the same storeDir.
+        .unique { meta -> meta.id }
         .filter { meta -> meta.busco }
         .map { meta -> tuple(meta, file("${params.target}/${meta.id}/predict_results/${meta.id}.proteins.fa")) }
         .filter { meta, proteins -> proteins.exists() }
