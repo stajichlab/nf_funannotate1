@@ -1,8 +1,9 @@
-# Site-neutral base: shared PVC, Nextflow RBAC, head Deployment. No namespace
-# or site/project labels here; an overlay adds them (k8s/overlays/example).
+# Site-neutral base: shared PVC and Nextflow RBAC. No namespace or site/project
+# labels here; an overlay adds them (k8s/overlays/example). Pipeline runs are
+# Jobs from k8s/run/ (one per run directory), not a long-lived head pod: NRP
+# prohibits idle `sleep infinity` pods.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - pvc.yaml
   - rbac.yaml
-  - head-deployment.yaml

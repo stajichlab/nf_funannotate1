@@ -1,10 +1,12 @@
 # Running nf_funannotate1 on Kubernetes (NRP Nautilus)
 
 `-profile annotate,nrp` runs every task as its own pod through Nextflow's
-built-in k8s executor. No SLURM layer is involved. Nextflow itself runs in a
-long-lived **head pod** (a Deployment) inside the cluster. The head pod and every task pod
-mount one shared ReadWriteMany PVC at `/data`, which holds the source checkout,
-launch dirs, `work/`, reference DBs and results.
+built-in k8s executor. No SLURM layer is involved. Nextflow itself runs as a
+**Job** inside the cluster, one per run: the Job's command is the Nextflow run
+and it exits when the pipeline does (NRP prohibits idle `sleep infinity` pods;
+see "NRP fair use" below). The run Job and every task pod mount one shared
+ReadWriteMany PVC at `/data`, which holds the source checkout, launch dirs,
+`work/`, reference DBs and results.
 
 This repository holds only site-neutral pieces. Your namespace, NRP project
 and bucket names belong in your own (ideally private) deployment repo: a
@@ -17,11 +19,12 @@ Config pieces:
 |---|---|
 | `conf/provision_singularity.config` | label → image map (reused) |
 | `conf/executor_k8s.config` | turns that map into pod-runnable OCI images; no nested apptainer (GeneMark / prodigal / MariaDB setup run inside their image); pods run as root; node-local predict |
-| `conf/site_nrp.config` | what is true for any NRP namespace: 16 core / 32 GB task caps, PVC and `/data/refdb/*` layout, eggNOG mount, Ceph S3 endpoint |
-| your site config (`-c`) | `params.k8s_namespace` (required), `params.nrp_project`, anything else site-specific |
-| `k8s/base/` | kustomize base: PVC, ServiceAccount + Role (pods, configmaps, jobs), head Deployment |
-| `k8s/tools/` | one-off pods: `build-rust-tools`, `s3-stage` |
-| `k8s/overlays/example/` | fill-in-the-blank overlay (namespace, NRP project annotation) |
+| `conf/site_nrp.config` | what is true for any NRP namespace: 16 core / 32 GB task caps, `opportunistic` priority + no GPU nodes for task pods, PVC and `/data/refdb/*` layout, eggNOG mount, Ceph S3 endpoint |
+| your site config (`-c`) | `params.k8s_namespace` (required), `params.nrp_project`, `executor.queueSize` (concurrent task pods), anything else site-specific |
+| `k8s/base/` | kustomize base: PVC, ServiceAccount + Role (pods, configmaps, jobs) |
+| `k8s/run/` | the Nextflow run Job (one per run directory) |
+| `k8s/tools/` | finite Jobs `s3-sync`, `build-rust-tools`; `shell`, a 1 h setup/inspection pod |
+| `k8s/overlays/example/` | fill-in-the-blank overlay (namespace, NRP project annotation), `runs/my-run/`, `tools/*`, `site.config` |
 | `k8s/params_nrp_test.yaml` | first smoke-test toggles |
 
 Always list the pipeline profile first (`annotate,nrp`), and use Nextflow
@@ -48,19 +51,21 @@ file-definition order instead, and the run would then try to use apptainer.
 4. **Apply** (the RBAC part needs a namespace admin):
    ```bash
    kubectl apply -k <overlay dir>
-   kubectl exec -it -n <namespace> deploy/funannotate-nextflow-head -- bash
    ```
 
-Inside the head pod:
+**Setting up the PVC** uses the short-lived shell (`kubectl apply -k <overlay
+dir>/tools/shell`, then `kubectl exec -it -n <namespace> nf-shell -- bash`;
+delete it when done). Setup and inspection only, never computation:
 
 ```bash
 # 1. Source checkout on the PVC (task pods read bin/ and assets/ from projectDir)
 mkdir -p /data/src /data/refdb /data/runs
 git clone https://github.com/stajichlab/nf_funannotate1 /data/src/nf_funannotate1
-# ...and copy your site.config somewhere on the PVC, e.g. /data/src/site.config
+# ...and copy your site.config onto the PVC as /data/src/site.config (from your
+#    workstation: kubectl exec -i -n <ns> nf-shell -- sh -c 'cat > /data/src/site.config' < site.config)
 
 # 2. Reference files the pipeline can't download itself (e.g. from your S3
-#    bucket with the s3-stage pod, or `kubectl exec -i ... -- sh -c 'cat > f' < f`):
+#    bucket with the s3-sync Job, or `kubectl exec -i ... -- sh -c 'cat > f' < f`):
 #      /data/refdb/swissprot_fungi.faa   (params.proteins)
 #      /data/refdb/template.sbt          (params.sbt_template)
 #      /data/refdb/busco_lineages/       (odb10 lineages, for BUSCO steps)
@@ -69,27 +74,29 @@ git clone https://github.com/stajichlab/nf_funannotate1 /data/src/nf_funannotate
 #    SETUP_TAXONDB on the first run (storeDir-cached under /data/refdb); see
 #    "Reference DB archive" below to skip the ~2 h funannotate_db build.
 
-# 3. Smoke test
+# 3. A run directory: samples.csv (+ genomes) and a params file
 mkdir -p /data/runs/nrp_test && cd /data/runs/nrp_test
 cp -r /data/src/nf_funannotate1/samples.csv /data/src/nf_funannotate1/test_run .
-nextflow run /data/src/nf_funannotate1 -profile annotate,nrp -c /data/src/site.config \
-    -params-file /data/src/nf_funannotate1/k8s/params_nrp_test.yaml
+cp /data/src/nf_funannotate1/k8s/params_nrp_test.yaml params.yaml
 ```
 
-Launch long runs detached (`setsid nohup nextflow run ... &`, or tmux) so a
-dropped `kubectl exec` session doesn't end them. Watch pods with
-`kubectl get pods -n <namespace> -w`. Failed task pods are kept, so
-`kubectl logs <pod>` shows them. Successful ones are cleaned up.
+**Running** is a Job per run directory. Copy `overlays/example/runs/my-run/`,
+set its name suffix, `RUN_DIR` and params file, then from your workstation:
 
-**One-off pods** (`k8s/tools/`) go through the overlay too, so they get your
-namespace. The example has `tools/build-rust-tools` and `tools/s3-stage`:
 ```bash
-kubectl apply -k <overlay dir>/tools/s3-stage
-kubectl delete pod -n <namespace> funannotate-s3-stage   # when done
+kubectl apply  -k <overlay dir>/runs/nrp_test       # start, or resume after a stop
+kubectl logs -f -n <namespace> job/nextflow-nrp_test  # follow (also nf_run.log in RUN_DIR)
+kubectl delete -k <overlay dir>/runs/nrp_test       # stop; apply again to -resume
 ```
-`build-rust-tools` builds the SRA Rust helpers into `tools/bin` of the PVC
-checkout. It's only needed with `sra_tools` images older than 1.4.0; the
-container profiles use 1.4.0, which ships them.
+
+The Job always runs with `-resume` and keeps the previous `nf_run.log`
+(timestamped). Watch task pods with `kubectl get pods -n <namespace> -w`.
+Failed task pods are kept, so `kubectl logs <pod>` shows them.
+
+**Helper Jobs** (`k8s/tools/`) go through the overlay too: `s3-sync` (set
+`SRC` / `DST`, runs `aws s3 sync`, exits) and `build-rust-tools` (builds the
+SRA Rust helpers into the checkout's `tools/bin`; only needed for host-tool
+profiles or `sra_tools` older than 1.4.0).
 
 ## Turning features back on
 
@@ -119,16 +126,27 @@ falls back to ES when ET can't train (intron-poor genomes).
   image. The funannotate image is the default and has not been checked for
   prodigal.
 
-## NRP limits on pods
+## NRP fair use and limits
 
-NRP's admission policy treats pods without a controller (which is what the
-k8s executor creates by default) specially: at most **16 cores / 32 GB**, and
-a **6 h lifetime** (activeDeadline). `conf/site_nrp.config` caps tasks at
-16 / 32 GB accordingly, and the head runs as a Deployment so it isn't killed
-at 6 h. For bigger or longer tasks (Trinity, large-genome predict), run tasks
-as Jobs instead: the base Role already allows `batch/jobs`; set
-`k8s.computeResourceType = 'Job'` and raise `k8s_max_cpus` / `k8s_max_memory`
-in your site config.
+From NRP's docs ([Jobs](https://nrp.ai/documentation/userdocs/running/jobs/),
+[CPU-only](https://nrp.ai/documentation/userdocs/running/cpu-only/)):
+
+- **No idle / interactive pods.** "Running in interactive mode (`sleep infinity`
+  command and manual start of computation) or any command that doesn't end by
+  itself is prohibited, and user can be banned." Hence the run Job and finite
+  helper Jobs; `tools/shell` is only for brief setup and ends by itself in 1 h.
+- **No fair queue.** "If you submit 1000 jobs, you block all other users."
+  Nextflow's `executor.queueSize` is the bounded queue: set it in your site
+  config (the profile default is 100; a few dozen is considerate).
+- **CPU-only work** should be preemptible and stay off GPU nodes:
+  `conf/site_nrp.config` gives every task pod `priorityClassName: opportunistic`
+  and a node anti-affinity on `feature.node.kubernetes.io/pci-10de.present`. A
+  preempted task fails and Nextflow retries it.
+- **Pods without a controller** (the k8s executor's default) are capped at
+  **16 cores / 32 GB** and a **6 h lifetime**; `conf/site_nrp.config` caps tasks
+  at 16 / 32 GB. For bigger or longer tasks run them as Jobs: the base Role
+  allows `batch/jobs`; set `k8s.computeResourceType = 'Job'` and raise
+  `k8s_max_cpus` / `k8s_max_memory` in your site config.
 
 ## Reference DB archive
 

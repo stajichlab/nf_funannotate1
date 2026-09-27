@@ -1,0 +1,45 @@
+# Finite Job: sync S3 -> PVC (or PVC -> S3), then exit. Replaces the old
+# sleep-then-exec staging pod (NRP prohibits idle pods). Credentials from the
+# nrp-s3-creds Secret; endpoint is NRP's Ceph S3. The overlay sets SRC / DST.
+#
+#   kubectl apply -k <overlay>/tools/s3-sync
+#   kubectl logs -f -n <namespace> job/s3-sync
+#   kubectl delete -k <overlay>/tools/s3-sync     # before the next sync
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: s3-sync
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: aws
+          image: amazon/aws-cli:2.17.62
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "aws s3 sync $SRC -> $DST"
+              aws s3 sync --only-show-errors $SYNC_ARGS "$SRC" "$DST"
+              echo "done"
+          env:
+            - {name: SRC, value: "s3://CHANGE-ME/"}
+            - {name: DST, value: /data/CHANGE-ME/}
+            - {name: SYNC_ARGS, value: ""}
+            - {name: AWS_ENDPOINT_URL, value: "https://s3-west.nrp-nautilus.io"}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: nrp-s3-creds, key: AWS_ACCESS_KEY_ID}}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: nrp-s3-creds, key: AWS_SECRET_ACCESS_KEY}}
+          resources:
+            requests: {cpu: "2", memory: 4Gi}
+            limits: {cpu: "2", memory: 4Gi}
+          volumeMounts:
+            - {name: work, mountPath: /data}
+      volumes:
+        - name: work
+          persistentVolumeClaim:
+            claimName: funannotate-work-pvc

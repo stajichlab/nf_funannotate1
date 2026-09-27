@@ -1,0 +1,23 @@
+# One pipeline run: a Job named nextflow-<run> that runs Nextflow in
+# RUN_DIR on the PVC and exits when the pipeline does. Copy per run.
+#
+#   kubectl apply  -k runs/my-run      # start, or resume after a stop
+#   kubectl logs -f -n my-namespace job/nextflow-my-run
+#   kubectl delete -k runs/my-run      # stop (then apply again to -resume)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: my-namespace   # FILL IN
+nameSuffix: -my-run       # FILL IN: unique per run
+resources:
+  - ../../../../run
+commonAnnotations:
+  nrp-nautilus.io/project: my-nrp-project   # FILL IN (NRP)
+patches:
+  - target: {kind: Job, name: nextflow}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: /data/runs/my-run          # FILL IN: RUN_DIR (holds samples.csv)
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1/value
+        value: params.yaml                # FILL IN: params file in RUN_DIR

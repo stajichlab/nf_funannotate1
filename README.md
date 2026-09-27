@@ -457,7 +457,7 @@ nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,singularity
 # ...or project-local pixi envs instead of containers (any executor):
 nextflow run stajichlab/nf_funannotate1 -profile annotate,local,pixi
 
-# Kubernetes (NRP Nautilus), launched from a head pod in the cluster -- k8s/README.md:
+# Kubernetes (NRP Nautilus), run as a Job in the cluster -- k8s/README.md:
 nextflow run /data/src/nf_funannotate1 -profile annotate,nrp
 ```
 

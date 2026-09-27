@@ -1,0 +1,17 @@
+# Same namespace / annotation as ../../kustomization.yaml. Set SRC / DST.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: my-namespace   # FILL IN
+resources:
+  - ../../../../tools/s3-sync
+commonAnnotations:
+  nrp-nautilus.io/project: my-nrp-project   # FILL IN (NRP)
+patches:
+  - target: {kind: Job, name: s3-sync}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: s3://my-bucket/my-project/genomes/         # FILL IN: SRC
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1/value
+        value: /data/runs/my-run/genomes/                  # FILL IN: DST

@@ -1,4 +1,4 @@
-# One-off pod; apply through an overlay that sets the namespace (k8s/README.md).
+# Nextflow run Job template; use through an overlay (k8s/overlays/example/runs/).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
