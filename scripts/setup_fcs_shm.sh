@@ -30,7 +30,16 @@ if [ ! -f "${FCS_GX_TIMING_LOG}" ]; then
     printf 'timestamp\thost\tstatus\telapsed_sec\tbytes\tmbps\n' > "${FCS_GX_TIMING_LOG}"
 fi
 
-if [ -f "${FCS_GX_SHM_DIR}/all.gxi" ]; then
+# Reuse is gated on a completion SENTINEL (written only after a fully
+# successful sync below), not merely on all.gxi existing. `rsync --inplace`
+# writes directly into the destination file with no atomic rename, so a
+# sync interrupted partway (a scancel'd task, a node failure, ...) leaves a
+# truncated-but-present all.gxi/all.gxs that the old existence-only check
+# would silently treat as "already staged" forever afterward, feeding FCS-GX
+# a corrupt DB (confirmed 2026-09-26: every genome in a batch failed
+# `fcs_gx did not produce ... report.txt` after an earlier scancel left a
+# partial sync on the same node).
+if [ -f "${FCS_GX_SHM_DIR}/.sync_complete" ]; then
     echo "[setup_fcs_shm] FCS-GX db already present in ${FCS_GX_SHM_DIR}; reusing" >&2
     printf '%s\t%s\treused\t0\t-\t-\n' "$(date -Is)" "$(hostname -s)" >> "${FCS_GX_TIMING_LOG}"
 else
