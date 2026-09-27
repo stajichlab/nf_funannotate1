@@ -49,7 +49,14 @@ git clone https://github.com/stajichlab/nf_funannotate1 /data/src/nf_funannotate
 #    funannotate_db and taxondb are built by SETUP_FUNANNOTATE_DB /
 #    SETUP_TAXONDB on the first run (storeDir-cached under /data/refdb).
 
-# 3. Smoke test
+# 3. Rust helpers for the RNA-seq/SRA path (--run_sra_fetch). Built into
+#    /data/src/nf_funannotate1/tools/bin (gitignored: `git pull` keeps them, a
+#    fresh clone needs this again). Run from your workstation:
+#      kubectl apply -f k8s/build-tools-pod.yaml
+#      kubectl logs -f -n ucr-stajichlab build-rust-tools
+#      kubectl delete pod -n ucr-stajichlab build-rust-tools
+
+# 4. Smoke test
 mkdir -p /data/runs/nrp_test && cd /data/runs/nrp_test
 cp -r /data/src/nf_funannotate1/samples.csv /data/src/nf_funannotate1/test_run .
 nextflow run /data/src/nf_funannotate1 -profile annotate,nrp \

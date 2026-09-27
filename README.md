@@ -652,6 +652,12 @@ bash scripts/build_tools.sh
 | `fix_fastq_header_trinity` | https://github.com/hyphaltip/fix_fastq_header_trinity | `params.fastq_hdr_script` |
 | `enforce_seqpair_readlen` | https://github.com/hyphaltip/enforce_seqpair_readlen | `params.readlen_script` |
 
+Prerequisites: Rust >= 1.85, plus `cmake` and a C/C++ compiler for
+`enforce_seqpair_readlen` (its zlib-ng dependency is built from C). With
+`--run_sra_fetch true`, `funannotate.nf` checks for both binaries at startup
+and stops with build instructions if either is missing. On Kubernetes, build
+them with `k8s/build-tools-pod.yaml` (see `k8s/README.md`).
+
 Revisions are pinned in `build_tools.sh` (override with `FIXHDR_REV` /
 `ENFORCE_REV`). Each tool ships a Python fallback (`scripts/enforce_seqpair_readlen.py`,
 upstream `fix_fastq_headers.py`) if you can't build the Rust version.

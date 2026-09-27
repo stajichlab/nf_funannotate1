@@ -1,7 +1,7 @@
 # First NRP smoke test: clean -> tantan mask -> funannotate predict on the repo's
 # own samples.csv (Debaryomyces hansenii CDA1, ~12 Mb), public images only.
 # samples.csv GENOME paths are launchDir-relative, so launch from a run dir
-# holding a copy of samples.csv + test_run/ (k8s/README.md, step 3):
+# holding a copy of samples.csv + test_run/ (k8s/README.md, step 4):
 #
 #   cd /data/runs/nrp_test
 #   nextflow run /data/src/nf_funannotate1 -profile annotate,nrp \

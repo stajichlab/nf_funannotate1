@@ -1,0 +1,58 @@
+# One-off pod: build the two Rust helpers the SRA fetch path needs
+# (fix_fastq_header_trinity, enforce_seqpair_readlen) into the pipeline
+# checkout on the PVC, /data/src/nf_funannotate1/tools/bin/. They are built at
+# deploy time, not committed (scripts/build_tools.sh); tools/ is gitignored, so
+# `git pull` keeps them, but a fresh clone needs this pod again.
+#
+#   kubectl apply -f k8s/build-tools-pod.yaml
+#   kubectl logs -f -n ucr-stajichlab build-rust-tools
+#   kubectl delete pod -n ucr-stajichlab build-rust-tools
+#
+# The binaries run inside the `sra` container (SRA_FETCH / SRA_FETCH_SE), not
+# in this image, so:
+#   - fix_fastq_header_trinity is built static (musl): no glibc dependency.
+#   - enforce_seqpair_readlen can't be built for musl here (its zlib-ng
+#     dependency needs a musl C++ toolchain), so it is a glibc build on Debian
+#     bookworm (glibc 2.36), which the sra_tools image (bookworm) also has.
+# Revisions are the pins in scripts/build_tools.sh.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: build-rust-tools
+  namespace: ucr-stajichlab
+  annotations:
+    nrp-nautilus.io/project: stajichlab-fungi-bfd
+spec:
+  restartPolicy: Never
+  activeDeadlineSeconds: 3600
+  containers:
+    - name: rust
+      image: rust:1-bookworm
+      command: ["bash", "-c"]
+      args:
+        - |
+          set -euo pipefail
+          apt-get update -qq && apt-get install -y -qq musl-tools cmake >/dev/null
+          rustup target add x86_64-unknown-linux-musl
+          export CARGO_HOME=/tmp/cargo-home
+          cd /data/src/nf_funannotate1
+          FIXHDR_REV=$(sed -n 's/^FIXHDR_REV="\${FIXHDR_REV:-\(.*\)}"$/\1/p' scripts/build_tools.sh)
+          ENFORCE_REV=$(sed -n 's/^ENFORCE_REV="\${ENFORCE_REV:-\(.*\)}"$/\1/p' scripts/build_tools.sh)
+          echo "fix_fastq_header_trinity @ ${FIXHDR_REV}; enforce_seqpair_readlen @ ${ENFORCE_REV}"
+          cargo install --git https://github.com/hyphaltip/fix_fastq_header_trinity --rev "${FIXHDR_REV}" \
+              --target x86_64-unknown-linux-musl --root tools --force
+          cargo install --git https://github.com/hyphaltip/enforce_seqpair_readlen --rev "${ENFORCE_REV}" \
+              --root tools --force
+          ls -la tools/bin
+          tools/bin/fix_fastq_header_trinity --help >/dev/null 2>&1 && echo "fix_fastq_header_trinity runs"
+          tools/bin/enforce_seqpair_readlen --help >/dev/null 2>&1 && echo "enforce_seqpair_readlen runs"
+      resources:
+        requests: {cpu: "8", memory: 8Gi}
+        limits: {cpu: "8", memory: 8Gi}
+      volumeMounts:
+        - name: work
+          mountPath: /data
+  volumes:
+    - name: work
+      persistentVolumeClaim:
+        claimName: funannotate-work-pvc
