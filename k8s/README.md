@@ -49,7 +49,8 @@ git clone https://github.com/stajichlab/nf_funannotate1 /data/src/nf_funannotate
 #    funannotate_db and taxondb are built by SETUP_FUNANNOTATE_DB /
 #    SETUP_TAXONDB on the first run (storeDir-cached under /data/refdb).
 
-# 3. Rust helpers for the RNA-seq/SRA path (--run_sra_fetch). Built into
+# 3. Rust helpers for the RNA-seq/SRA path (--run_sra_fetch). Only needed
+#    with sra_tools images older than 1.4.0 (1.4.0+ ship them). Built into
 #    /data/src/nf_funannotate1/tools/bin (gitignored: `git pull` keeps them, a
 #    fresh clone needs this again). Run from your workstation:
 #      kubectl apply -f k8s/build-tools-pod.yaml

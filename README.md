@@ -637,6 +637,11 @@ Tune `--cutoff_mb`, `--repeat_taxon`, and `--n_test`.
 
 ### Rust helpers (built on deploy, not committed)
 
+**Container profiles (`singularity`, `k8s`, `nrp`) need no build:** the `sra`
+image (`sra_tools` >= 1.4.0) ships both helpers on its PATH, and those profiles
+call them by name. The build below is only for the host-tool profiles
+(`ucr_hpcc`, `conda`, `pixi`).
+
 Two Rust binaries used by the SRA/RNA-seq steps are **built from source** into
 `tools/` (gitignored) rather than checked in (they are dynamically-linked,
 platform-specific ELFs). Build them inside the pipeline checkout — for a GitHub
