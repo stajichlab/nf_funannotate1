@@ -1,0 +1,8 @@
+# Same namespace / annotation as ../../kustomization.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: my-namespace   # FILL IN
+resources:
+  - ../../../../tools/build-rust-tools
+commonAnnotations:
+  nrp-nautilus.io/project: my-nrp-project   # FILL IN (NRP)
