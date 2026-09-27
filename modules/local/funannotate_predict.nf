@@ -222,6 +222,11 @@ process FUNANNOTATE_PREDICT {
         | xargs -0 --no-run-if-empty pigz
     sync_back
     [ -s "\$PREDICT_GBK" ] || { echo "ERROR: copy of predict results to \$PREDICTDIR failed" >&2; exit 1; }
+    # New gene models invalidate BUSCO_COMPLETENESS's result. It is storeDir-cached
+    # under \$PREDICTDIR/busco_completeness and storeDir skips on the directory
+    # existing, regardless of which proteins produced it, so a re-prediction (e.g.
+    # after RNA-seq/PASA evidence arrives) otherwise kept the old score.
+    rm -rf "\$PREDICTDIR/busco_completeness"
     sync
     touch ${out}.predict.done
     echo "[INFO] Prediction complete for ${out} at \$PREDICTDIR"
