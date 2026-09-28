@@ -93,6 +93,20 @@ The Job always runs with `-resume` and keeps the previous `nf_run.log`
 (timestamped). Watch task pods with `kubectl get pods -n <namespace> -w`.
 Failed task pods are kept, so `kubectl logs <pod>` shows them.
 
+**Resume cache.** Nextflow's cache (`.nextflow`: the LevelDB task cache and
+run history) runs on the pod's local disk, not the PVC, with LevelDB's
+memory-mapped writes turned off (`-Dleveldb.mmap=false`). `k8s/run/nf-run.sh`
+copies it to `<RUN_DIR>/.nextflow-snapshots/snap-<time>` every
+`CACHE_SYNC_SECONDS` (default 300) and once more when Nextflow exits, keeping
+the newest `CACHE_SNAPSHOTS_KEEP` (3). Each snapshot is written to a `.tmp-`
+directory, fsynced and renamed, so a `snap-` directory is always complete. The
+next Job restores the newest one. Losing the node mid-run costs at most the
+tasks finished since the last snapshot. With the cache on CephFS, a lost node
+left the database corrupt and every retry failed. If the newest snapshot won't
+open, delete it and apply the Job again to fall back to the one before. A run
+started before this change has its `RUN_DIR/.nextflow` migrated on the first
+launch and renamed to `.nextflow.migrated-<time>`.
+
 **Helper Jobs** (`k8s/tools/`) go through the overlay too: `s3-sync` (set
 `SRC` / `DST`, runs `aws s3 sync`, exits) and `build-rust-tools` (builds the
 SRA Rust helpers into the checkout's `tools/bin`; only needed for host-tool
