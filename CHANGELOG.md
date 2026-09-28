@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- NRP fair use (https://nrp.ai/documentation/userdocs/running/jobs/, .../cpu-only/):
+  Nextflow now runs as a per-run **Job** (`k8s/run/`) instead of an idle
+  `sleep infinity` head Deployment, which NRP prohibits. Staging and the Rust
+  helper build are finite Jobs (`k8s/tools/s3-sync`, `build-rust-tools`);
+  `k8s/tools/shell` is a 1 h setup/inspection pod. Task pods get
+  `priorityClassName: opportunistic` and avoid GPU nodes (`site_nrp.config`).
+- k8s run Job: the Nextflow resume cache now runs on pod-local disk
+  (`NXF_CACHE_DIR`), with LevelDB memory-mapping off (`-Dleveldb.mmap=false`).
+  It is snapshotted to `RUN_DIR/.nextflow-snapshots` atomically (write to a
+  temporary directory, fsync, rename) every 5 min and when Nextflow exits, and
+  restored on the next launch (`k8s/run/nf-run.sh`). Previously a node lost
+  mid-write left the cache on CephFS corrupt and every retry failed.
+  A relaunch waits for the previous pod's heartbeat (`RUN_DIR/.nf-run.heartbeat`)
+  to go stale, so a `kubectl delete` + `apply` can't copy a cache that is still
+  being written. A restored snapshot that won't open is renamed `bad-*`, and the
+  Job's retry falls back to the previous one.
+
 ### Added
 - `train_cleanup` (default off): once a genome's training resolves, and again
   after its predict succeeds (which covers genomes trained earlier),

@@ -634,7 +634,7 @@
         "k8s_pvc": {
           "type": "string",
           "default": "funannotate-work-pvc",
-          "description": "nrp only: shared ReadWriteMany PVC mounted in the head pod and every task pod."
+          "description": "nrp only: shared ReadWriteMany PVC mounted in the Nextflow run Job and every task pod."
         },
         "k8s_mount": {
           "type": "string",

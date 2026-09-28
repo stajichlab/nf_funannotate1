@@ -1,8 +1,9 @@
 # Example site overlay. Copy this directory (ideally into your own, private
 # deployment repo) and fill in the values marked FILL IN. Then:
 #
-#   kubectl apply -k <overlay dir>                          # PVC, RBAC, head
-#   kubectl apply -k <overlay dir>/tools/build-rust-tools   # one-off pods
+#   kubectl apply -k <overlay dir>                          # PVC, RBAC
+#   kubectl apply -k <overlay dir>/runs/<run>               # one Nextflow run (Job)
+#   kubectl apply -k <overlay dir>/tools/s3-sync            # finite helper Jobs
 #
 # From a separate repo, point `resources` at this repository by URL and pin a
 # tag or commit, e.g.
