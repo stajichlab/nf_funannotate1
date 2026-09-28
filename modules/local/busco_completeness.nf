@@ -40,8 +40,13 @@ process BUSCO_COMPLETENESS {
 
     script:
     """
-    busco -i ${proteins_fa} -l ${params.busco_lineages}/${meta.busco} \\
-        -m proteins -c ${task.cpus} -o ${meta.id} --out_path . -f
+    # params.busco_lineages is a BUSCO --download_path root (lineage dirs under
+    # <root>/lineages/), the same convention BUSCO_GENOME uses. Passing
+    # "<root>/<lineage>" as -l skipped the lineages/ level and failed at UCR
+    # HPCC ("/srv/projects/db/BUSCO/v10//fungi_odb10 does not exist").
+    busco -i ${proteins_fa} -l ${meta.busco} \\
+        -m proteins -c ${task.cpus} -o ${meta.id} --out_path . -f \\
+        --offline --download_path ${params.busco_lineages}
     """
 
     stub:
