@@ -703,6 +703,9 @@ process FUNANNOTATE_TRAIN {
     echo "[INFO] Removing large training intermediates in \$TRAINDIR"
     rm -rf "\$TRAINDIR/hisat2"
     rm -rf "\$TRAINDIR/trinity_gg"
+    if [ "${params.train_cleanup}" = "true" ]; then
+        bash "${workflow.projectDir}/bin/train_cleanup.sh" "\$TRAINDIR" ${params.run_update ? 1 : 0}
+    fi
     echo "[INFO] Training cleanup complete for ${out}"
     echo "mysql is ${params.pasa_mysql}"
     if [ "${params.pasa_mysql}" = "true" ]; then stop_mysqldb; fi
