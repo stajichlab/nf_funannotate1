@@ -227,6 +227,11 @@ process FUNANNOTATE_PREDICT {
     # existing, regardless of which proteins produced it, so a re-prediction (e.g.
     # after RNA-seq/PASA evidence arrives) otherwise kept the old score.
     rm -rf "\$PREDICTDIR/busco_completeness"
+    # Training intermediates are no longer needed once predict has succeeded
+    # (bin/train_cleanup.sh keeps everything predict/update read).
+    if [ "${params.train_cleanup}" = "true" ]; then
+        bash "${workflow.projectDir}/bin/train_cleanup.sh" "${params.training_target}/${out}/training" ${params.run_update ? 1 : 0}
+    fi
     sync
     touch ${out}.predict.done
     echo "[INFO] Prediction complete for ${out} at \$PREDICTDIR"

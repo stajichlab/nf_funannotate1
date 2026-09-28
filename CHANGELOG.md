@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `train_cleanup` (default off): once a genome's training resolves, and again
+  after its predict succeeds (which covers genomes trained earlier),
+  `bin/train_cleanup.sh` deletes funannotate-train intermediates that predict
+  never reads: `getBestModel/`, the GMAP index, the seqclean copies of Trinity
+  and `pasa.step1.gff3`, plus `pasa/` when `run_update` is off. Anything a
+  `training/` symlink points at is kept (e.g. `funannotate_train.trinity-GG.fasta`
+  -> `trinity.fasta`). On a Bd training dir this took 1.6 GB down to 129 MB.
 - Kubernetes execution (test mode): `-profile annotate,k8s` and
   `-profile annotate,nrp` (NRP Nautilus), via `conf/executor_k8s.config` and
   `conf/site_nrp.config`, plus `k8s/` manifests (PVC, head pod), smoke-test
