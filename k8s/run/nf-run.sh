@@ -16,8 +16,8 @@
 # after Nextflow exits. On start the newest snapshot is restored (the first
 # time, an existing $RUN_DIR/.nextflow is migrated), then `-resume` as before.
 #
-# If the newest snapshot will not open, delete it and relaunch to fall back to
-# the previous one.
+# If the restored snapshot will not open it is renamed bad-* and the Job's
+# retry falls back to the previous one.
 set -uo pipefail
 
 LOCAL=/nxf-local
@@ -29,6 +29,21 @@ log() { echo "[nf-run $(date -u +%H:%M:%S)] $*"; }
 
 cd "$RUN_DIR" || exit 1
 mkdir -p "$SNAPS"
+
+# One Nextflow per run dir. After `kubectl delete`, the old pod can still be
+# shutting down (and writing its final snapshot) when the new Job's pod
+# starts, so wait for its heartbeat to go stale. (The image has no flock.)
+HB="$RUN_DIR/.nf-run.heartbeat"
+heartbeat() { echo "$HOSTNAME $(date +%s)" > "$HB.tmp" && mv "$HB.tmp" "$HB"; }
+for i in $(seq 60); do
+    [ -f "$HB" ] && read -r hb_host hb_time < "$HB" || break
+    [ "$hb_host" = "$HOSTNAME" ] && break
+    [ $(( $(date +%s) - ${hb_time:-0} )) -gt 90 ] && break
+    [ "$i" = 1 ] && log "waiting for $hb_host to finish with $RUN_DIR"
+    [ "$i" = 60 ] && { log "ERROR: $hb_host still active after 30 min"; exit 1; }
+    sleep 30
+done
+heartbeat
 rm -rf "$SNAPS"/.tmp-*
 
 latest=$(ls -1d "$SNAPS"/snap-* 2>/dev/null | sort | tail -1)
@@ -37,7 +52,13 @@ if [ -n "$latest" ]; then
     cp -a "$latest/.nextflow" "$LOCAL/"
 elif [ -d "$RUN_DIR/.nextflow" ]; then
     # Run started before the cache moved off the PVC: migrate it once, and
-    # rename the PVC copy so nothing resumes from the stale one later.
+    # rename the PVC copy so nothing resumes from the stale one later. A
+    # Nextflow from the old Job (no heartbeat) may still be stopping: wait
+    # until its .nextflow.log has been quiet for 2 min.
+    while [ $(( $(date +%s) - $(stat -c %Y .nextflow.log 2>/dev/null || echo 0) )) -lt 120 ]; do
+        log "waiting for .nextflow.log to go quiet (previous Nextflow stopping?)"
+        sleep 30
+    done
     log "migrating $RUN_DIR/.nextflow to local disk"
     cp -a "$RUN_DIR/.nextflow" "$LOCAL/"
     mv "$RUN_DIR/.nextflow" "$RUN_DIR/.nextflow.migrated-$(date -u +%Y%m%dT%H%M%S)"
@@ -46,8 +67,9 @@ mkdir -p "$LOCAL/.nextflow"
 export NXF_CACHE_DIR="$LOCAL/.nextflow"
 # Nextflow's LevelDB (iq80) memory-maps its log and MANIFEST into 1 MB
 # zero-filled files by default. Mapped writes are invisible to a file copy and
-# are lost outright if the node dies (the 2026-09-28 corruption: all-zero
-# MANIFEST and log). Plain file writes are copyable and recover after a crash.
+# never reach CephFS unless Nextflow closes the DB cleanly (the 2026-09-28
+# corruption: all-zero MANIFEST and log). Plain file writes are copyable and
+# recover after a crash.
 export NXF_OPTS="${NXF_OPTS:-} -Dleveldb.mmap=false"
 
 state() { ls -lAR --time-style=full-iso "$LOCAL/.nextflow" 2>/dev/null | md5sum; }
@@ -80,12 +102,25 @@ NF_PID=$!
 # task pods, then fall through to the final snapshot.
 trap 'log "SIGTERM: stopping Nextflow"; kill -TERM "$NF_PID" 2>/dev/null' TERM
 
+last=$(date +%s)
 while kill -0 "$NF_PID" 2>/dev/null; do
-    sleep "$INTERVAL" & wait $! 2>/dev/null
-    kill -0 "$NF_PID" 2>/dev/null && snapshot
+    heartbeat
+    sleep 30 & wait $! 2>/dev/null
+    if kill -0 "$NF_PID" 2>/dev/null && [ $(( $(date +%s) - last )) -ge "$INTERVAL" ]; then
+        snapshot; last=$(date +%s)
+    fi
 done
 wait "$NF_PID"; rc=$?
 # The trap interrupts the first wait; wait again for Nextflow's real exit status.
 while kill -0 "$NF_PID" 2>/dev/null; do wait "$NF_PID"; rc=$?; done
-snapshot && log "final cache snapshot saved" || log "WARNING: final cache snapshot failed"
+
+if [ "$rc" -ne 0 ] && [ -n "$latest" ] && grep -q "Can't open cache DB" nf_run.log; then
+    # The restored snapshot is unreadable: set it aside (never snapshot it
+    # again) so the Job's retry falls back to the previous one.
+    mv "$latest" "$SNAPS/bad-$(basename "$latest")"
+    log "ERROR: $(basename "$latest") would not open; moved to bad-*. Retry uses the previous snapshot."
+else
+    snapshot && log "final cache snapshot saved" || log "WARNING: final cache snapshot failed"
+fi
+rm -f "$HB"
 exit "$rc"

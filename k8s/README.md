@@ -102,8 +102,12 @@ the newest `CACHE_SNAPSHOTS_KEEP` (3). Each snapshot is written to a `.tmp-`
 directory, fsynced and renamed, so a `snap-` directory is always complete. The
 next Job restores the newest one. Losing the node mid-run costs at most the
 tasks finished since the last snapshot. With the cache on CephFS, a lost node
-left the database corrupt and every retry failed. If the newest snapshot won't
-open, delete it and apply the Job again to fall back to the one before. A run
+left the database corrupt and every retry failed. A snapshot that won't open is
+renamed `bad-*`, and the Job's retry falls back to the one before. After
+`kubectl delete`, the old pod can still be stopping when the new Job starts, so
+the new pod waits for the old one's heartbeat (`RUN_DIR/.nf-run.heartbeat`) to
+go stale before restoring. To stop a run and be sure its pod is gone, use
+`kubectl delete -k <run> --cascade=foreground`. A run
 started before this change has its `RUN_DIR/.nextflow` migrated on the first
 launch and renamed to `.nextflow.migrated-<time>`.
 

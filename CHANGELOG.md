@@ -19,6 +19,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   temporary directory, fsync, rename) every 5 min and when Nextflow exits, and
   restored on the next launch (`k8s/run/nf-run.sh`). Previously a node lost
   mid-write left the cache on CephFS corrupt and every retry failed.
+  A relaunch waits for the previous pod's heartbeat (`RUN_DIR/.nf-run.heartbeat`)
+  to go stale, so a `kubectl delete` + `apply` can't copy a cache that is still
+  being written. A restored snapshot that won't open is renamed `bad-*`, and the
+  Job's retry falls back to the previous one.
 
 ### Added
 - Kubernetes execution (test mode): `-profile annotate,k8s` and
