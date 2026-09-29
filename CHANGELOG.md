@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- ANI reuse: re-running the representative pick (e.g. after the sample sheet
+  changes) no longer drops GeneMark from the shared store. Its inline backfill
+  passes no `.mod`, so `backfill_abinitio_params.py` now reuses the store's
+  existing GeneMark model when the store was built by the same representative.
+  Before, the rebuilt store lacked GeneMark, its content hash changed, and every
+  sibling looked stale.
 - ANI reuse: sibling GeneMark and predict tasks now carry a fingerprint of the
   species' shared ab-initio store (`FunannotateUtils.sharedParamsFingerprint`:
   provenance `content_hash`, else size+mtime). Previously a rebuilt store (new
