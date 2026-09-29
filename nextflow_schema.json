@@ -457,6 +457,78 @@
           "description": "Run InterProScan.",
           "default": false
         },
+        "interproscan_engine": {
+          "type": "string",
+          "description": "InterProScan engine: 'ips6' (nested InterProScan 6 workflow) or 'ips5' (legacy interproscan.sh).",
+          "default": "ips6",
+          "enum": [
+            "ips6",
+            "ips5"
+          ]
+        },
+        "iprscan6_pipeline": {
+          "type": "string",
+          "description": "InterProScan 6 workflow: local checkout (absolute path) or remote name.",
+          "default": "ebi-pf-team/interproscan6"
+        },
+        "iprscan6_revision": {
+          "type": "string",
+          "description": "InterProScan 6 release, used only when iprscan6_pipeline is a remote name.",
+          "default": "6.0.2.2"
+        },
+        "iprscan6_nextflow": {
+          "type": "string",
+          "description": "Nextflow executable that launches the nested InterProScan 6 run.",
+          "default": "nextflow"
+        },
+        "iprscan6_profile": {
+          "type": "string",
+          "description": "Container-engine profile for InterProScan 6.",
+          "default": "apptainer",
+          "enum": [
+            "apptainer",
+            "singularity",
+            "docker",
+            "podman"
+          ]
+        },
+        "iprscan6_datadir": {
+          "type": "string",
+          "description": "InterProScan 6 data directory (<datadir>/<db>/<version>/)."
+        },
+        "iprscan6_interpro": {
+          "type": "string",
+          "description": "InterPro data release for InterProScan 6.",
+          "default": "108.0"
+        },
+        "iprscan6_task_cpus": {
+          "type": "integer",
+          "description": "CPUs per InterProScan 6 sub-task.",
+          "default": 4
+        },
+        "iprscan6_matches_api": {
+          "type": "boolean",
+          "description": "Use the InterPro Matches API for precomputed matches (needs outbound HTTPS).",
+          "default": true
+        },
+        "iprscan6_applications": {
+          "type": "string",
+          "description": "Comma list of InterProScan 6 analyses (default: all non-deep-learning)."
+        },
+        "iprscan6_licensed_config": {
+          "type": "string",
+          "description": "Config file enabling InterProScan 6 licensed apps (params.appsConfig)."
+        },
+        "iprscan6_container_options": {
+          "type": "string",
+          "description": "Extra container-engine options for InterProScan 6 containers.",
+          "default": ""
+        },
+        "iprscan6_extra_args": {
+          "type": "string",
+          "description": "Extra arguments passed verbatim to the InterProScan 6 run.",
+          "default": ""
+        },
         "run_signalp": {
           "type": "boolean",
           "description": "Run SignalP (fast mode).",

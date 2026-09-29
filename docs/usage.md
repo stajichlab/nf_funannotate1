@@ -71,6 +71,9 @@ nextflow run . -profile annotate,slurm,ucr_hpcc --n_test 2 -stub-run
 | `--run_annotate` | `false` | Run funannotate annotate (antismash/interpro/signalp must also be enabled) |
 | `--run_antismash` | `false` | Run antiSMASH secondary metabolite prediction |
 | `--run_interpro` | `false` | Run InterProScan functional annotation |
+| `--interproscan_engine` | `ips6` | `ips6`: nested InterProScan 6 workflow (see `scripts/setup_interproscan6.sh`); `ips5`: legacy `interproscan.sh` |
+| `--iprscan6_datadir` | `<launchDir>/interproscan6_data` | InterPro data for IPS6 (`<datadir>/<db>/<version>/`); UCR: `/srv/projects/db/interproscan/6.0.0/108.0` |
+| `--iprscan6_interpro` | `108.0` | Pinned InterPro data release |
 | `--run_signalp` | `false` | Run SignalP signal-peptide prediction (requires GPU partition) |
 
 Run `nextflow run . --help` for the full schema-driven parameter list.
