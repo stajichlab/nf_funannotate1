@@ -706,6 +706,19 @@ process FUNANNOTATE_TRAIN {
     if [ "${params.train_cleanup}" = "true" ]; then
         bash "${workflow.projectDir}/bin/train_cleanup.sh" "\$TRAINDIR" ${params.run_update ? 1 : 0}
     fi
+    # ── Short-transcript Trinity guard (train_min_trinity_median_len) ──────────
+    # Re-derived on every run; a dotfile, so train_cleanup.sh keeps it.
+    # FUNANNOTATE_PREDICT reads it and trains from BUSCO; RNA-seq stays evidence.
+    SHORT_MARKER="\$TRAINDIR/.trinity_short_transcripts"
+    TRIN_USED="\$TRAINDIR/trinity.fasta"
+    rm -f "\$SHORT_MARKER"
+    if [ "${params.train_min_trinity_median_len}" -gt 0 ] && [ -s "\$TRIN_USED" ]; then
+        TRIN_MEDIAN=\$(awk '/^>/{if(l)print l; l=0; next}{l+=length(\$0)} END{if(l)print l}' "\$TRIN_USED" | sort -n | awk '{a[NR]=\$1} END{if(NR) print a[int((NR+1)/2)]; else print 0}')
+        if [ "\$TRIN_MEDIAN" -lt "${params.train_min_trinity_median_len}" ]; then
+            printf 'trinity\\t%s\\nmedian_len\\t%s\\nmin_median_len\\t%s\\n' "\$TRIN_USED" "\$TRIN_MEDIAN" "${params.train_min_trinity_median_len}" > "\$SHORT_MARKER"
+            echo "[WARN] ${out}: Trinity assembly median transcript length \$TRIN_MEDIAN bp < ${params.train_min_trinity_median_len}; predict will train Augustus/SNAP from BUSCO (RNA-seq kept as evidence)" >&2
+        fi
+    fi
     echo "[INFO] Training cleanup complete for ${out}"
     echo "mysql is ${params.pasa_mysql}"
     if [ "${params.pasa_mysql}" = "true" ]; then stop_mysqldb; fi
