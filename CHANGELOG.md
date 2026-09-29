@@ -66,6 +66,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tests/test_interproscan6.sh` (Ordospora colligata OC4, 1,864 proteins:
   11 min on 16 CPUs, 8.6 GB peak RSS; funannotate's parser extracted
   InterPro terms for 1,348 proteins and GO terms for 1,163).
+- `funannotate.nf` stops at startup when `--run_interpro` is on under the
+  `k8s` / `nrp` profiles (skipped for `-stub-run`). Neither InterProScan
+  engine can run in a pod, so each genome's task used to fail there instead.
 - UCR note, found while testing: the `interproscan6` label uses a non-login
   shell, because a UCR login shell drops the module-loaded apptainer from
   PATH.
