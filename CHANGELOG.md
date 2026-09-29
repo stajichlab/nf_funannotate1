@@ -33,6 +33,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     `augustus_config_source` for BFD's staged Augustus config.
 
 ### Fixed
+- BUSCO_COMPLETENESS now scores the fresh gene set of a genome re-predicted in
+  the same run. Its already-complete row no longer arrives first and wins the
+  per-genome dedup; already-complete genomes are scored only if this run
+  didn't predict them.
 - InterProScan re-ran on every run after funannotate annotate had finished:
   annotate gzips `iprscan.xml` and deletes it, and the done-check looked only
   for the plain file. It now accepts `iprscan.xml` or `iprscan.xml.gz`.

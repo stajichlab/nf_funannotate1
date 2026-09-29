@@ -272,11 +272,27 @@ workflow TRAIN_PREDICT {
     // Fresh predictions plus already-complete genomes (predict_complete_meta).
     // Runs for both prediction paths (was inside the run_ani_reuse=false branch,
     // so ANI-reuse runs never scored their gene sets).
+    // Already-complete genomes are scored only if this run didn't predict them.
+    // A genome can be both: needsPredict() says complete, but PREDICT_REUSE's
+    // staleSharedParams() re-predicts it. With a plain mix + unique the
+    // already-complete row arrived first (at startup), its BUSCO was skipped
+    // as stored, and the fresh prediction's row was dropped as a duplicate,
+    // so the new gene set was never scored (predict removes the old result).
+    // Seen 2026-09-29 on the Bd pangenome's 10 re-predicted pilot strains.
+    def predicted_ids = metadata_out
+        .map { meta -> meta.id.toString() }
+        .collect()
+        .ifEmpty([])
+        .map { ids -> ids as Set }
+    def complete_not_predicted = predict_complete_meta
+        .combine(predicted_ids)
+        .filter { meta, ids -> !ids.contains(meta.id.toString()) }
+        .map { meta, _ids -> meta }
     def busco_completeness_input = metadata_out
-        .mix(predict_complete_meta)
-        // One task per genome: under run_ani_reuse a cached sibling predict is
-        // emitted by PREDICT_REUSE AND counted as already-complete, and two
-        // BUSCO_COMPLETENESS tasks then race on the same storeDir.
+        .mix(complete_not_predicted)
+        // Still one task per genome (a cached sibling predict can be emitted
+        // twice by PREDICT_REUSE's paths): two BUSCO_COMPLETENESS tasks would
+        // race on the same storeDir.
         .unique { meta -> meta.id }
         .filter { meta -> meta.busco }
         .map { meta -> tuple(meta, file("${params.target}/${meta.id}/predict_results/${meta.id}.proteins.fa")) }
