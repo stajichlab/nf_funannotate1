@@ -20,11 +20,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tests/test_interproscan6.sh` (Ordospora colligata OC4, 1,864 proteins:
   11 min on 16 CPUs, 8.6 GB peak RSS; funannotate's parser extracted
   InterPro terms for 1,348 proteins and GO terms for 1,163).
-- UCR notes, found while testing: `/srv/projects/db/interproscan/6.0.0/108.0`
-  has 7 files readable only by `pkgadmin`, so the site config uses the
-  readable `.../107.0` directory, which holds InterPro 108.0 data. The
-  `interproscan6` label uses a non-login shell, because a UCR login shell
-  drops the module-loaded apptainer from PATH.
+- UCR note, found while testing: the `interproscan6` label uses a non-login
+  shell, because a UCR login shell drops the module-loaded apptainer from
+  PATH.
 
 ### Changed
 - The InterProScan 5 module is now `INTERPROSCAN5_RUN`
