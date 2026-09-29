@@ -1,0 +1,48 @@
+# BFD no-RNA-seq genomes on NRP (stajichlab/nrp-deploy bfd_wave1): predict only,
+# with the settings that make an nf_funannotate1 prediction equivalent to the BFD
+# pipeline's (Fungi_BFD nextflow/, funannotate profile) for a genome without RNA-seq.
+#
+#   nextflow run /data/src/nf_funannotate1 -profile annotate,nrp -c <site config> \
+#       -params-file /data/src/nf_funannotate1/k8s/params_bfd_wave1.yaml \
+#       --samples block_NN/samples.csv
+#
+# The launch dir must hold input_clean_genomes/<ASMID>.masked.fasta.gz (BFD's
+# cleaned and masked genomes, staged from S3), so clean and mask do not rerun.
+#
+# Settings that are already the pipeline defaults and match BFD are not repeated:
+# container_funannotate (v1.9.0-rc.3), pre-flight thresholds and rule, repeat-aware
+# EVM, and the funannotate predict flags (--min_training_models 30 --keep_no_stops
+# --header_length 24 --SeqCenter NCBI --max_intronlen 3000 --min_intronlen 10
+# -w codingquarry:0 glimmerhmm:0 [genemark:1] --table <TRANSL_TABLE>).
+#
+# Not set here (site or run overlay): k8s.computeResourceType = 'Job' and a higher
+# k8s_max_memory, so predict of a large genome is not bound by the 6 h / 32 GB
+# bare-pod limits.
+
+# No FCS-GX on NRP; BFD genomes are already cleaned.
+skip_fcs: true
+
+# Wave 01 is genomes without RNA-seq: no SRA fetch, so no Trinity/PASA training.
+run_sra_fetch: false
+
+# Singleton species only in wave 01: every genome trains BUSCO on itself, as in
+# BFD. Sibling -p parameters.json reuse is not ported yet.
+run_ani_reuse: false
+
+# BFD passes deflines to funannotate unchanged.
+predict_defline_first_word: false
+
+# Seed the writable Augustus config from BFD's (lib/augustus/3.5/config, staged
+# once to the PVC). Without it SETUP_AUGUSTUS_CONFIG copies the image's config.
+augustus_config_source: /data/refdb/augustus/3.5/config
+
+# BFD protein evidence (md5 b3f44357070dc818b61a6c7ab074e2e6). site_nrp.config
+# already points proteins at /data/refdb/swissprot_fungi.faa.
+
+# Predict only.
+run_update: false
+run_annotate: false
+run_antismash: false
+run_signalp: false
+run_deeptmhmm: false
+run_interpro: false

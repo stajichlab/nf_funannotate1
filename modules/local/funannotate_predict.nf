@@ -180,34 +180,62 @@ process FUNANNOTATE_PREDICT {
     # headers survive the AAFTF clean verbatim (scripts/clean_genome_fa.py keeps
     # headers untouched), so rewrite each header to its accession (first
     # whitespace token). Idempotent -- safe on already-short headers too.
-    awk '/^>/{print \$1; next} {print}' "\$GENOME_IN" > "\$GENOME_IN.hdr" && mv "\$GENOME_IN.hdr" "\$GENOME_IN"
+    # params.predict_defline_first_word=false passes deflines through unchanged,
+    # as the BFD pipeline does.
+    if [ "${params.predict_defline_first_word}" = "true" ]; then
+        awk '/^>/{print \$1; next} {print}' "\$GENOME_IN" > "\$GENOME_IN.hdr" && mv "\$GENOME_IN.hdr" "\$GENOME_IN"
+    fi
 
     # ── Too-small-genome pre-flight guard ────────────────────────────────────
     # Shared with GENEMARK_RUN, which needs the identical policy upstream of
-    # this process (see genemark_run.nf, bin/asm_preflight_stats.py).
+    # this process (see genemark_run.nf, bin/asm_preflight_stats.py). BFD rule:
+    # any verdict other than "ok" skips, except a small_fragmented genome that
+    # has PRODIGAL_RUN evidence. The same pass reports the soft-masked share
+    # (repeat_pct) for the repeat-aware EVM rule below.
     SKIP_REPORT="${params.target}/predict_skipped_too_small.tsv"
-    read ASM_BP ASM_CTG ASM_N50 ASM_VERDICT < <(
+    read ASM_BP ASM_CTG ASM_N50 ASM_VERDICT ASM_REPEAT_PCT < <(
         python "${workflow.projectDir}/bin/asm_preflight_stats.py" "\$GENOME_IN" \\
             --min-bp ${params.predict_min_asm_bp} --max-n50 ${params.predict_frag_max_n50} \\
-            --max-contigs ${params.predict_frag_max_contigs})
-    echo "[INFO] Pre-flight assembly stats for ${out}: \${ASM_BP} bp, \${ASM_CTG} contigs, N50 \${ASM_N50}"
-    if [ "\$ASM_VERDICT" = "small_fragmented" ]; then
-        echo "[WARN] ${out} is too small/fragmented for funannotate training (\${ASM_BP} bp, \${ASM_CTG} contigs, N50 \${ASM_N50}); skipping predict" >&2
+            --max-contigs ${params.predict_frag_max_contigs} \\
+            --min-contig-len ${params.predict_min_training_contig_len} \\
+            --min-training-contigs ${params.predict_min_training_contigs} \\
+            --abs-min-bp ${params.predict_abs_min_asm_bp} \\
+            --report-repeat-pct)
+    echo "[INFO] Pre-flight assembly stats for ${out}: \${ASM_BP} bp, \${ASM_CTG} contigs, N50 \${ASM_N50}, \${ASM_REPEAT_PCT}% repeat-masked"
+    if [ "\$ASM_VERDICT" != "ok" ] && ! { [ "\$ASM_VERDICT" = "small_fragmented" ] && [ "${other_gff_ok}" = "true" ]; }; then
+        echo "[WARN] ${out} failed preflight ('\$ASM_VERDICT': \${ASM_BP} bp, \${ASM_CTG} contigs, N50 \${ASM_N50}); skipping predict" >&2
         mkdir -p "${params.target}"
         [ -s "\$SKIP_REPORT" ] || printf 'out\tasmid\tlocustag\treason\ttotal_bp\tcontigs\tN50\n' > "\$SKIP_REPORT"
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${out}" "${asmid}" "${locustag}" "preflight_small_fragmented" "\$ASM_BP" "\$ASM_CTG" "\$ASM_N50" >> "\$SKIP_REPORT"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${out}" "${asmid}" "${locustag}" "preflight_\$ASM_VERDICT" "\$ASM_BP" "\$ASM_CTG" "\$ASM_N50" >> "\$SKIP_REPORT"
         touch "\$PREDICTDIR/${out}.predict.skipped_too_small"
         touch ${out}.predict.done
         exit 0
+    elif [ "\$ASM_VERDICT" = "small_fragmented" ]; then
+        echo "[INFO] ${out} is small/fragmented but has Prodigal evidence (${other_gff}); proceeding instead of skipping" >&2
+    fi
+
+    # ── Repeat-aware EVM mode (BFD rule) ──────────────────────────────────────
+    # See conf/profile_annotate.config predict_evm_repeat_pct_threshold.
+    WEIGHT_ARGS=(${weight_args})
+    EVM_REPEAT_FLAGS=()
+    THRESHOLD=${params.predict_evm_repeat_pct_threshold}
+    if [ "\$THRESHOLD" != "0" ] && awk -v p="\$ASM_REPEAT_PCT" -v t="\$THRESHOLD" 'BEGIN{exit !(p>=t)}'; then
+        echo "[INFO] ${out}: \${ASM_REPEAT_PCT}% repeat-masked >= \${THRESHOLD}% -- repeat-aware EVM mode (--repeats2evm --evm-partition-interval ${params.predict_evm_repeat_aware_interval})"
+        EVM_REPEAT_FLAGS=(--repeats2evm --evm-partition-interval ${params.predict_evm_repeat_aware_interval})
+        if [ "${params.predict_evm_repeat_aware_drop_snap}" = "true" ]; then
+            echo "[INFO] ${out}: repeat-aware mode also sets -w snap:0"
+            WEIGHT_ARGS+=(snap:0)
+        fi
     fi
 
     funannotate predict --name ${locustag} -i "\$GENOME_IN" --strain "${strain}" \\
         -o "\$RUNDIR" -s "${species}" --cpu ${task.cpus} --busco_db ${busco_lineage} \\
-        --AUGUSTUS_CONFIG_PATH \$AUGUSTUS_CONFIG_PATH -w ${weight_args} \\
+        --AUGUSTUS_CONFIG_PATH \$AUGUSTUS_CONFIG_PATH -w "\${WEIGHT_ARGS[@]}" \\
         --min_training_models 30 --tmpdir \$TMPDIR --SeqCenter ${params.seqcenter} \\
         --keep_no_stops --header_length ${header_length} --protein_evidence ${params.proteins} \\
         --max_intronlen ${params.max_intronlen} --min_intronlen ${params.min_intronlen} \\
-        --tbl2asn "\$TBL2ASN_PARAMS" ${genemark_cli} ${other_gff_cli} || true
+        --tbl2asn "\$TBL2ASN_PARAMS" --table ${transl_table} ${genemark_cli} ${other_gff_cli} \\
+        "\${EVM_REPEAT_FLAGS[@]}" || true
 
     # ── Post-predict catch ────────────────────────────────────────────────────
     if [ ! -s "\$RUN_GBK" ]; then
@@ -227,11 +255,20 @@ process FUNANNOTATE_PREDICT {
         exit 1
     fi
     if [ -d "\$RUNDIR/predict_misc/ab_initio_parameters" ]; then
-        mv "\$RUNDIR/predict_misc/ab_initio_parameters" "\$RUNDIR"
-        mv "\$RUNDIR/predict_misc/trnascan.no-overlaps.gff3" "\$RUNDIR"
+        # Besides the ab-initio parameters and tRNAs, keep the small files needed
+        # to diagnose a gene-count difference after the fact (same keep list as
+        # BFD's FUNANNOTATE_PREDICT):
+        #   weights.evm.txt            -- EVM weights actually used
+        #   final_training_models.gff3 -- models Augustus/SNAP were trained on
+        # Missing ones are skipped.
+        KEEP_DIR="\$RUNDIR/.predict_misc_keep"
+        rm -rf "\$KEEP_DIR"; mkdir -p "\$KEEP_DIR"
+        for f in ab_initio_parameters trnascan.no-overlaps.gff3 weights.evm.txt final_training_models.gff3; do
+            if [ -e "\$RUNDIR/predict_misc/\$f" ]; then mv "\$RUNDIR/predict_misc/\$f" "\$KEEP_DIR/"; fi
+        done
+        if [ -f "\$KEEP_DIR/final_training_models.gff3" ]; then pigz "\$KEEP_DIR/final_training_models.gff3"; fi
         rm -rf "\$RUNDIR/predict_misc"
-        mkdir -p "\$RUNDIR/predict_misc"
-        mv "\$RUNDIR/ab_initio_parameters" "\$RUNDIR/trnascan.no-overlaps.gff3" "\$RUNDIR/predict_misc"
+        mv "\$KEEP_DIR" "\$RUNDIR/predict_misc"
     fi
     find "\$RUNDIR/predict_results/" -maxdepth 1 \\( -name "*.txt" -o -name "*.mrna-transcripts.fa" \\) -print0 \
         | xargs -0 --no-run-if-empty pigz

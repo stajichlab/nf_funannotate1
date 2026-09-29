@@ -400,18 +400,58 @@
           "type": "integer",
           "minimum": 0,
           "description": "N50 below this counts as 'fragmented' for the predict guard.",
-          "default": 10000
+          "default": 15000
         },
         "predict_min_asm_bp": {
           "type": "integer",
           "minimum": 0,
-          "description": "Assembled bp below this counts as 'small' for the predict guard (0 = disable guard).",
-          "default": 8000000
+          "description": "Assembled bp below this counts as 'small' for the predict guard (0 = disable the small_fragmented gate).",
+          "default": 9000000
         },
         "train_cleanup": {
           "type": "boolean",
           "description": "Delete funannotate-train intermediates that predict never reads (getBestModel/, GMAP index, seqclean Trinity copies, pasa.step1.gff3; pasa/ too unless run_update) after training resolves and after predict succeeds. Files any training/ symlink points at are kept.",
           "default": false
+        },
+        "predict_abs_min_asm_bp": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Assembled bp below this is 'too_small' and skipped, fragmented or not (0 = disable).",
+          "default": 100000
+        },
+        "predict_min_training_contig_len": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Contig length that counts as a GeneMark-ES training contig (0 = disable the no_training_contigs gate).",
+          "default": 10000
+        },
+        "predict_min_training_contigs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minimum contigs of at least predict_min_training_contig_len bp; fewer is 'no_training_contigs' and skipped (0 = disable).",
+          "default": 1
+        },
+        "predict_evm_repeat_pct_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Soft-masked % at or above which predict runs repeat-aware EVM (--repeats2evm, wider partition interval; 0 = disable).",
+          "default": 60
+        },
+        "predict_evm_repeat_aware_interval": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "--evm-partition-interval used in repeat-aware EVM mode.",
+          "default": 1500
+        },
+        "predict_evm_repeat_aware_drop_snap": {
+          "type": "boolean",
+          "description": "In repeat-aware EVM mode also pass -w snap:0.",
+          "default": true
+        },
+        "predict_defline_first_word": {
+          "type": "boolean",
+          "description": "Rewrite each genome defline to its first word before predict. false passes deflines unchanged (BFD behaviour).",
+          "default": true
         }
       }
     },
