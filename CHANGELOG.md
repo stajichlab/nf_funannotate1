@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- BUSCO_COMPLETENESS now scores the fresh gene set of a genome re-predicted in
+  the same run. Its already-complete row no longer arrives first and wins the
+  per-genome dedup; already-complete genomes are scored only if this run
+  didn't predict them.
 - FUNANNOTATE_PREDICT's own "already complete and current" check now also
   treats the genome's PASA training output, and for reuse siblings the shared
   ab-initio store, as evidence newer than the GBK. Before, it checked only reads
