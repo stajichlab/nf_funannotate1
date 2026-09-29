@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- FUNANNOTATE_PREDICT's own "already complete and current" check now also
+  treats the genome's PASA training output, and for reuse siblings the shared
+  ab-initio store, as evidence newer than the GBK. Before, it checked only reads
+  and Trinity, so a genome the pipeline had flagged as stale exited as a no-op
+  and kept its old annotation.
 - ANI reuse: re-running the representative pick (e.g. after the sample sheet
   changes) no longer drops GeneMark from the shared store. Its inline backfill
   passes no `.mod`, so `backfill_abinitio_params.py` now reuses the store's
