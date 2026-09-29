@@ -6,6 +6,52 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- InterProScan re-ran on every run after funannotate annotate had finished:
+  annotate gzips `iprscan.xml` and deletes it, and the done-check looked only
+  for the plain file. It now accepts `iprscan.xml` or `iprscan.xml.gz`.
+- The singularity-axis InterProScan step could not work: it ran
+  `interproscan.sh` (IPS5 flags) in `interpro/interproscan:6.0.0`, which has
+  no `interproscan.sh`, java or nextflow.
+- FUNANNOTATE_PREDICT's own "already complete and current" check now also
+  treats the genome's PASA training output, and for reuse siblings the shared
+  ab-initio store, as evidence newer than the GBK. Before, it checked only reads
+  and Trinity, so a genome the pipeline had flagged as stale exited as a no-op
+  and kept its old annotation.
+- ANI reuse: re-running the representative pick (e.g. after the sample sheet
+  changes) no longer drops GeneMark from the shared store. Its inline backfill
+  passes no `.mod`, so `backfill_abinitio_params.py` now reuses the store's
+  existing GeneMark model when the store was built by the same representative.
+  Before, the rebuilt store lacked GeneMark, its content hash changed, and every
+  sibling looked stale.
+- ANI reuse: sibling GeneMark and predict tasks now carry a fingerprint of the
+  species' shared ab-initio store (`FunannotateUtils.sharedParamsFingerprint`:
+  provenance `content_hash`, else size+mtime). Previously a rebuilt store (new
+  representative) had the same path, so `-resume` served siblings' old
+  GeneMark and predict from Nextflow's cache even when `staleSharedParams`
+  flagged them. Seen on the Bd run: 9 pilot strains kept annotations from the
+  pilot representative.
+
+### Changed
+- The InterProScan 5 module is now `INTERPROSCAN5_RUN`
+  (`--interproscan_engine ips5`).
+- NRP fair use (https://nrp.ai/documentation/userdocs/running/jobs/, .../cpu-only/):
+  Nextflow now runs as a per-run **Job** (`k8s/run/`) instead of an idle
+  `sleep infinity` head Deployment, which NRP prohibits. Staging and the Rust
+  helper build are finite Jobs (`k8s/tools/s3-sync`, `build-rust-tools`);
+  `k8s/tools/shell` is a 1 h setup/inspection pod. Task pods get
+  `priorityClassName: opportunistic` and avoid GPU nodes (`site_nrp.config`).
+- k8s run Job: the Nextflow resume cache now runs on pod-local disk
+  (`NXF_CACHE_DIR`), with LevelDB memory-mapping off (`-Dleveldb.mmap=false`).
+  It is snapshotted to `RUN_DIR/.nextflow-snapshots` atomically (write to a
+  temporary directory, fsync, rename) every 5 min and when Nextflow exits, and
+  restored on the next launch (`k8s/run/nf-run.sh`). Previously a node lost
+  mid-write left the cache on CephFS corrupt and every retry failed.
+  A relaunch waits for the previous pod's heartbeat (`RUN_DIR/.nf-run.heartbeat`)
+  to go stale, so a `kubectl delete` + `apply` can't copy a cache that is still
+  being written. A restored snapshot that won't open is renamed `bad-*`, and the
+  Job's retry falls back to the previous one.
+
 ### Added
 - InterProScan 6 for `--run_interpro` (default `--interproscan_engine ips6`).
   `INTERPROSCAN_RUN` launches the pinned IPS6 workflow (6.0.2.2) as a nested
@@ -23,19 +69,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - UCR note, found while testing: the `interproscan6` label uses a non-login
   shell, because a UCR login shell drops the module-loaded apptainer from
   PATH.
-
-### Changed
-- The InterProScan 5 module is now `INTERPROSCAN5_RUN`
-  (`--interproscan_engine ips5`).
-
-### Fixed
-- InterProScan re-ran on every run after funannotate annotate had finished:
-  annotate gzips `iprscan.xml` and deletes it, and the done-check looked only
-  for the plain file. It now accepts `iprscan.xml` or `iprscan.xml.gz`.
-- The singularity-axis InterProScan step could not work: it ran
-  `interproscan.sh` (IPS5 flags) in `interpro/interproscan:6.0.0`, which has
-  no `interproscan.sh`, java or nextflow.
-
+- `train_cleanup` (default off): once a genome's training resolves, and again
+  after its predict succeeds (which covers genomes trained earlier),
+  `bin/train_cleanup.sh` deletes funannotate-train intermediates that predict
+  never reads: `getBestModel/`, the GMAP index, the seqclean copies of Trinity
+  and `pasa.step1.gff3`, plus `pasa/` when `run_update` is off. Anything a
+  `training/` symlink points at is kept (e.g. `funannotate_train.trinity-GG.fasta`
+  -> `trinity.fasta`). On a Bd training dir this took 1.6 GB down to 129 MB.
 - Kubernetes execution (test mode): `-profile annotate,k8s` and
   `-profile annotate,nrp` (NRP Nautilus), via `conf/executor_k8s.config` and
   `conf/site_nrp.config`, plus `k8s/` manifests (PVC, head pod), smoke-test

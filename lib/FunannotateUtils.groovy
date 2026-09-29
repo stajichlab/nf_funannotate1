@@ -80,6 +80,34 @@ class FunannotateUtils {
         return (mod.exists() && mod.size() > 0) ? mod : null
     }
 
+    // Fingerprint of a species' shared ab-initio store, for sibling task hashes.
+    //
+    // WHY THIS EXISTS: siblings reach the store by PATH (shared_mod, and
+    // funannotate reads parameters.json via params.gene_prediction_shared_abinitio),
+    // and the path never changes when the store is rebuilt. So after the
+    // representative changes, -resume served every sibling's OLD GeneMark and
+    // predict from Nextflow's cache even though staleSharedParams() had
+    // correctly flagged them. Seen 2026-09-28 on the Bd pangenome run: 9 pilot
+    // strains predicted from 02.OZ's store kept those annotations after the
+    // full run picked 40.OZ. Same failure class as trainingFingerprint().
+    // Uses provenance.json's content_hash (written by BACKFILL_ABINITIO_PARAMS),
+    // else size+mtime of parameters.json and the GeneMark .mod; '' if no store.
+    static String sharedParamsFingerprint(String species, String sharedRoot) {
+        if (!species || !sharedRoot) return ''
+        def species_tag = species.replaceAll(/\s+/, '_')
+        def prov = new File("${sharedRoot}/${species_tag}/provenance.json")
+        if (prov.exists() && prov.size() > 0) {
+            def m = (prov.text =~ /"content_hash"\s*:\s*"([0-9a-f]+)"/)
+            if (m.find()) return "shared:${m.group(1)}"
+        }
+        def parts = []
+        ['parameters.json', "${species_tag}.genemark.mod"].each { name ->
+            def f = new File("${sharedRoot}/${species_tag}/${name}")
+            if (f.exists() && f.size() > 0) parts << "${name}:${f.size()}:${f.lastModified()}"
+        }
+        return parts ? "shared:" + parts.join('|') : ''
+    }
+
     // A strain's FUNANNOTATE_TRAIN-produced transcript-to-genome alignment BAM --
     // GENEMARK_RUN's ET mode derives RNA-seq-informed intron hints from this.
     // Returns '' (not null) when absent/empty: GENEMARK_RUN's script checks for a

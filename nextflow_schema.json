@@ -407,6 +407,11 @@
           "minimum": 0,
           "description": "Assembled bp below this counts as 'small' for the predict guard (0 = disable guard).",
           "default": 8000000
+        },
+        "train_cleanup": {
+          "type": "boolean",
+          "description": "Delete funannotate-train intermediates that predict never reads (getBestModel/, GMAP index, seqclean Trinity copies, pasa.step1.gff3; pasa/ too unless run_update) after training resolves and after predict succeeds. Files any training/ symlink points at are kept.",
+          "default": false
         }
       }
     },
@@ -701,7 +706,7 @@
         "k8s_pvc": {
           "type": "string",
           "default": "funannotate-work-pvc",
-          "description": "nrp only: shared ReadWriteMany PVC mounted in the head pod and every task pod."
+          "description": "nrp only: shared ReadWriteMany PVC mounted in the Nextflow run Job and every task pod."
         },
         "k8s_mount": {
           "type": "string",

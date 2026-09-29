@@ -92,7 +92,7 @@ workflow {
         if( missing_tools )
             error "SRA fetch helper(s) not found or not executable: ${missing_tools.join(', ')}. " +
                   "Build them once into this checkout's tools/bin: `bash ${projectDir}/scripts/build_tools.sh` " +
-                  "(Kubernetes: the k8s/tools/build-rust-tools pod), or point --fastq_hdr_script / --readlen_script at existing builds."
+                  "(Kubernetes: the k8s/tools/build-rust-tools Job), or point --fastq_hdr_script / --readlen_script at existing builds."
     }
 
     // ── Samplesheet ingestion (INPUT_CHECK) ──────────────────────────────────

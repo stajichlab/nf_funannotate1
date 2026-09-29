@@ -1,4 +1,4 @@
-# One-off pod; apply through an overlay that sets the namespace (k8s/README.md).
+# Short-lived setup/inspection shell (1 h cap).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

@@ -12,7 +12,7 @@
 # Requires a Rust toolchain (cargo, rust >= 1.85). On the UCR HPCC: `module load rust`.
 # enforce_seqpair_readlen also needs cmake and a C/C++ compiler (its zlib-ng dependency
 # is built from C source). funannotate.nf checks for both binaries at startup when
-# --run_sra_fetch is on. On Kubernetes, use the k8s/tools/build-rust-tools pod instead.
+# --run_sra_fetch is on. On Kubernetes, use the k8s/tools/build-rust-tools Job instead.
 # Pins are overridable, e.g.:  FIXHDR_REV=<sha> ENFORCE_REV=<sha> bash ... build_tools.sh
 
 set -euo pipefail

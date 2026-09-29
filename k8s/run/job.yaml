@@ -1,0 +1,71 @@
+# One pipeline run = one Job whose command IS the Nextflow run. It exits when
+# the pipeline finishes, as NRP requires (no idle `sleep infinity` head pod).
+# An overlay sets the name suffix and RUN_DIR / PARAMS_FILE / SITE_CONFIG
+# (see k8s/overlays/example/runs/). The pipeline checkout, site config and run
+# directory live on the shared PVC. Nextflow's resume cache runs on pod-local
+# disk and is snapshotted atomically to <RUN_DIR>/.nextflow-snapshots (see
+# nf-run.sh), so relaunching the same Job resumes (-resume) where the last one
+# stopped, even after losing the node mid-write.
+#
+#   kubectl apply  -k <overlay>/runs/<run>        # start / resume
+#   kubectl logs -f -n <namespace> job/nextflow-<run>
+#   kubectl delete -k <overlay>/runs/<run>        # stop (Nextflow cleans up its task pods)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nextflow
+  labels:
+    app: nextflow-run
+spec:
+  # Retries cover node reboots / eviction of the head; each retry resumes.
+  backoffLimit: 2
+  # Keep the finished Job (and its logs) for a week; nf_run.log is on the PVC too.
+  ttlSecondsAfterFinished: 604800
+  template:
+    metadata:
+      labels:
+        app: nextflow-run
+    spec:
+      restartPolicy: Never
+      # Time for Nextflow to delete its task pods and write a final cache snapshot.
+      terminationGracePeriodSeconds: 180
+      serviceAccountName: nextflow-runner
+      containers:
+        - name: nextflow
+          # 26.x: the v2 config parser applies -profile entries in command-line
+          # order, which `-profile annotate,nrp` relies on (see nextflow.config).
+          image: nextflow/nextflow:26.04.6
+          command: ["bash", "/nf-run/nf-run.sh"]
+          env:
+            - {name: RUN_DIR, value: /data/runs/CHANGE-ME}
+            - {name: PARAMS_FILE, value: params.yaml}
+            - {name: PIPELINE, value: /data/src/nf_funannotate1}
+            - {name: PROFILE, value: "annotate,nrp"}
+            - {name: SITE_CONFIG, value: /data/src/site.config}
+            - {name: NF_EXTRA_ARGS, value: ""}
+            # Cache snapshot cadence and how many snapshots to keep.
+            - {name: CACHE_SYNC_SECONDS, value: "300"}
+            - {name: CACHE_SNAPSHOTS_KEEP, value: "3"}
+            # Nextflow state, plugin cache and pipeline source on the PVC.
+            - {name: NXF_HOME, value: /data/.nextflow}
+            - {name: HOME, value: /data/home}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: nrp-s3-creds, key: AWS_ACCESS_KEY_ID, optional: true}}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: nrp-s3-creds, key: AWS_SECRET_ACCESS_KEY, optional: true}}
+          # NRP admission: cpu limit/request ratio must be <= 1.2.
+          resources:
+            requests: {cpu: "2", memory: 4Gi}
+            limits: {cpu: "2", memory: 4Gi}
+          volumeMounts:
+            - {name: work, mountPath: /data}
+            - {name: nxf-local, mountPath: /nxf-local}
+            - {name: nf-run, mountPath: /nf-run}
+      volumes:
+        - name: nxf-local
+          emptyDir: {sizeLimit: 2Gi}
+        - name: nf-run
+          configMap: {name: nf-run-script}
+        - name: work
+          persistentVolumeClaim:
+            claimName: funannotate-work-pvc

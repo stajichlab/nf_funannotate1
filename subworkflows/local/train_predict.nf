@@ -201,7 +201,8 @@ workflow TRAIN_PREDICT {
             def mode = params.genemark_mode == 'auto' ? (training_bam ? 'ET' : 'ES') : params.genemark_mode
             def shared_root = params.gene_prediction_shared_abinitio
             def shared_mod  = shared_root ? FunannotateUtils.sharedGenemarkModFor(meta.species as String, shared_root as String) : null
-            tuple(meta, genome_fa, mode, training_bam, params.force_independent, shared_mod ? shared_mod.toString() : '')
+            def shared_fp   = shared_mod ? FunannotateUtils.sharedParamsFingerprint(meta.species as String, shared_root as String) : ''
+            tuple(meta, genome_fa, mode, training_bam, params.force_independent, shared_mod ? shared_mod.toString() : '', shared_fp)
         }
         GENEMARK_RUN(genemark_input)
         gtf_ch = predict_ch.join(GENEMARK_RUN.out.gtf, by: 0)

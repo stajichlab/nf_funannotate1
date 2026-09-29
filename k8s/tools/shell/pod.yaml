@@ -1,0 +1,32 @@
+# Short-lived shell for setup and inspection ONLY: cloning / pulling the
+# pipeline checkout, copying a site config, looking at results. It ends by
+# itself after 1 h (activeDeadlineSeconds) and should be deleted when done.
+# Never start computation from it: NRP prohibits interactive pods that run
+# work, and bans users for it. Pipeline runs are Jobs (k8s/run/).
+#
+#   kubectl apply -k <overlay>/tools/shell
+#   kubectl exec -it -n <namespace> nf-shell -- bash
+#   kubectl delete pod -n <namespace> nf-shell
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nf-shell
+spec:
+  restartPolicy: Never
+  activeDeadlineSeconds: 3600
+  containers:
+    - name: shell
+      image: nextflow/nextflow:26.04.6
+      command: ["bash", "-c", "dnf install -y -q git >/dev/null 2>&1 || true; sleep 3600"]
+      env:
+        - {name: NXF_HOME, value: /data/.nextflow}
+        - {name: HOME, value: /data/home}
+      resources:
+        requests: {cpu: "1", memory: 2Gi}
+        limits: {cpu: "1", memory: 2Gi}
+      volumeMounts:
+        - {name: work, mountPath: /data}
+  volumes:
+    - name: work
+      persistentVolumeClaim:
+        claimName: funannotate-work-pvc

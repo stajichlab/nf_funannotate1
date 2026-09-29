@@ -1,5 +1,5 @@
 # Shared work/launch/reference-DB volume for -profile nrp. Mounted at /data in
-# the head pod and every task pod (conf/site_nrp.config: k8s.storageClaimName).
+# the Nextflow run Job and every task pod (conf/site_nrp.config: k8s.storageClaimName).
 # ReadWriteMany is required: the k8s executor's workDir is shared by all pods.
 # Sizing: funannotate_db (~15 GB) + eggNOG (~50 GB) + BUSCO lineages + per-run
 # work dirs (Trinity/PASA scratch is the big one once RNA-seq is on).

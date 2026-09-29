@@ -27,6 +27,10 @@ process FUNANNOTATE_PREDICT {
     def strain        = meta.strain
     def locustag      = meta.locustag
     def busco_lineage = meta.busco
+    // Reuse siblings (FUNANNOTATE_PREDICT_SIB) also go stale when the species'
+    // shared ab-initio store is refreshed; see the skip check below.
+    def shared_params_json = (task.process.endsWith('_SIB') && params.gene_prediction_shared_abinitio) ?
+        "${params.gene_prediction_shared_abinitio}/${species.replaceAll(/\s+/, '_')}/parameters.json" : ''
     def header_length = params.header_length
     def transl_table  = meta.transl_table
     // GeneMark GTF supplied by the standalone GENEMARK_RUN step; empty string
@@ -117,17 +121,28 @@ process FUNANNOTATE_PREDICT {
     if [ -s "\$PREDICT_GBK" ]; then
         SPECIES_TAG=\$(printf '%s' "${species}" | sed -E 's/[[:space:]]+/_/g')
         STALE=0
+        # Same evidence the channel-level checks use (FunannotateUtils.needsPredict
+        # / staleSharedParams): the species' reads and Trinity, this genome's
+        # PASA training output and, for reuse siblings only, the shared
+        # ab-initio store (a representative's own prediction builds the store,
+        # so for it the store is always newer). Without the last two, a genome
+        # the pipeline had correctly flagged as stale (re-trained, or a new
+        # representative's store) exited here as "current" and kept its old
+        # annotation. Seen 2026-09-29 on the Bd pangenome's 10 pilot strains.
         for f in "${launchDir}/rnaseq_reads/\${SPECIES_TAG}_norm_R1.fastq.gz" \\
                  "${launchDir}/rnaseq_reads/\${SPECIES_TAG}_norm_SE.fastq.gz" \\
-                 "${launchDir}/rnaseq_data/\${SPECIES_TAG}.trinity-GG.fasta"; do
-            if [ -s "\$f" ] && [ "\$f" -nt "\$PREDICT_GBK" ]; then STALE=1; fi
+                 "${launchDir}/rnaseq_data/\${SPECIES_TAG}.trinity-GG.fasta" \\
+                 "${params.training_target}/${out}/training/funannotate_train.pasa.gff3" \\
+                 "${params.training_target}/${out}/training/funannotate_train.transcripts.gff3" \\
+                 ${shared_params_json ? "\"${shared_params_json}\"" : ''}; do
+            if [ -s "\$f" ] && [ "\$f" -nt "\$PREDICT_GBK" ]; then STALE=1; echo "[INFO] \$f is newer than the existing GBK"; fi
         done
         if [ "\$STALE" -eq 0 ]; then
             echo "[INFO] Prediction already complete and current for ${out}; nothing to do"
             touch ${out}.predict.done
             exit 0
         fi
-        echo "[INFO] Stale prediction for ${out}: rnaseq/trinity newer than GBK — clearing predict outputs for a fresh run"
+        echo "[INFO] Stale prediction for ${out}: evidence newer than GBK — clearing predict outputs for a fresh run"
         rm -rf "\$PREDICTDIR/predict_results" "\$PREDICTDIR/predict_misc"
     fi
 
@@ -227,6 +242,11 @@ process FUNANNOTATE_PREDICT {
     # existing, regardless of which proteins produced it, so a re-prediction (e.g.
     # after RNA-seq/PASA evidence arrives) otherwise kept the old score.
     rm -rf "\$PREDICTDIR/busco_completeness"
+    # Training intermediates are no longer needed once predict has succeeded
+    # (bin/train_cleanup.sh keeps everything predict/update read).
+    if [ "${params.train_cleanup}" = "true" ]; then
+        bash "${workflow.projectDir}/bin/train_cleanup.sh" "${params.training_target}/${out}/training" ${params.run_update ? 1 : 0}
+    fi
     sync
     touch ${out}.predict.done
     echo "[INFO] Prediction complete for ${out} at \$PREDICTDIR"

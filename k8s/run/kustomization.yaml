@@ -1,0 +1,9 @@
+# Nextflow run Job template; use through an overlay (k8s/overlays/example/runs/).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - job.yaml
+configMapGenerator:
+  - name: nf-run-script
+    files:
+      - nf-run.sh
