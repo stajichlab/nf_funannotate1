@@ -173,7 +173,7 @@ process GENEMARK_RUN {
 
     # ── Too-small/fragmented-genome pre-flight guard ─────────────────────────
     # Mirrors FUNANNOTATE_PREDICT's own guard (same params.predict_min_asm_bp/
-    # predict_frag_max_n50/predict_frag_max_contigs, same
+    # predict_frag_max_*/predict_abs_min_asm_bp/predict_min_training_contig*, same
     # bin/asm_preflight_stats.py -- shared, not duplicated) -- GENEMARK_RUN
     # sits upstream of that guard in the DAG, so without a check here, a
     # genome predict would go on to skip anyway (small AND fragmented)
@@ -184,12 +184,16 @@ process GENEMARK_RUN {
     # data/training.fna: 32259" for a small, fragmented assembly. Skip
     # cleanly here (empty GTF, no .mod) so predict's own preflight guard is
     # the one that actually flags/records the skip in predict_skipped_too_small.tsv.
+    # Any verdict other than "ok" skips (BFD rule; see conf/profile_annotate.config).
     read ASM_BP ASM_CTG ASM_N50 ASM_VERDICT < <(
         python "${workflow.projectDir}/bin/asm_preflight_stats.py" genome.fa \\
             --min-bp ${params.predict_min_asm_bp} --max-n50 ${params.predict_frag_max_n50} \\
-            --max-contigs ${params.predict_frag_max_contigs})
-    if [ "\$ASM_VERDICT" = "small_fragmented" ]; then
-        echo "[WARN] GENEMARK_RUN ${out}: too small/fragmented (\$ASM_BP bp, \$ASM_CTG contigs, N50 \$ASM_N50); skipping GeneMark -- predict's own preflight guard will flag/report this genome" >&2
+            --max-contigs ${params.predict_frag_max_contigs} \\
+            --min-contig-len ${params.predict_min_training_contig_len} \\
+            --min-training-contigs ${params.predict_min_training_contigs} \\
+            --abs-min-bp ${params.predict_abs_min_asm_bp})
+    if [ "\$ASM_VERDICT" != "ok" ]; then
+        echo "[WARN] GENEMARK_RUN ${out}: preflight verdict '\$ASM_VERDICT' (\$ASM_BP bp, \$ASM_CTG contigs, N50 \$ASM_N50); skipping GeneMark -- predict's own preflight guard will flag/report this genome" >&2
         touch "${out}.genemark.gtf"
         rm -f genome.fa
         exit 0

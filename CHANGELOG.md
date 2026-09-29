@@ -6,6 +6,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- BFD equivalence for genomes without RNA-seq (stajichlab/nrp-deploy
+  `bfd_wave1`): the no-RNA-seq predict path now matches the BFD pipeline's.
+  - `container_funannotate` is `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.3`
+    (was 1.9.0-rc.1); same image digest as BFD's rc.3 .sif.
+  - FUNANNOTATE_PREDICT passes `--table <TRANSL_TABLE>` (was omitted, so CUG
+    yeasts with table 12 were predicted with table 1).
+  - Pre-flight guard: BFD's `asm_preflight_stats.py` (adds the `too_small` and
+    `no_training_contigs` verdicts and the repeat-masked share) and BFD's
+    thresholds (small < 9 Mb, fragmented N50 < 15 kb; were 8 Mb / 10 kb).
+    GENEMARK_RUN and FUNANNOTATE_PREDICT skip any verdict other than `ok`
+    (were: `small_fragmented` only); a `small_fragmented` genome with Prodigal
+    evidence still runs predict.
+  - Repeat-aware EVM: at >= 60% soft-masked, predict passes `--repeats2evm
+    --evm-partition-interval 1500` and `-w snap:0`
+    (`predict_evm_repeat_*` params).
+  - Folder names: `SampleUtils.makeSampleTag` uses BFD's `cleanStrain` (`*`
+    and shell characters in a strain). Checked against BFD's rule on all
+    23,683 BFD samples.csv rows: 0 differences (1 before).
+  - `predict_defline_first_word` (default true) makes the defline rewrite
+    optional; BFD does not rewrite deflines.
+  - predict_misc keeps `weights.evm.txt` and `final_training_models.gff3.gz`
+    as BFD does, and no longer fails when `trnascan.no-overlaps.gff3` is absent.
+  - `k8s/params_bfd_wave1.yaml`: predict-only BFD settings for NRP, including
+    `augustus_config_source` for BFD's staged Augustus config.
+
 ### Fixed
 - InterProScan re-ran on every run after funannotate annotate had finished:
   annotate gzips `iprscan.xml` and deletes it, and the done-check looked only
