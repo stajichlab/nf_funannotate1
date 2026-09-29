@@ -283,14 +283,14 @@ workflow PREDICT_REUSE {
         PRODIGAL_RUN_SIB(sibling_predict_todo.map { meta, gfa, sp -> tuple(meta, gfa) })
         sibling_final = sibling_predict_todo.join(PRODIGAL_RUN_SIB.out.gff3, by: 0)
             .map { meta, gfa, gtf, other_gff ->
-                tuple(meta, gfa, gtf, other_gff, siblingFingerprint(meta)) }
+                tuple(meta, gfa, gtf, other_gff, siblingFingerprint.call(meta)) }
     } else {
         // Same 5-tuple as the representative path above: FUNANNOTATE_PREDICT's
         // train_fp input was added after this branch was written, so siblings
         // failed with "Input tuple does not match tuple declaration".
         sibling_final = sibling_predict_todo
             .map { meta, gfa, gtf ->
-                tuple(meta, gfa, gtf, '', siblingFingerprint(meta)) }
+                tuple(meta, gfa, gtf, '', siblingFingerprint.call(meta)) }
     }
 
     FUNANNOTATE_PREDICT_SIB(sibling_final)
