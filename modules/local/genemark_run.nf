@@ -56,7 +56,10 @@ process GENEMARK_RUN {
     tag "${meta.id}"
 
     input:
-    tuple val(meta), val(genome_fa), val(mode), val(training_bam), val(force_independent), val(shared_mod)
+    // shared_fp: FunannotateUtils.sharedParamsFingerprint() of the store
+    // shared_mod lives in. Not used by the script; it puts the store's content
+    // into the task hash, since shared_mod's path is the same across rebuilds.
+    tuple val(meta), val(genome_fa), val(mode), val(training_bam), val(force_independent), val(shared_mod), val(shared_fp)
 
     output:
     tuple val(meta), path("${meta.id}.genemark.gtf"), emit: gtf

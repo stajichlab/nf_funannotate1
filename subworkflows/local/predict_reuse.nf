@@ -113,7 +113,7 @@ workflow PREDICT_REUSE {
         def genemark_in = fresh_todo.map { meta, gfa ->
             def training_bam = FunannotateUtils.trainingTranscriptBamFor(meta.id as String, params.training_target as String)
             def mode = genemarkMode == 'AUTO' ? (training_bam ? 'ET' : 'ES') : genemarkMode
-            tuple(meta, gfa, mode, training_bam, forceAll ? "true" : "false", '')
+            tuple(meta, gfa, mode, training_bam, forceAll ? "true" : "false", '', '')
         }
         GENEMARK_RUN(genemark_in)
         fresh_with_gtf = fresh_todo.join(GENEMARK_RUN.out.gtf, by: 0)
@@ -255,7 +255,8 @@ workflow PREDICT_REUSE {
             def training_bam = FunannotateUtils.trainingTranscriptBamFor(meta.id as String, params.training_target as String)
             def mode = genemarkMode == 'AUTO' ? (training_bam ? 'ET' : 'ES') : genemarkMode
             def sharedMod = FunannotateUtils.sharedGenemarkModFor(sp as String, sharedRoot as String)
-            tuple(meta, gfa, mode, training_bam, forceAll ? "true" : "false", sharedMod ? sharedMod.toString() : '')
+            tuple(meta, gfa, mode, training_bam, forceAll ? "true" : "false", sharedMod ? sharedMod.toString() : '',
+                  FunannotateUtils.sharedParamsFingerprint(sp as String, sharedRoot as String))
         }
         GENEMARK_RUN_SIB(sibling_genemark_in)
 
@@ -270,22 +271,26 @@ workflow PREDICT_REUSE {
     // path above (PRODIGAL_RUN_SIB on the same gated sibling_predict_todo).
     // Contingency: enforced inside the module (non-matching BUSCO lineages
     // emit an empty GFF -> no --other_gff).
+    // A sibling predict's hash must cover both its own training evidence and
+    // the shared store it reuses (see FunannotateUtils.sharedParamsFingerprint).
+    def siblingFingerprint = { meta ->
+        FunannotateUtils.trainingFingerprint(meta.id as String, params.training_target as String) + '|' +
+            FunannotateUtils.sharedParamsFingerprint(meta.species as String, sharedRoot as String)
+    }
     def runProdigalSib = (params.run_prodigal ?: false).toString().toBoolean()
     def sibling_final
     if (runProdigalSib) {
         PRODIGAL_RUN_SIB(sibling_predict_todo.map { meta, gfa, sp -> tuple(meta, gfa) })
         sibling_final = sibling_predict_todo.join(PRODIGAL_RUN_SIB.out.gff3, by: 0)
             .map { meta, gfa, gtf, other_gff ->
-                tuple(meta, gfa, gtf, other_gff,
-                      FunannotateUtils.trainingFingerprint(meta.id as String, params.training_target as String)) }
+                tuple(meta, gfa, gtf, other_gff, siblingFingerprint(meta)) }
     } else {
         // Same 5-tuple as the representative path above: FUNANNOTATE_PREDICT's
         // train_fp input was added after this branch was written, so siblings
         // failed with "Input tuple does not match tuple declaration".
         sibling_final = sibling_predict_todo
             .map { meta, gfa, gtf ->
-                tuple(meta, gfa, gtf, '',
-                      FunannotateUtils.trainingFingerprint(meta.id as String, params.training_target as String)) }
+                tuple(meta, gfa, gtf, '', siblingFingerprint(meta)) }
     }
 
     FUNANNOTATE_PREDICT_SIB(sibling_final)
