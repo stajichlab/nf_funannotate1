@@ -21,9 +21,10 @@
 #              - or the current dir:                PIPELINE=$PWD
 #   REVISION   git branch / tag / commit to run (default: pipeline default branch)
 #
-# Default provisioning is the UCR HPCC institutional profile (Lmod modules) on
-# SLURM. Swap axes via env vars:
-#   PROVISION=singularity sbatch run_annotate.sh   # portable containers
+# Default provisioning is singularity (params.container_funannotate, pinned to
+# funannotate v1.9.0-rc.3) on SLURM. The `ucr_hpcc` profile is always loaded
+# too, for its SLURM settings (see below). Swap axes via env vars:
+#   PROVISION=ucr_hpcc    sbatch run_annotate.sh   # UCR Lmod modules (funannotate/1.8 default module)
 #   PROVISION=conda       sbatch run_annotate.sh   # shared conda envs
 #   EXECUTOR=local        sbatch run_annotate.sh   # head + tasks local
 #   REVISION=v0.3.0       sbatch run_annotate.sh   # pin a release
@@ -55,7 +56,7 @@ export CONDA_ENVS_ROOT="${CONDA_ENVS_ROOT:-/bigdata/stajichlab/shared/condaenv}"
 PIPELINE="${PIPELINE:-stajichlab/nf_funannotate1}"
 REVISION="${REVISION:-}"
 EXECUTOR="${EXECUTOR:-slurm}"
-PROVISION="${PROVISION:-ucr_hpcc}"
+PROVISION="${PROVISION:-singularity}"
 
 # conf/provision_ucr_hpcc.config (loaded only by the `ucr_hpcc` profile) carries
 # two unrelated things bundled together: Lmod module-loading beforeScripts, AND

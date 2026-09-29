@@ -332,7 +332,7 @@ Compose one option from each of three axes: `-profile <pipeline>,<executor>,<pro
 |---|---|
 | **pipeline** | `annotate` · `earlgrey` · `test` / `stub` |
 | **executor** | `slurm` · `local` |
-| **provisioning** | `ucr_hpcc` (default; institutional Lmod modules) · `conda` (shared frozen envs) · `pixi` · `singularity` (containers) |
+| **provisioning** | `singularity` (containers; `run_annotate.sh` default) · `ucr_hpcc` (institutional Lmod modules) · `conda` (shared frozen envs) · `pixi` |
 
 Kubernetes is the exception: `k8s` / `nrp` replaces both the executor and
 provisioning picks (`-profile annotate,nrp`), because task pods need OCI images.
@@ -345,12 +345,12 @@ nextflow run stajichlab/nf_funannotate1 -profile annotate,local,singularity -res
 ```
 
 The `run_annotate.sh` launcher honours `EXECUTOR=` / `PROVISION=` (default
-`slurm` / `ucr_hpcc`) and `PIPELINE=` / `REVISION=` env vars:
+`slurm` / `singularity`) and `PIPELINE=` / `REVISION=` env vars:
 
 ```bash
-sbatch run_annotate.sh                          # default: slurm + ucr_hpcc (Lmod modules)
+sbatch run_annotate.sh                          # default: slurm + singularity (containers)
+PROVISION=ucr_hpcc    sbatch run_annotate.sh     # UCR Lmod modules only
 PROVISION=conda       sbatch run_annotate.sh     # shared conda envs
-PROVISION=singularity sbatch run_annotate.sh     # portable containers
 EXECUTOR=local         sbatch run_annotate.sh     # head + tasks local
 ```
 
