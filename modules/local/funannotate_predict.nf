@@ -228,6 +228,23 @@ process FUNANNOTATE_PREDICT {
         fi
     fi
 
+    # ── PASA training-set gate and short-transcript guard ─────────────────────
+    # Only a gate-aware funannotate (>= 1.9.0-rc.2) knows --min_pasa_complete_models;
+    # rc.1 would reject it. `funannotate predict --help` prints funannotate's own usage
+    # text, which lists the flag only from after rc.3, so check the installed module.
+    GATE_ARGS=()
+    if python3 -c "import inspect, sys, funannotate.predict as p; sys.exit(0 if 'min_pasa_complete_models' in inspect.getsource(p) else 1)" 2>/dev/null; then
+        if [ -n "${params.predict_min_pasa_complete_models != null ? params.predict_min_pasa_complete_models : ''}" ]; then
+            GATE_ARGS+=(--min_pasa_complete_models ${params.predict_min_pasa_complete_models})
+        fi
+        if [ -s "${params.training_target}/${out}/training/.trinity_short_transcripts" ]; then
+            echo "[INFO] ${out}: Trinity assembly has short transcripts; training Augustus/SNAP from BUSCO"
+            GATE_ARGS+=(--min_pasa_complete_models 1000000000)
+        fi
+    else
+        echo "[INFO] ${out}: this funannotate has no PASA training-set gate (< 1.9.0-rc.2); gate args not passed"
+    fi
+
     funannotate predict --name ${locustag} -i "\$GENOME_IN" --strain "${strain}" \\
         -o "\$RUNDIR" -s "${species}" --cpu ${task.cpus} --busco_db ${busco_lineage} \\
         --AUGUSTUS_CONFIG_PATH \$AUGUSTUS_CONFIG_PATH -w "\${WEIGHT_ARGS[@]}" \\
@@ -235,7 +252,7 @@ process FUNANNOTATE_PREDICT {
         --keep_no_stops --header_length ${header_length} --protein_evidence ${params.proteins} \\
         --max_intronlen ${params.max_intronlen} --min_intronlen ${params.min_intronlen} \\
         --tbl2asn "\$TBL2ASN_PARAMS" --table ${transl_table} ${genemark_cli} ${other_gff_cli} \\
-        "\${EVM_REPEAT_FLAGS[@]}" || true
+        "\${EVM_REPEAT_FLAGS[@]}" "\${GATE_ARGS[@]}" || true
 
     # ── Post-predict catch ────────────────────────────────────────────────────
     if [ ! -s "\$RUN_GBK" ]; then

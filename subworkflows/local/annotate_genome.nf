@@ -18,10 +18,20 @@
 include { ANTISMASH_RUN        } from './../../modules/local/antismash_run'
 include { SETUP_ANTISMASH_DB   } from './../../modules/local/setup_antismash_db'
 include { INTERPROSCAN_RUN     } from './../../modules/local/interproscan_run'
+include { INTERPROSCAN5_RUN    } from './../../modules/local/interproscan5_run'
 include { SIGNALP_RUN          } from './../../modules/local/signalp_run'
 include { DEEPTMHMM_ANNOTATION } from './../../modules/local/deeptmhmm_annotation'
 include { FUNANNOTATE_UPDATE   } from './../../modules/local/funannotate_update'
 include { FUNANNOTATE_ANNOTATE } from './../../modules/local/funannotate_annotate'
+
+// funannotate annotate gzips a plain iprscan.xml after parsing it and deletes
+// the original, and INTERPROSCAN_RUN (IPS6) writes the .gz directly -- so
+// either form means InterProScan is done for this assembly.
+def iprscanDone(meta) {
+    return ['iprscan.xml', 'iprscan.xml.gz'].any { f ->
+        file("${params.target}/${meta.id}/annotate_misc/${f}").exists()
+    }
+}
 
 workflow ANNOTATE_GENOME {
 
@@ -53,15 +63,17 @@ workflow ANNOTATE_GENOME {
     }
 
     if (params.run_interpro.toBoolean()) {
-        def ipr_todo = annotate_ready_ch.filter { meta ->
-            !file("${params.target}/${meta.id}/annotate_misc/iprscan.xml").exists()
+        def ipr_todo = annotate_ready_ch.filter { meta -> !iprscanDone(meta) }
+        def ipr_done = annotate_ready_ch.filter { meta -> iprscanDone(meta) }
+        if (params.interproscan_engine == 'ips5') {
+            INTERPROSCAN5_RUN(ipr_todo)
+            ch_versions = ch_versions.mix(INTERPROSCAN5_RUN.out.versions)
+            annotate_ready_ch = INTERPROSCAN5_RUN.out.results.map { meta, _xml -> meta }.mix(ipr_done)
+        } else {
+            INTERPROSCAN_RUN(ipr_todo)
+            ch_versions = ch_versions.mix(INTERPROSCAN_RUN.out.versions)
+            annotate_ready_ch = INTERPROSCAN_RUN.out.results.map { meta, _done -> meta }.mix(ipr_done)
         }
-        def ipr_done = annotate_ready_ch.filter { meta ->
-            file("${params.target}/${meta.id}/annotate_misc/iprscan.xml").exists()
-        }
-        INTERPROSCAN_RUN(ipr_todo)
-        ch_versions = ch_versions.mix(INTERPROSCAN_RUN.out.versions)
-        annotate_ready_ch = INTERPROSCAN_RUN.out.results.map { meta, _xml -> meta }.mix(ipr_done)
     }
 
     if (params.run_signalp.toBoolean()) {

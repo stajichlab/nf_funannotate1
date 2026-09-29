@@ -33,6 +33,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     `augustus_config_source` for BFD's staged Augustus config.
 
 ### Fixed
+- InterProScan re-ran on every run after funannotate annotate had finished:
+  annotate gzips `iprscan.xml` and deletes it, and the done-check looked only
+  for the plain file. It now accepts `iprscan.xml` or `iprscan.xml.gz`.
+- The singularity-axis InterProScan step could not work: it ran
+  `interproscan.sh` (IPS5 flags) in `interpro/interproscan:6.0.0`, which has
+  no `interproscan.sh`, java or nextflow.
 - FUNANNOTATE_PREDICT's own "already complete and current" check now also
   treats the genome's PASA training output, and for reuse siblings the shared
   ab-initio store, as evidence newer than the GBK. Before, it checked only reads
@@ -53,6 +59,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pilot representative.
 
 ### Changed
+- The InterProScan 5 module is now `INTERPROSCAN5_RUN`
+  (`--interproscan_engine ips5`).
 - NRP fair use (https://nrp.ai/documentation/userdocs/running/jobs/, .../cpu-only/):
   Nextflow now runs as a per-run **Job** (`k8s/run/`) instead of an idle
   `sleep infinity` head Deployment, which NRP prohibits. Staging and the Rust
@@ -71,6 +79,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Job's retry falls back to the previous one.
 
 ### Added
+- InterProScan 6 for `--run_interpro` (default `--interproscan_engine ips6`).
+  `INTERPROSCAN_RUN` launches the pinned IPS6 workflow (6.0.2.2) as a nested
+  `nextflow run`, one task per genome, with IPS6's local executor inside the
+  task allocation and its work dir on node-local `$SCRATCH`. It writes
+  `annotate_misc/iprscan.xml.gz` (read directly by funannotate annotate) and
+  `iprscan.tsv.gz`. The workflow checkout, images and InterPro data are
+  shared, set up once by `scripts/setup_interproscan6.sh`. New
+  `iprscan6_*` params; UCR paths in `conf/site_ucr_hpcc.config`. Licensed
+  IPS6 apps stay off; `assets/interproscan6/licensed_ucr_hpcc.config` has
+  correct UCR paths if they are wanted. Real-data test:
+  `tests/test_interproscan6.sh` (Ordospora colligata OC4, 1,864 proteins:
+  11 min on 16 CPUs, 8.6 GB peak RSS; funannotate's parser extracted
+  InterPro terms for 1,348 proteins and GO terms for 1,163).
+- InterPro data release pinned to 110.0 (`iprscan6_interpro`; UCR datadir
+  `/srv/projects/db/interproscan/6.0.0/110.0`). 110.0 is the Matches API
+  release. IPS6 6.0.2.2 does not compare the API release with the local
+  data, so with older local data one output mixed two InterPro releases.
+- `funannotate.nf` stops at startup when `--run_interpro` is on under the
+  `k8s` / `nrp` profiles (skipped for `-stub-run`). Neither InterProScan
+  engine can run in a pod, so each genome's task used to fail there instead.
+- UCR note, found while testing: the `interproscan6` label uses a non-login
+  shell, because a UCR login shell drops the module-loaded apptainer from
+  PATH.
 - `train_cleanup` (default off): once a genome's training resolves, and again
   after its predict succeeds (which covers genomes trained earlier),
   `bin/train_cleanup.sh` deletes funannotate-train intermediates that predict

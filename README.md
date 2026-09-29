@@ -494,7 +494,17 @@ like the `slurm` one in `nextflow.config`.
    on the singularity axis); `signalp6-fast.sif` and `DeepTMHMM-1.0.sif` are
    licensed (no conda/module substitute). Turn `--signalp_gpu` /
    `--deeptmhmm_gpu` off on clusters without GPU nodes — same image, CPU mode.
-4. **Conda axis only** — build the frozen envs once into shared storage with
+4. **InterProScan 6** (`--run_interpro`) — IPS6 is its own Nextflow
+   workflow. `INTERPROSCAN_RUN` launches it nested, once per genome, on the
+   host (it needs `nextflow` and apptainer on the compute node, on every
+   provisioning axis). Run `bash scripts/setup_interproscan6.sh` once: it
+   clones the pinned workflow (6.0.2.2) and pre-pulls its images into
+   `sif_dir`. Add `--data` to also download the InterPro data (tens of GB)
+   into `--iprscan6_datadir`. Without these, parallel genome tasks would each
+   pull and download on their own. UCR's shared paths are set in
+   `conf/site_ucr_hpcc.config`. The legacy InterProScan 5 path is
+   `--interproscan_engine ips5`.
+5. **Conda axis only** — build the frozen envs once into shared storage with
    `environments/conda/build_conda_env.sh`. Point every run at it the same way
    the container cache is pointed: export `CONDA_ENVS_ROOT=/shared/lib/condaenv`
    in the site env/launcher, or pass `--conda_envs_root` per run. Unset, the
