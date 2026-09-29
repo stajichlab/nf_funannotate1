@@ -122,6 +122,24 @@ def backfill_species_store(species: str, rep_out: str, target: Path,
     components = {}
     aug_src = ab_initio / "augustus" / "species" / lower_out
     genemark_src = genemark_mod if genemark_mod is not None else ab_initio / f"{lower_out}.genemark.mod"
+    # A re-run with no explicit .mod (PICK_REPRESENTATIVE_STRAIN's inline
+    # backfill of an already-predicted representative) must not drop GeneMark
+    # from a store this same representative built: GENEMARK_RUN's .mod never
+    # lands in predict_misc/, so without this the rebuilt store had no
+    # genemark component, its content hash changed, the swap went ahead, and
+    # every sibling looked stale (and lost GeneMark reuse). Seen 2026-09-29 on
+    # the Bd pangenome run after the sample sheet shrank and the pick re-ran.
+    if genemark_mod is None and not genemark_src.is_file():
+        existing_mod = store_dir / f"{species_tag}.genemark.mod"
+        prov = store_dir / "provenance.json"
+        try:
+            same_rep = json.loads(prov.read_text()).get("representative_out") == rep_out
+        except (OSError, ValueError):
+            same_rep = False
+        if same_rep and existing_mod.is_file():
+            print(f"[INFO] {species}: keeping the store's GeneMark model from {rep_out} "
+                  f"(no new .mod supplied)")
+            genemark_src = existing_mod
     snap_src = ab_initio / f"{lower_out}.snap.hmm"
 
     if aug_src.is_dir():
