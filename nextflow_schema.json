@@ -504,7 +504,7 @@
         "iprscan6_interpro": {
           "type": "string",
           "description": "InterPro data release for InterProScan 6.",
-          "default": "108.0"
+          "default": "110.0"
         },
         "iprscan6_task_cpus": {
           "type": "integer",

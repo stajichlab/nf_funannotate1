@@ -66,6 +66,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tests/test_interproscan6.sh` (Ordospora colligata OC4, 1,864 proteins:
   11 min on 16 CPUs, 8.6 GB peak RSS; funannotate's parser extracted
   InterPro terms for 1,348 proteins and GO terms for 1,163).
+- InterPro data release pinned to 110.0 (`iprscan6_interpro`; UCR datadir
+  `/srv/projects/db/interproscan/6.0.0/110.0`). 110.0 is the Matches API
+  release. IPS6 6.0.2.2 does not compare the API release with the local
+  data, so with older local data one output mixed two InterPro releases.
 - `funannotate.nf` stops at startup when `--run_interpro` is on under the
   `k8s` / `nrp` profiles (skipped for `-stub-run`). Neither InterProScan
   engine can run in a pod, so each genome's task used to fail there instead.

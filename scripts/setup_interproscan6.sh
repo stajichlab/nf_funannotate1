@@ -25,7 +25,7 @@
 #   IPS6_VERSION   workflow release tag            (default 6.0.2.2)
 #   IPS6_DIR       where to clone the workflow     (default /bigdata/stajichlab/shared/lib/interproscan6/$IPS6_VERSION)
 #   SIF_DIR        apptainer image cache           (default $NXF_APPTAINER_CACHE / NXF_SINGULARITY_CACHE / APPTAINER_CACHE, else the UCR shared cache)
-#   IPR_VERSION    InterPro data release (--data)  (default 108.0)
+#   IPR_VERSION    InterPro data release (--data)  (default 110.0)
 #   IPS6_DATA_ROOT data root (--data); data lands in $IPS6_DATA_ROOT/$IPR_VERSION (default /srv/projects/db/interproscan/6.0.0)
 #
 # Needs git, apptainer (or singularity) and outbound HTTPS. On UCR HPCC:
@@ -36,7 +36,7 @@ set -euo pipefail
 IPS6_VERSION="${IPS6_VERSION:-6.0.2.2}"
 IPS6_DIR="${IPS6_DIR:-/bigdata/stajichlab/shared/lib/interproscan6/${IPS6_VERSION}}"
 SIF_DIR="${SIF_DIR:-${NXF_APPTAINER_CACHE:-${NXF_SINGULARITY_CACHE:-${APPTAINER_CACHE:-/bigdata/stajichlab/shared/lib/singularity_cache}}}}"
-IPR_VERSION="${IPR_VERSION:-108.0}"
+IPR_VERSION="${IPR_VERSION:-110.0}"
 IPS6_DATA_ROOT="${IPS6_DATA_ROOT:-/srv/projects/db/interproscan/6.0.0}"
 WANT_DATA=false
 WANT_LICENSED=false
@@ -91,7 +91,7 @@ done < <(grep -rhoE "container +'[^']+'" "${IPS6_DIR}/modules" | sed -E "s/conta
 [ "$PULL_FAILED" = 0 ] || { echo "ERROR: some image pulls failed (see above)" >&2; exit 1; }
 
 # ── 3. data (optional) ────────────────────────────────────────────────────────
-# IPS6 expects <datadir>/<db>/<version>/..., e.g. <datadir>/interpro/108.0/.
+# IPS6 expects <datadir>/<db>/<version>/..., e.g. <datadir>/interpro/110.0/.
 if $WANT_DATA; then
     DEST="${IPS6_DATA_ROOT}/${IPR_VERSION}"
     if [ -d "${DEST}/interpro/${IPR_VERSION}" ]; then
