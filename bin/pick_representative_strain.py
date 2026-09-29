@@ -41,6 +41,7 @@ def clean_strain(raw_strain: str) -> str:
     s = re.sub(r"^\s*\*+", "", s)
     s = re.sub(r"\*+\s*$", "", s)
     s = re.sub(r"\s*\*+\s*", "-", s)
+    s = re.sub(r"[&`$|<>()]+", " ", s)  # shell metacharacters -> space (BFD cleanStrain)
     return s.strip()
 
 

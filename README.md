@@ -494,7 +494,17 @@ like the `slurm` one in `nextflow.config`.
    on the singularity axis); `signalp6-fast.sif` and `DeepTMHMM-1.0.sif` are
    licensed (no conda/module substitute). Turn `--signalp_gpu` /
    `--deeptmhmm_gpu` off on clusters without GPU nodes — same image, CPU mode.
-4. **Conda axis only** — build the frozen envs once into shared storage with
+4. **InterProScan 6** (`--run_interpro`) — IPS6 is its own Nextflow
+   workflow. `INTERPROSCAN_RUN` launches it nested, once per genome, on the
+   host (it needs `nextflow` and apptainer on the compute node, on every
+   provisioning axis). Run `bash scripts/setup_interproscan6.sh` once: it
+   clones the pinned workflow (6.0.2.2) and pre-pulls its images into
+   `sif_dir`. Add `--data` to also download the InterPro data (tens of GB)
+   into `--iprscan6_datadir`. Without these, parallel genome tasks would each
+   pull and download on their own. UCR's shared paths are set in
+   `conf/site_ucr_hpcc.config`. The legacy InterProScan 5 path is
+   `--interproscan_engine ips5`.
+5. **Conda axis only** — build the frozen envs once into shared storage with
    `environments/conda/build_conda_env.sh`. Point every run at it the same way
    the container cache is pointed: export `CONDA_ENVS_ROOT=/shared/lib/condaenv`
    in the site env/launcher, or pass `--conda_envs_root` per run. Unset, the
@@ -552,19 +562,34 @@ annotate / antiSMASH / InterProScan / SignalP / update steps in the **same** run
 
 ### Too-small / fragmented pre-flight guard
 
-Assemblies that are both small *and* fragmented cannot yield funannotate's 30
-required training models and would burn hours before aborting. They are detected
-up front (and again from the predict log) and skipped cleanly — flagged in
-`<target>/predict_skipped_too_small.tsv` — instead of failing the batch.
+Some assemblies cannot yield funannotate's 30 required training models, and
+predict would run for hours before it aborts. `bin/asm_preflight_stats.py`
+detects them up front (predict also catches the failure from its log), and
+GENEMARK_RUN and FUNANNOTATE_PREDICT skip them. Each skip is recorded in
+`<target>/predict_skipped_too_small.tsv`. Any verdict other than `ok` skips the
+genome. The one exception: a `small_fragmented` genome with Prodigal evidence
+still runs predict. Rule and thresholds are the BFD pipeline's.
 
 | Param | Default | Meaning |
 |---|---|---|
-| `predict_min_asm_bp` | `8000000` | below this assembled size = "small" (`0` disables the guard) |
-| `predict_frag_max_n50` | `10000` | N50 below this = "fragmented" |
+| `predict_min_asm_bp` | `9000000` | below this assembled size = "small" (`0` disables the `small_fragmented` gate) |
+| `predict_frag_max_n50` | `15000` | N50 below this = "fragmented" |
 | `predict_frag_max_contigs` | `1000` | contig count above this = "fragmented" |
+| `predict_abs_min_asm_bp` | `100000` | below this assembled size = `too_small`, fragmented or not |
+| `predict_min_training_contig_len` | `10000` | contig length GeneMark-ES trains on |
+| `predict_min_training_contigs` | `1` | fewer contigs of that length = `no_training_contigs` |
 
-Both the small *and* fragmented gates must trip, so complete small genomes (e.g.
-*Malassezia*) are unaffected.
+`small_fragmented` needs both "small" and "fragmented", so complete small
+genomes (e.g. *Malassezia*) are unaffected.
+
+### Repeat-aware EVM
+
+When the soft-masked share of a genome is at or above
+`predict_evm_repeat_pct_threshold` (default `60`; `0` disables), predict passes
+`--repeats2evm --evm-partition-interval <predict_evm_repeat_aware_interval>`
+(default `1500`) and, with `predict_evm_repeat_aware_drop_snap` (default
+`true`), `-w snap:0`. This is the BFD rule. It prevents the EVM failures seen on
+highly repetitive genomes such as *Austropuccinia psidii*.
 
 ### Standalone ab-initio predictors (GeneMark + optional Prodigal)
 

@@ -78,6 +78,17 @@ workflow {
         error "Kubernetes profile without a namespace: set params.k8s_namespace (and, on NRP, params.nrp_project) " +
               "in your site config (template: k8s/overlays/example/site.config, passed with -c). See k8s/README.md."
 
+    // InterProScan is not provisioned on k8s. ips6 (INTERPROSCAN_RUN) launches a
+    // nested `nextflow run` that needs nextflow + apptainer inside the task, which
+    // a pod does not have; ips5 would use container_interproscan, an IPS6 tools
+    // image with no interproscan.sh. Without this check every genome's task
+    // failed in its pod, after scheduling and retries.
+    if( (workflow.profile.tokenize(',') as Set).intersect(['k8s', 'nrp'] as Set)
+            && params.run_interpro.toBoolean() && !workflow.stubRun )
+        error "--run_interpro is not supported on the k8s / nrp profiles: InterProScan 6 runs as a nested " +
+              "Nextflow workflow that needs nextflow + apptainer inside the task pod. Set --run_interpro false " +
+              "and run InterProScan on a SLURM/local profile (see modules/local/interproscan_run.nf)."
+
     // The SRA fetch path needs two Rust helpers that are built at deploy time,
     // not committed (scripts/build_tools.sh -> tools/bin/). Without this check a
     // missing build only surfaced inside SRA_FETCH, after the reads had already

@@ -400,18 +400,58 @@
           "type": "integer",
           "minimum": 0,
           "description": "N50 below this counts as 'fragmented' for the predict guard.",
-          "default": 10000
+          "default": 15000
         },
         "predict_min_asm_bp": {
           "type": "integer",
           "minimum": 0,
-          "description": "Assembled bp below this counts as 'small' for the predict guard (0 = disable guard).",
-          "default": 8000000
+          "description": "Assembled bp below this counts as 'small' for the predict guard (0 = disable the small_fragmented gate).",
+          "default": 9000000
         },
         "train_cleanup": {
           "type": "boolean",
           "description": "Delete funannotate-train intermediates that predict never reads (getBestModel/, GMAP index, seqclean Trinity copies, pasa.step1.gff3; pasa/ too unless run_update) after training resolves and after predict succeeds. Files any training/ symlink points at are kept.",
           "default": false
+        },
+        "predict_abs_min_asm_bp": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Assembled bp below this is 'too_small' and skipped, fragmented or not (0 = disable).",
+          "default": 100000
+        },
+        "predict_min_training_contig_len": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Contig length that counts as a GeneMark-ES training contig (0 = disable the no_training_contigs gate).",
+          "default": 10000
+        },
+        "predict_min_training_contigs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minimum contigs of at least predict_min_training_contig_len bp; fewer is 'no_training_contigs' and skipped (0 = disable).",
+          "default": 1
+        },
+        "predict_evm_repeat_pct_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Soft-masked % at or above which predict runs repeat-aware EVM (--repeats2evm, wider partition interval; 0 = disable).",
+          "default": 60
+        },
+        "predict_evm_repeat_aware_interval": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "--evm-partition-interval used in repeat-aware EVM mode.",
+          "default": 1500
+        },
+        "predict_evm_repeat_aware_drop_snap": {
+          "type": "boolean",
+          "description": "In repeat-aware EVM mode also pass -w snap:0.",
+          "default": true
+        },
+        "predict_defline_first_word": {
+          "type": "boolean",
+          "description": "Rewrite each genome defline to its first word before predict. false passes deflines unchanged (BFD behaviour).",
+          "default": true
         }
       }
     },
@@ -461,6 +501,78 @@
           "type": "boolean",
           "description": "Run InterProScan.",
           "default": false
+        },
+        "interproscan_engine": {
+          "type": "string",
+          "description": "InterProScan engine: 'ips6' (nested InterProScan 6 workflow) or 'ips5' (legacy interproscan.sh).",
+          "default": "ips6",
+          "enum": [
+            "ips6",
+            "ips5"
+          ]
+        },
+        "iprscan6_pipeline": {
+          "type": "string",
+          "description": "InterProScan 6 workflow: local checkout (absolute path) or remote name.",
+          "default": "ebi-pf-team/interproscan6"
+        },
+        "iprscan6_revision": {
+          "type": "string",
+          "description": "InterProScan 6 release, used only when iprscan6_pipeline is a remote name.",
+          "default": "6.0.2.2"
+        },
+        "iprscan6_nextflow": {
+          "type": "string",
+          "description": "Nextflow executable that launches the nested InterProScan 6 run.",
+          "default": "nextflow"
+        },
+        "iprscan6_profile": {
+          "type": "string",
+          "description": "Container-engine profile for InterProScan 6.",
+          "default": "apptainer",
+          "enum": [
+            "apptainer",
+            "singularity",
+            "docker",
+            "podman"
+          ]
+        },
+        "iprscan6_datadir": {
+          "type": "string",
+          "description": "InterProScan 6 data directory (<datadir>/<db>/<version>/)."
+        },
+        "iprscan6_interpro": {
+          "type": "string",
+          "description": "InterPro data release for InterProScan 6.",
+          "default": "110.0"
+        },
+        "iprscan6_task_cpus": {
+          "type": "integer",
+          "description": "CPUs per InterProScan 6 sub-task.",
+          "default": 4
+        },
+        "iprscan6_matches_api": {
+          "type": "boolean",
+          "description": "Use the InterPro Matches API for precomputed matches (needs outbound HTTPS).",
+          "default": true
+        },
+        "iprscan6_applications": {
+          "type": "string",
+          "description": "Comma list of InterProScan 6 analyses (default: all non-deep-learning)."
+        },
+        "iprscan6_licensed_config": {
+          "type": "string",
+          "description": "Config file enabling InterProScan 6 licensed apps (params.appsConfig)."
+        },
+        "iprscan6_container_options": {
+          "type": "string",
+          "description": "Extra container-engine options for InterProScan 6 containers.",
+          "default": ""
+        },
+        "iprscan6_extra_args": {
+          "type": "string",
+          "description": "Extra arguments passed verbatim to the InterProScan 6 run.",
+          "default": ""
         },
         "run_signalp": {
           "type": "boolean",
