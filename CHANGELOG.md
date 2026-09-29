@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- ANI reuse: sibling GeneMark and predict tasks now carry a fingerprint of the
+  species' shared ab-initio store (`FunannotateUtils.sharedParamsFingerprint`:
+  provenance `content_hash`, else size+mtime). Previously a rebuilt store (new
+  representative) had the same path, so `-resume` served siblings' old
+  GeneMark and predict from Nextflow's cache even when `staleSharedParams`
+  flagged them. Seen on the Bd run: 9 pilot strains kept annotations from the
+  pilot representative.
+
 ### Changed
 - NRP fair use (https://nrp.ai/documentation/userdocs/running/jobs/, .../cpu-only/):
   Nextflow now runs as a per-run **Job** (`k8s/run/`) instead of an idle

@@ -218,14 +218,14 @@ workflow {
         .map { species_tag, meta, genome_fa, _has, r1, r2, se -> tuple(species_tag, meta, genome_fa) }
         .combine(ALIGN_RNASEQ_HINTS.out.bam, by: 0)
         .map { species_tag, meta, genome_fa, bam ->
-            tuple(meta, genome_fa, 'ET', bam.toString(), true, '')
+            tuple(meta, genome_fa, 'ET', bam.toString(), true, '', '')
         }
 
     def es_input = branched.no_reads
         .map { species_tag, meta, genome_fa, _has, _r1, _r2, _se ->
             // mode='ES' (no RNA-seq hints), no shared_mod, force_independent=true:
             // always a fresh, independent, genome-only GeneMark-ES run.
-            tuple(meta, genome_fa, 'ES', '', true, '')
+            tuple(meta, genome_fa, 'ES', '', true, '', '')
         }
 
     GENEMARK_RUN(et_input.mix(es_input))
