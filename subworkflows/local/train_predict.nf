@@ -288,6 +288,18 @@ workflow TRAIN_PREDICT {
         .combine(predicted_ids)
         .filter { meta, ids -> !ids.contains(meta.id.toString()) }
         .map { meta, _ids -> meta }
+    // Optional BUSCO_SCORE_LINEAGE sheet column: the BUSCO dataset BUSCO_COMPLETENESS scores
+    // against, when it differs from BUSCO_LINEAGE. BUSCO_LINEAGE also names the funannotate
+    // --busco_db (e.g. 'dikarya', a funannotate dataset that BUSCO 6 does not ship), so it
+    // cannot be changed without changing the gene models. Applied only to this process's
+    // input: a new key in the shared meta map would change every task's cache hash.
+    def busco_score_lineage = [:]
+    file(params.samples).splitCsv(header: true).each { row ->
+        def sl = row.BUSCO_SCORE_LINEAGE?.trim()
+        if (sl) {
+            busco_score_lineage[SampleUtils.makeSampleTag(row.SPECIES?.trim() ?: '', row.STRAIN?.trim() ?: '')] = sl
+        }
+    }
     def busco_completeness_input = metadata_out
         .mix(complete_not_predicted)
         // Still one task per genome (a cached sibling predict can be emitted
@@ -295,7 +307,10 @@ workflow TRAIN_PREDICT {
         // race on the same storeDir.
         .unique { meta -> meta.id }
         .filter { meta -> meta.busco }
-        .map { meta -> tuple(meta, file("${params.target}/${meta.id}/predict_results/${meta.id}.proteins.fa")) }
+        .map { meta ->
+            def m = busco_score_lineage.containsKey(meta.id) ? meta + [busco: busco_score_lineage[meta.id]] : meta
+            tuple(m, file("${params.target}/${meta.id}/predict_results/${meta.id}.proteins.fa"))
+        }
         .filter { meta, proteins -> proteins.exists() }
     BUSCO_COMPLETENESS(busco_completeness_input)
 
