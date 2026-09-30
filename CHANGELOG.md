@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Optional `BUSCO_SCORE_LINEAGE` samples column: the BUSCO dataset `BUSCO_COMPLETENESS` scores
+  against, when it differs from `BUSCO_LINEAGE`. `BUSCO_LINEAGE` also names the funannotate
+  `--busco_db` (e.g. `dikarya`, which BUSCO 6 does not ship as a dataset), so it cannot change
+  without changing the gene models. Applied only to that process's input, so other tasks' cache
+  hashes do not change. Rows without the column keep using `BUSCO_LINEAGE`.
+
 ### Changed
 - BFD equivalence for genomes without RNA-seq (stajichlab/nrp-deploy
   `bfd_wave1`): the no-RNA-seq predict path now matches the BFD pipeline's.
