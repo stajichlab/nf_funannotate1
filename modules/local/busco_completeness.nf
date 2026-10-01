@@ -40,13 +40,20 @@ process BUSCO_COMPLETENESS {
 
     script:
     """
-    # params.busco_lineages is a BUSCO --download_path root (lineage dirs under
-    # <root>/lineages/), the same convention BUSCO_GENOME uses. Passing
-    # "<root>/<lineage>" as -l skipped the lineages/ level and failed at UCR
-    # HPCC ("/srv/projects/db/BUSCO/v10//fungi_odb10 does not exist").
+    # params.busco_lineages may be a BUSCO --download_path root (lineage dirs under
+    # <root>/lineages/) or the lineage dirs' own directory, as in BUSCO_GENOME. For
+    # the latter, give BUSCO a local download_path whose lineages/ entry links to it.
+    # (A lineages-level value passed straight to --download_path doubled the level:
+    # ".../v10/lineages/lineages/eurotiomycetes_odb10 does not exist", 2026-10-01.)
+    BUSCO_DL="${params.busco_lineages}"
+    if [ ! -d "\$BUSCO_DL/lineages/${meta.busco}" ] && [ -d "\$BUSCO_DL/${meta.busco}" ]; then
+        BUSCO_DL="\$PWD/busco_download"
+        mkdir -p "\$BUSCO_DL/lineages"
+        ln -sfn "${params.busco_lineages}/${meta.busco}" "\$BUSCO_DL/lineages/${meta.busco}"
+    fi
     busco -i ${proteins_fa} -l ${meta.busco} \\
         -m proteins -c ${task.cpus} -o ${meta.id} --out_path . -f \\
-        --offline --download_path ${params.busco_lineages}
+        --offline --download_path "\$BUSCO_DL"
     """
 
     stub:

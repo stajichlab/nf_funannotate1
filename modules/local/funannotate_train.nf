@@ -71,7 +71,11 @@ process FUNANNOTATE_TRAIN {
     def mariadb_image      = FunannotateUtils.mariadbImage(params)
     def mariadb_img        = FunannotateUtils.localImageFile(mariadb_image, params.sif_dir as String)
     def ensure_mariadb_img = FunannotateUtils.ensureLocalImageScript(mariadb_image, params.sif_dir as String)
-    def aligners_arg = params.pasa_aligners ? params.pasa_aligners.toString() : (is_funannotate_1_8_17 ? 'minimap2 gmap' : 'minimap2')
+    // 'minimap2 blat' (2026-09-30): funannotate >= 1.9.0-rc.4 runs PASA on minimap2
+    // alone for '--aligners minimap2'; rc.3 and earlier silently added blat (gmap if
+    // installed). Pass blat explicitly to keep it: without blat, C. neoformans H99 lost
+    // 1.8 holdout F1 (BFD pasa_train_performance_evaluate DECISIONS D128).
+    def aligners_arg = params.pasa_aligners ? params.pasa_aligners.toString() : (is_funannotate_1_8_17 ? 'minimap2 gmap' : 'minimap2 blat')
     """
     # ── Skip if no RNA-seq data at all ────────────────────────────────────────
     if [ ! -s "${r1}" ] && [ ! -s "${se}" ] && [ ! -s "${trinity_fa}" ]; then
@@ -282,7 +286,13 @@ process FUNANNOTATE_TRAIN {
         # SLURM tears down when the job ends (see the FUNANNOTATE_TRAIN
         # clusterOptions in provision_ucr_hpcc.config for the
         # SCRATCH=,TMPDIR= clearing this depends on).
-        MYSQL_SCRATCH=\$TMPDIR/mysql_db_${out}
+        # Short name: mysqld's socket path (\$MYSQL_SCRATCH/mysqld.sock) must be
+        # <= 107 characters, and a long genome name exceeded it ("The socket file path
+        # is too long", Saccharomyces_paradoxus_YPS644_MATalpha_ho_kanMX4_ade2_hphNT1,
+        # 2026-10-01). \$TMPDIR is per job, so the name only has to be short.
+        MYSQL_TAG="${locustag}"
+        [ -n "\$MYSQL_TAG" ] || MYSQL_TAG=\$(printf '%s' "${out}" | md5sum | cut -c1-12)
+        MYSQL_SCRATCH=\$TMPDIR/mysql_db_\$MYSQL_TAG
         rm -rf \$MYSQL_SCRATCH
         mkdir -p \$MYSQL_SCRATCH/db \$MYSQL_SCRATCH/conf
         # System-tables init moved into the branches below (each has a
@@ -518,6 +528,36 @@ process FUNANNOTATE_TRAIN {
         PASA_TIER_ARGS="--pasa_min_avg_per_id ${params.pasa_composite_fallback_min_avg_per_id} --pasa_min_pct_aligned ${params.pasa_composite_fallback_min_pct_aligned} --pasa_num_bp_splice ${params.pasa_composite_fallback_num_bp_splice}"
     fi
 
+    # ── PASA speed/input options and full-length cache (funannotate >= 1.9.0-rc.4) ──
+    # Passed only if this funannotate knows them (an older train.py rejects unknown
+    # flags). PASA --ALT_SPLICE is off in rc.4 (always on before); filters default off.
+    # The full-length (complete ORF) list is cached next to the shared Trinity assembly,
+    # so every strain that uses the assembly computes it once (md5-checked), when that
+    # folder is writable. Ported from BFD/Fungi_BFD FUNANNOTATE_TRAIN (D128).
+    PASA_OPT_ARGS=""
+    SHARED_FL_ARGS=""
+    if python3 -c "import inspect, sys, funannotate.train as t; sys.exit(0 if 'pasa_fl_accs' in inspect.getsource(t) else 1)" 2>/dev/null; then
+        if [ "${params.train_pasa_alt_splice ?: false}" = "true" ]; then
+            PASA_OPT_ARGS="\$PASA_OPT_ARGS --pasa_alt_splice"
+        fi
+        if [ "${params.train_pasa_remove_contained ?: 'off'}" != "off" ]; then
+            PASA_OPT_ARGS="\$PASA_OPT_ARGS --pasa_remove_contained ${params.train_pasa_remove_contained}"
+        fi
+        if [ "${params.train_pasa_max_isoforms ?: 0}" -gt 0 ]; then
+            PASA_OPT_ARGS="\$PASA_OPT_ARGS --pasa_max_isoforms ${params.train_pasa_max_isoforms}"
+        fi
+        if [ "${params.train_pasa_fl_cache ?: false}" = "true" ] && [ -s "${trinity_fa}" ]; then
+            TRIN_REAL=\$(readlink -f "${trinity_fa}")
+            if [ -w "\$(dirname "\$TRIN_REAL")" ]; then
+                SHARED_FL_ARGS="--pasa_fl_accs \${TRIN_REAL%.fasta}.pasa_fl_accs"
+            else
+                echo "[INFO] ${out}: \$(dirname "\$TRIN_REAL") not writable; PASA full-length list not cached"
+            fi
+        fi
+    else
+        echo "[INFO] ${out}: this funannotate has no PASA speed options (< 1.9.0-rc.4); not passed"
+    fi
+
     # Whole invocation wrapped in a group + tee so a failure can be inspected
     # below without re-running anything -- \${PIPESTATUS[0]} (not plain \$?,
     # which after a pipe would report tee's exit code) captures the group's
@@ -535,7 +575,7 @@ process FUNANNOTATE_TRAIN {
                 --header_length ${header_length} \\
                 --jaccard_clip --no-progress \\
                 --max_intronlen ${params.max_intronlen} \\
-                \$PASA_TIER_ARGS \\
+                \$PASA_TIER_ARGS \$PASA_OPT_ARGS \$SHARED_FL_ARGS \\
                 \$pasa_db_arg
         elif [ -s "${se}" ]; then
             echo "[INFO] Running funannotate train (PASA+SE) for ${out} using shared Trinity (pasa_tier=${pasa_tier})"
@@ -547,7 +587,7 @@ process FUNANNOTATE_TRAIN {
                 --header_length ${header_length} \\
                 --no-progress \\
                 --max_intronlen ${params.max_intronlen} \\
-                \$PASA_TIER_ARGS \\
+                \$PASA_TIER_ARGS \$PASA_OPT_ARGS \$SHARED_FL_ARGS \\
                 \$pasa_db_arg
         else
             # No reads at all -- r1/se are present-but-empty (0-byte) placeholders,
@@ -565,7 +605,7 @@ process FUNANNOTATE_TRAIN {
                 --header_length ${header_length} \\
                 --jaccard_clip --no-progress \\
                 --max_intronlen ${params.max_intronlen} \\
-                \$PASA_TIER_ARGS \\
+                \$PASA_TIER_ARGS \$PASA_OPT_ARGS \$SHARED_FL_ARGS \\
                 \$pasa_db_arg
         fi
     elif [ -s "${r1}" ]; then
@@ -577,7 +617,7 @@ process FUNANNOTATE_TRAIN {
             --header_length ${header_length} \\
             --jaccard_clip --no-progress --min_coverage 4 \\
             --max_intronlen ${params.max_intronlen} \\
-            \$pasa_db_arg
+            \$PASA_OPT_ARGS \$pasa_db_arg
     else
         echo "[INFO] Running funannotate train (full SE, no shared Trinity) for ${out}"
         funannotate train -i "\$GENOME_IN" -o ${params.training_target}/${out} \\
@@ -587,7 +627,7 @@ process FUNANNOTATE_TRAIN {
             --header_length ${header_length} \\
             --no-progress --min_coverage 4 \\
             --max_intronlen ${params.max_intronlen} \\
-            \$pasa_db_arg
+            \$PASA_OPT_ARGS \$pasa_db_arg
     fi
     } 2>&1 | tee funannotate_train_capture.log
     TRAIN_STATUS=\${PIPESTATUS[0]}
