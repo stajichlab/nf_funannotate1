@@ -199,6 +199,26 @@ process FUNANNOTATE_UPDATE {
         ln -sfn "${params.training_target}/${out}/training" "${out}/training"
     fi
 
+    # ── PASA database reuse guard ────────────────────────────────────────────
+    # funannotate update reads ${params.target}/${out}/training (update.py: inputDir =
+    # <input>/training) and, if training/pasa/alignAssembly.txt exists, reuses that
+    # PASA database instead of building one (update.py 2866-2871, 3418). With
+    # pasa_mysql the database was created on train's per-job mysqld in \$TMPDIR and no
+    # longer exists, so update failed with "Unknown database '<name>_pasa'"
+    # (Coccidioides immitis CiB10992, 2026-10-01). Reuse is only possible when
+    # DATABASE= names an existing SQLite file; otherwise set the config aside (kept,
+    # renamed) so update builds a fresh PASA database on this job's own server.
+    TRAIN_PASA_CFG="${params.target}/${out}/training/pasa/alignAssembly.txt"
+    if [ -f "\$TRAIN_PASA_CFG" ]; then
+        TRAIN_PASA_DB=\$(sed -n 's/^DATABASE=//p' "\$TRAIN_PASA_CFG" | head -1)
+        if [ -n "\$TRAIN_PASA_DB" ] && [ -f "\$TRAIN_PASA_DB" ]; then
+            echo "[INFO] ${out}: reusing train's PASA SQLite database \$TRAIN_PASA_DB"
+        else
+            echo "[INFO] ${out}: train's PASA database '\$TRAIN_PASA_DB' is not reusable here (MySQL on train's per-job server, or a removed SQLite file); setting \$TRAIN_PASA_CFG aside so update builds a fresh PASA database"
+            mv "\$TRAIN_PASA_CFG" "\$TRAIN_PASA_CFG.not_reusable"
+        fi
+    fi
+
     echo "[INFO] Running funannotate update for ${out}"
     funannotate update -i ${params.target}/${out} \\
         --left ${r1} --right ${r2} \\
