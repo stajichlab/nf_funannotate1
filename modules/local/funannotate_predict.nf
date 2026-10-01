@@ -274,7 +274,9 @@ process FUNANNOTATE_PREDICT {
     # ── Post-predict catch ────────────────────────────────────────────────────
     if [ ! -s "\$RUN_GBK" ]; then
         copy_logs_back
-        PLOG="\$RUNDIR/logfiles/funannotate-predict.log"
+        # copy_logs_back has already moved the logs to PREDICTDIR and removed a local-scratch
+        # RUNDIR, so read the copy (RUNDIR == PREDICTDIR when not using local scratch).
+        PLOG="\$PREDICTDIR/logfiles/funannotate-predict.log"
         if [ -f "\$PLOG" ] && grep -q "Not enough gene models .* to train Augustus" "\$PLOG"; then
             NMODELS=\$(grep -oE "Not enough gene models [0-9]+" "\$PLOG" | grep -oE "[0-9]+" | tail -1)
             echo "[WARN] ${out}: funannotate found only \${NMODELS:-<min} training models (needs 30); too small/fragmented to annotate — skipping" >&2

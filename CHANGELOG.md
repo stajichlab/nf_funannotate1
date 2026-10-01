@@ -13,6 +13,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   without changing the gene models. Applied only to that process's input, so other tasks' cache
   hashes do not change. Rows without the column keep using `BUSCO_LINEAGE`.
 
+### Fixed
+- FUNANNOTATE_PREDICT: the "Not enough gene models N to train Augustus" catch read the log from the
+  local-scratch `RUNDIR`, which `copy_logs_back` had just removed, so it never matched. A tiny genome
+  (e.g. a 456 kb assembly that passes pre-flight) failed the task and, after retries, aborted the whole
+  run instead of being recorded in `predict_skipped_too_small.tsv`. The catch now reads the copied log.
+
 ### Changed
 - BFD equivalence for genomes without RNA-seq (stajichlab/nrp-deploy
   `bfd_wave1`): the no-RNA-seq predict path now matches the BFD pipeline's.
