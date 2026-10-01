@@ -7,6 +7,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Refit EVM weights (#42): `predict_evm_weights` = `augustus:1 hiq:3 genemark:2 snap:1 pasa:4`
+  when the genome has a PASA training set, `predict_evm_weights_norna` =
+  `augustus:2 hiq:5 genemark:4 snap:1` otherwise; appended to predict's single `-w` group,
+  not applied with Prodigal evidence. +3.8 to +4.4 holdout F1 on 38 held-out RefSeq genomes
+  (never worse), +9.5 without RNA-seq (BFD DECISIONS D126/D127). `''` keeps funannotate's
+  weights.
+- funannotate rc.4 train options, passed only when the container supports them:
+  `train_pasa_alt_splice` (false), `train_pasa_remove_contained` (`off`),
+  `train_pasa_max_isoforms` (0), and `train_pasa_fl_cache` (true): PASA's full-length list is
+  cached next to the shared Trinity assembly (`<assembly>.pasa_fl_accs`, md5-checked) when that
+  folder is writable, so strains sharing an assembly compute it once.
 - Optional `BUSCO_SCORE_LINEAGE` samples column: the BUSCO dataset `BUSCO_COMPLETENESS` scores
   against, when it differs from `BUSCO_LINEAGE`. `BUSCO_LINEAGE` also names the funannotate
   `--busco_db` (e.g. `dikarya`, which BUSCO 6 does not ship as a dataset), so it cannot change
@@ -20,6 +31,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   run instead of being recorded in `predict_skipped_too_small.tsv`. The catch now reads the copied log.
 
 ### Changed
+- `container_funannotate` is `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.4` (was v1.9.0-rc.3).
+  rc.4 turns PASA `--ALT_SPLICE` off by default (its reports are unused; > 2.5 h of a 4.6 h
+  train on one genome) and logs transcript/PASA counts and EVM weight sources.
+- FUNANNOTATE_TRAIN passes `--aligners minimap2 blat` by default (was `minimap2`): from rc.4,
+  `minimap2` alone means no blat, and without blat C. neoformans H99 lost 1.8 holdout F1.
 - BFD equivalence for genomes without RNA-seq (stajichlab/nrp-deploy
   `bfd_wave1`): the no-RNA-seq predict path now matches the BFD pipeline's.
   - `container_funannotate` is `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.3`
