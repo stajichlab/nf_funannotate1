@@ -10,7 +10,7 @@
 # cleaned and masked genomes, staged from S3), so clean and mask do not rerun.
 #
 # Settings that are already the pipeline defaults and match BFD are not repeated:
-# container_funannotate (v1.9.0-rc.3), pre-flight thresholds and rule, repeat-aware
+# container_funannotate (v1.9.0-rc.4), pre-flight thresholds and rule, repeat-aware
 # EVM, and the funannotate predict flags (--min_training_models 30 --keep_no_stops
 # --header_length 24 --SeqCenter NCBI --max_intronlen 3000 --min_intronlen 10
 # -w codingquarry:0 glimmerhmm:0 [genemark:1] --table <TRANSL_TABLE>).
