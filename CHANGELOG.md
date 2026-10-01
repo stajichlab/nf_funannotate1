@@ -20,6 +20,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   run instead of being recorded in `predict_skipped_too_small.tsv`. The catch now reads the copied log.
 
 ### Changed
+- NRP site config (`conf/site_nrp.config`): right-sized task requests from the bfd_wave1 pilot trace.
+  FUNANNOTATE_PREDICT and GENEMARK_RUN ask for 4 cpus / 16 GB (was 8 / 32 GB), BUSCO_COMPLETENESS 2 / 4 GB,
+  GENOME_CLEAN (skip_fcs) 1 / 2 GB, ASM_STATS 1 / 2 GB; a failed attempt escalates (8 cpus / 32 GB for
+  predict and GeneMark). Cuts the reserved footprint of a 25-pod fan-out roughly in half. Other sites
+  are unaffected.
 - BFD equivalence for genomes without RNA-seq (stajichlab/nrp-deploy
   `bfd_wave1`): the no-RNA-seq predict path now matches the BFD pipeline's.
   - `container_funannotate` is `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.3`
