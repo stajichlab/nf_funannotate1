@@ -286,7 +286,13 @@ process FUNANNOTATE_TRAIN {
         # SLURM tears down when the job ends (see the FUNANNOTATE_TRAIN
         # clusterOptions in provision_ucr_hpcc.config for the
         # SCRATCH=,TMPDIR= clearing this depends on).
-        MYSQL_SCRATCH=\$TMPDIR/mysql_db_${out}
+        # Short name: mysqld's socket path (\$MYSQL_SCRATCH/mysqld.sock) must be
+        # <= 107 characters, and a long genome name exceeded it ("The socket file path
+        # is too long", Saccharomyces_paradoxus_YPS644_MATalpha_ho_kanMX4_ade2_hphNT1,
+        # 2026-10-01). \$TMPDIR is per job, so the name only has to be short.
+        MYSQL_TAG="${locustag}"
+        [ -n "\$MYSQL_TAG" ] || MYSQL_TAG=\$(printf '%s' "${out}" | md5sum | cut -c1-12)
+        MYSQL_SCRATCH=\$TMPDIR/mysql_db_\$MYSQL_TAG
         rm -rf \$MYSQL_SCRATCH
         mkdir -p \$MYSQL_SCRATCH/db \$MYSQL_SCRATCH/conf
         # System-tables init moved into the branches below (each has a
