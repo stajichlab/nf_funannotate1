@@ -217,6 +217,23 @@ process FUNANNOTATE_PREDICT {
     # ── Repeat-aware EVM mode (BFD rule) ──────────────────────────────────────
     # See conf/profile_annotate.config predict_evm_repeat_pct_threshold.
     WEIGHT_ARGS=(${weight_args})
+    # EVM weight refit (BFD pasa_train_performance_evaluate/DECISIONS.md D126/D127):
+    # predict_evm_weights (genome has a PASA training set) or
+    # predict_evm_weights_norna (no PASA set) is appended after genemark:1 so its
+    # genemark value wins (funannotate applies -w entries in order, last wins), and
+    # before the repeat-aware snap:0 below so that override still wins. Not applied
+    # when Prodigal evidence (other_gff) is used. Empty = funannotate's own weights.
+    if [ "${other_gff_ok}" != "true" ]; then
+        if [ -s "${params.training_target}/${out}/training/funannotate_train.pasa.gff3" ]; then
+            EVM_TUNED_WEIGHTS="${params.predict_evm_weights ?: ''}"
+        else
+            EVM_TUNED_WEIGHTS="${params.predict_evm_weights_norna ?: ''}"
+        fi
+        if [ -n "\$EVM_TUNED_WEIGHTS" ]; then
+            echo "[INFO] ${out}: EVM weights \$EVM_TUNED_WEIGHTS"
+            WEIGHT_ARGS+=(\$EVM_TUNED_WEIGHTS)
+        fi
+    fi
     EVM_REPEAT_FLAGS=()
     THRESHOLD=${params.predict_evm_repeat_pct_threshold}
     if [ "\$THRESHOLD" != "0" ] && awk -v p="\$ASM_REPEAT_PCT" -v t="\$THRESHOLD" 'BEGIN{exit !(p>=t)}'; then
