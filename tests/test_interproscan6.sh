@@ -30,7 +30,7 @@ SRC_TARGET="$(readlink -f "${2:-genome_annotation}")"
 RUN_ID="${SLURM_JOB_ID:-manual_$(date +%Y%m%d%H%M%S)}"
 OUT="${PROJECT_DIR}/tests/output/interproscan6_test/${RUN_ID}"
 TARGET="${OUT}/genome_annotation"
-FUN_SIF="${FUN_SIF:-/bigdata/stajichlab/shared/lib/singularity_cache/funannotate-1.9.0-rc.1.sif}"
+FUN_SIF="${FUN_SIF:-/bigdata/stajichlab/shared/lib/singularity_cache/ghcr.io-nextgenusfs-funannotate-v1.9.0-rc.5.img}"
 FUN_DB="${FUN_DB:-/bigdata/stajichlab/shared/lib/funannotate_db}"
 
 PROT="${SRC_TARGET}/${GENOME}/predict_results/${GENOME}.proteins.fa"
