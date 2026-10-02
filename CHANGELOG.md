@@ -31,7 +31,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   run instead of being recorded in `predict_skipped_too_small.tsv`. The catch now reads the copied log.
 
 ### Changed
-- `container_funannotate` is `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.4` (was v1.9.0-rc.3).
+- `container_funannotate` is `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.5` (was v1.9.0-rc.4).
+  README container references updated to match. Conda envs stay at `funannotate-1.9.0-rc.1`.
+  Added conda manifests `environments/conda/funannotate-1.9.0-rc.5{,-rust}.yml` (pip pin
+  `v1.9.0-rc.5`); `conda_env` default is `funannotate-1.9.0-rc.5`. `tests/test_interproscan6.sh`
+  uses the rc.5 image. Not built or run with rc.5 yet.
   rc.4 turns PASA `--ALT_SPLICE` off by default (its reports are unused; > 2.5 h of a 4.6 h
   train on one genome) and logs transcript/PASA counts and EVM weight sources.
 - FUNANNOTATE_TRAIN passes `--aligners minimap2 blat` by default (was `minimap2`): from rc.4,
