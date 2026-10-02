@@ -54,6 +54,24 @@ process BUSCO_COMPLETENESS {
     busco -i ${proteins_fa} -l ${meta.busco} \\
         -m proteins -c ${task.cpus} -o ${meta.id} --out_path . -f \\
         --offline --download_path "\$BUSCO_DL"
+
+    # hmmer_output/ and busco_sequences/ hold ~99% of the ~3,500 small files per genome (3,567 of
+    # 3,576 in a measured result) and nothing downstream reads them; the summaries, full_table.tsv
+    # and missing_busco_list.tsv stay as plain files. Keep the two directories as one tarball so
+    # the storeDir move is a handful of files, not thousands (a retry colliding with a half-moved
+    # directory failed with "Directory not empty", 2026-10-02).
+    RUN_DIR=\$(ls -d ${meta.id}/run_* 2>/dev/null | head -1 || true)
+    if [ -n "\$RUN_DIR" ]; then
+        BULK=""
+        for d in hmmer_output busco_sequences; do [ -d "\$RUN_DIR/\$d" ] && BULK="\$BULK \$d"; done
+        if [ -n "\$BULK" ]; then
+            tar -C "\$RUN_DIR" -czf "\$RUN_DIR/busco_run_dirs.tar.gz" \$BULK
+            for d in \$BULK; do
+                find "\$RUN_DIR/\$d" -type f -delete
+                find "\$RUN_DIR/\$d" -depth -type d -delete
+            done
+        fi
+    fi
     """
 
     stub:

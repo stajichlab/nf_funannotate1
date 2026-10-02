@@ -25,6 +25,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hashes do not change. Rows without the column keep using `BUSCO_LINEAGE`.
 
 ### Fixed
+- Task ends no longer wait on node-wide disk flushes: FUNANNOTATE_PREDICT's final bare `sync` is now
+  `sync <GBK>` (fsync of the delivered file only). On a loaded CephFS node the bare `sync` blocked in
+  uninterruptible wait for over 3 h after a task had finished, holding its pod slot.
+- BUSCO_COMPLETENESS keeps `hmmer_output/` and `busco_sequences/` (about 99% of its ~3,500 small files per
+  genome, read by nothing downstream) as one `run_<lineage>/busco_run_dirs.tar.gz`; summaries,
+  `full_table.tsv` and `missing_busco_list.tsv` stay plain files. The storeDir move is a handful of files, which
+  also removes the "Directory not empty" failure when a retry met a half-moved directory.
 - FUNANNOTATE_PREDICT: the "Not enough gene models N to train Augustus" catch read the log from the
   local-scratch `RUNDIR`, which `copy_logs_back` had just removed, so it never matched. A tiny genome
   (e.g. a 456 kb assembly that passes pre-flight) failed the task and, after retries, aborted the whole
