@@ -758,6 +758,11 @@
           "default": false,
           "description": "Run funannotate predict in node-local $TMPDIR and copy only final results to params.target (avoids small-file I/O on network filesystems). Set true by -profile k8s/nrp."
         },
+        "genemark_local_scratch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run GeneMark-ES/ET (gmes_petap.pl) in node-local $TMPDIR and copy only the .gtf, .mod and stdout log back to the task dir (avoids ~2,400 small files per genome on network filesystems). Set true by -profile k8s/nrp."
+        },
         "k8s_namespace": {
           "type": "string",
           "description": "k8s/nrp only: Kubernetes namespace for task pods. Required with those profiles; set it in your own site config."

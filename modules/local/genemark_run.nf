@@ -219,6 +219,37 @@ process GENEMARK_RUN {
     # "GeneMark declined because the input was too small/fragmented after its
     # own internal contig selection" (graceful skip, same outcome as the
     # pre-flight guard above) from a genuine unexpected failure (hard error).
+    # ── Run GeneMark on node-local scratch ───────────────────────────────────
+    # gmes_petap.pl builds output/, data/, run/ and info/ in its working directory:
+    # on average 2,400 files and 740 MB per genome (max 11,800 files, 1.5 GB), which on a
+    # network filesystem (CephFS PVC) is slow to create, and then stays behind in the task
+    # work dir (39 of 41 GB, 95% of the files in work/ for the bfd_wave1 rc.4 pilot). With
+    # params.genemark_local_scratch the whole GeneMark section runs in a node-local temp dir
+    # and only the .gtf, .mod and stdout log come back. The EXIT trap copies them back on
+    # every exit path (success, graceful skip, error) and removes the scratch dir.
+    TASKDIR="\$PWD"
+    if [ "${params.genemark_local_scratch.toBoolean()}" = "true" ]; then
+        GM_SCRATCH_ROOT="\${TMPDIR:-/tmp}"
+        if [ ! -d "\$GM_SCRATCH_ROOT" ] || [ ! -w "\$GM_SCRATCH_ROOT" ]; then GM_SCRATCH_ROOT=/tmp; fi
+        if GM_SCRATCH=\$(mktemp -d "\$GM_SCRATCH_ROOT/gmes_${out}.XXXXXX" 2>/dev/null); then
+            gm_scratch_exit() {
+                local rc=\$?
+                cd "\$TASKDIR"
+                for f in "${out}.genemark.gtf" "${out}.genemark.mod" gmes_stdout.log; do
+                    if [ -e "\$GM_SCRATCH/\$f" ]; then cp -f "\$GM_SCRATCH/\$f" "\$TASKDIR/\$f"; fi
+                done
+                rm -rf "\$GM_SCRATCH"
+                return \$rc
+            }
+            trap 'gm_scratch_exit' EXIT
+            mv genome.fa "\$GM_SCRATCH/genome.fa"
+            cd "\$GM_SCRATCH"
+            echo "[INFO] GENEMARK_RUN ${out}: running GeneMark in node-local scratch \$GM_SCRATCH"
+        else
+            echo "[WARN] GENEMARK_RUN ${out}: could not create a scratch dir under \$GM_SCRATCH_ROOT; running in the task dir" >&2
+        fi
+    fi
+
     GMES_LOG="gmes_stdout.log"
     too_small_skip() {
         grep -qi "input sequence size is too small" "\$GMES_LOG" 2>/dev/null
