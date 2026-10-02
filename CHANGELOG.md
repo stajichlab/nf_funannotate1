@@ -25,6 +25,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hashes do not change. Rows without the column keep using `BUSCO_LINEAGE`.
 
 ### Fixed
+- GENEMARK_RUN runs in node-local scratch under k8s/nrp (`genemark_local_scratch`, default false, true in
+  `conf/executor_k8s.config`). gmes_petap.pl wrote ~2,400 files (740 MB) per genome in the task directory on the PVC
+  (max 11,800 files, 1.5 GB): 39 of the 41 GB and 95% of the files in `work/` after the bfd_wave1 rc.4 pilot. Only
+  the `.gtf`, `.mod` and stdout log are copied back (EXIT trap, every exit path). Not yet run on the cluster.
 - FUNANNOTATE_PREDICT: the "Not enough gene models N to train Augustus" catch read the log from the
   local-scratch `RUNDIR`, which `copy_logs_back` had just removed, so it never matched. A tiny genome
   (e.g. a 456 kb assembly that passes pre-flight) failed the task and, after retries, aborted the whole
