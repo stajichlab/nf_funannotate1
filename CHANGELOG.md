@@ -25,6 +25,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hashes do not change. Rows without the column keep using `BUSCO_LINEAGE`.
 
 ### Fixed
+- Task ends no longer wait on node-wide disk flushes: FUNANNOTATE_PREDICT's final bare `sync` is now
+  `sync <GBK>` (fsync of the delivered file only). On a loaded CephFS node the bare `sync` blocked in
+  uninterruptible wait for over 3 h after a task had finished, holding its pod slot.
+- BUSCO_COMPLETENESS keeps `hmmer_output/` and `busco_sequences/` (about 99% of its ~3,500 small files per
+  genome, read by nothing downstream) as one `run_<lineage>/busco_run_dirs.tar.gz`; summaries,
+  `full_table.tsv` and `missing_busco_list.tsv` stay plain files. The storeDir move is a handful of files, which
+  also removes the "Directory not empty" failure when a retry met a half-moved directory.
 - GENEMARK_RUN runs in node-local scratch under k8s/nrp (`genemark_local_scratch`, default false, true in
   `conf/executor_k8s.config`). gmes_petap.pl wrote ~2,400 files (740 MB) per genome in the task directory on the PVC
   (max 11,800 files, 1.5 GB): 39 of the 41 GB and 95% of the files in `work/` after the bfd_wave1 rc.4 pilot. Only

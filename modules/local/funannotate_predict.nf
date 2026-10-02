@@ -320,7 +320,10 @@ process FUNANNOTATE_PREDICT {
     if [ "${params.train_cleanup}" = "true" ]; then
         bash "${workflow.projectDir}/bin/train_cleanup.sh" "${params.training_target}/${out}/training" ${params.run_update ? 1 : 0}
     fi
-    sync
+    # fsync only the delivered GBK. A bare `sync` flushes every dirty page on the node (other
+    # tenants' writes included) and blocked in uninterruptible wait for > 3 h on a loaded CephFS
+    # node after the task had finished, holding its pod slot (bfd_wave1 rc.4 pilot, 2026-10-02).
+    sync "\$PREDICT_GBK" || true
     touch ${out}.predict.done
     echo "[INFO] Prediction complete for ${out} at \$PREDICTDIR"
     """
