@@ -81,6 +81,8 @@ process FUNANNOTATE_PREDICT {
 
     PREDICTDIR="${params.target}/${out}"
     PREDICT_GBK="\$PREDICTDIR/predict_results/${out}.gbk"
+    # Marks when THIS attempt started, to detect a result delivered by another attempt meanwhile.
+    touch .predict_start
     # RUNDIR is where funannotate predict actually writes (-o). Normally the
     # persistent PREDICTDIR itself. With params.predict_local_scratch it is a
     # node-local dir under \$TMPDIR instead: BUSCO/Augustus training there
@@ -308,13 +310,32 @@ process FUNANNOTATE_PREDICT {
     fi
     find "\$RUNDIR/predict_results/" -maxdepth 1 \\( -name "*.txt" -o -name "*.mrna-transcripts.fa" \\) -print0 \
         | xargs -0 --no-run-if-empty pigz
+    # Nextflow can mark an attempt failed (e.g. a pod it could not track) while the pod keeps
+    # running, and retry the task. The retry delivers; the old attempt then finished later and its
+    # sync_back removed and replaced the delivered predict_results and deleted the BUSCO result
+    # (bfd_wave1 A/B, 2026-10-02: Fusarium_inflexum). With node-local scratch the GBK is written
+    # only by sync_back, so a GBK newer than this attempt's start came from another attempt:
+    # keep it and discard this attempt's output.
+    if [ "\$RUNDIR" != "\$PREDICTDIR" ] && [ -s "\$PREDICT_GBK" ] && [ "\$PREDICT_GBK" -nt .predict_start ]; then
+        echo "[WARN] ${out}: another attempt delivered \$PREDICT_GBK after this one started; keeping it and discarding this attempt's output"
+        rm -rf "\$RUNDIR"
+        touch ${out}.predict.done
+        exit 0
+    fi
     sync_back
     [ -s "\$PREDICT_GBK" ] || { echo "ERROR: copy of predict results to \$PREDICTDIR failed" >&2; exit 1; }
     # New gene models invalidate BUSCO_COMPLETENESS's result. It is storeDir-cached
     # under \$PREDICTDIR/busco_completeness and storeDir skips on the directory
     # existing, regardless of which proteins produced it, so a re-prediction (e.g.
-    # after RNA-seq/PASA evidence arrives) otherwise kept the old score.
-    rm -rf "\$PREDICTDIR/busco_completeness"
+    # after RNA-seq/PASA evidence arrives) otherwise kept the old score. BUSCO_COMPLETENESS
+    # records the md5 of the proteins it scored (<id>/proteins.md5); remove the result only
+    # when the delivered proteins differ (or it has no record, as before), so a late or
+    # repeated attempt with the same proteins never deletes a valid score.
+    NEW_PROT_MD5=\$(md5sum "\$PREDICTDIR/predict_results/${out}.proteins.fa" 2>/dev/null | cut -d' ' -f1)
+    OLD_PROT_MD5=\$(cat "\$PREDICTDIR/busco_completeness/${out}/proteins.md5" 2>/dev/null || true)
+    if [ -d "\$PREDICTDIR/busco_completeness" ] && { [ -z "\$NEW_PROT_MD5" ] || [ "\$NEW_PROT_MD5" != "\$OLD_PROT_MD5" ]; }; then
+        rm -rf "\$PREDICTDIR/busco_completeness"
+    fi
     # Training intermediates are no longer needed once predict has succeeded
     # (bin/train_cleanup.sh keeps everything predict/update read).
     if [ "${params.train_cleanup}" = "true" ]; then
