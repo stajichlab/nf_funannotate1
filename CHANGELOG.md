@@ -25,6 +25,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hashes do not change. Rows without the column keep using `BUSCO_LINEAGE`.
 
 ### Fixed
+- FUNANNOTATE_PREDICT no longer lets a late attempt clobber a delivered result. Nextflow can mark an attempt
+  failed while its pod keeps running; the retry delivered, then the old attempt's `sync_back` replaced the
+  delivered `predict_results/` and deleted the BUSCO result. With node-local scratch, an attempt whose GBK target
+  is newer than its own start now keeps that result and discards its output. The BUSCO invalidation is no longer
+  a blind `rm -rf`: BUSCO_COMPLETENESS records the md5 of the proteins it scored (`<id>/proteins.md5`) and predict
+  removes the result only when the delivered proteins differ (or there is no record, as before).
 - Task ends no longer wait on node-wide disk flushes: FUNANNOTATE_PREDICT's final bare `sync` is now
   `sync <GBK>` (fsync of the delivered file only). On a loaded CephFS node the bare `sync` blocked in
   uninterruptible wait for over 3 h after a task had finished, holding its pod slot.

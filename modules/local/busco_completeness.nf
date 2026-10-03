@@ -55,6 +55,10 @@ process BUSCO_COMPLETENESS {
         -m proteins -c ${task.cpus} -o ${meta.id} --out_path . -f \\
         --offline --download_path "\$BUSCO_DL"
 
+    # Which proteins this result scored; FUNANNOTATE_PREDICT compares it to decide if a new
+    # prediction makes the stored result stale.
+    md5sum ${proteins_fa} | cut -d' ' -f1 > ${meta.id}/proteins.md5
+
     # hmmer_output/ and busco_sequences/ hold ~99% of the ~3,500 small files per genome (3,567 of
     # 3,576 in a measured result) and nothing downstream reads them; the summaries, full_table.tsv
     # and missing_busco_list.tsv stay as plain files. Keep the two directories as one tarball so
