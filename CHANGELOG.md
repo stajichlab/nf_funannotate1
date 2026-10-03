@@ -53,6 +53,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   run instead of being recorded in `predict_skipped_too_small.tsv`. The catch now reads the copied log.
 
 ### Changed
+- `container_funannotate` is `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.6` (was v1.9.0-rc.5).
+  rc.6 fixes two crashes this pipeline does not hit: predict's `AUGUSTUS_BASE` error when the
+  Augustus config directory is not named `config` (`augustus_config` ends in `/config`), and
+  annotate with `--genbank`/`--gff` and no `--table` (ANNOTATE uses `-i`). The unbuilt rc.5 conda
+  manifests are renamed to `environments/conda/funannotate-1.9.0-rc.6{,-rust}.yml` (pip pin
+  `v1.9.0-rc.6`); `conda_env` default is `funannotate-1.9.0-rc.6`. README and
+  `tests/test_interproscan6.sh` use rc.6. The rc.6 image passed version, `check` and unit tests
+  on UCR HPCC; the full `funannotate test` run was still in progress.
 - `container_funannotate` is `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.5` (was v1.9.0-rc.4).
   README container references updated to match. Conda envs stay at `funannotate-1.9.0-rc.1`.
   Added conda manifests `environments/conda/funannotate-1.9.0-rc.5{,-rust}.yml` (pip pin

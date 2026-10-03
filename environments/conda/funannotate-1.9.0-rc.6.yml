@@ -1,7 +1,7 @@
-# funannotate-1.9.0-rc.5.yml — conda deps + the 1.9.0-rc.5 release, PERL EVM.
-# 2026-10-02: copied from funannotate-1.9.0-rc.1.yml. ONLY the pip pin changed,
-# to tag v1.9.0-rc.5 (commit 5ce240f). Conda pins are unchanged and NOT re-solved or
-# test-built for rc.5. The header text below describes the rc.1 derivation.
+# funannotate-1.9.0-rc.6.yml — conda deps + the 1.9.0-rc.6 release, PERL EVM.
+# 2026-10-03: renamed from funannotate-1.9.0-rc.5.yml (never built; itself copied from funannotate-1.9.0-rc.1.yml). ONLY the pip pin changed,
+# to tag v1.9.0-rc.6 (commit a7c54bc). Conda pins are unchanged and NOT re-solved or
+# test-built for rc.6. The header text below describes the rc.1 derivation.
 #
 # Derived from funannotate-1.9.0-beta.12.yml (2026-09-21). ONLY the funannotate
 # release changed: pip pin moves to tag v1.9.0-rc.1 (commit 6f3eaad), which
@@ -145,5 +145,5 @@ dependencies:
     # This git tag. NOTE: the release tag is 'v1.9.0-beta.12' (with the 'v' —
     # '1.9.0-beta.12' does NOT exist upstream and pip's `git checkout` fails).
     # Pin to a full commit hash to make the build deterministic:
-    #   - git+https://github.com/nextgenusfs/funannotate.git@v1.9.0-rc.5
-    - git+https://github.com/nextgenusfs/funannotate.git@v1.9.0-rc.5
+    #   - git+https://github.com/nextgenusfs/funannotate.git@v1.9.0-rc.6
+    - git+https://github.com/nextgenusfs/funannotate.git@v1.9.0-rc.6
