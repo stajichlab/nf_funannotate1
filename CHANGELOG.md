@@ -25,6 +25,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hashes do not change. Rows without the column keep using `BUSCO_LINEAGE`.
 
 ### Fixed
+- FUNANNOTATE_TRAIN/UPDATE (pasa_mysql): mariadbd readiness wait is `MARIADB_START_TIMEOUT`
+  seconds (default 180; was 30), and `stop_mysqldb` sends SIGKILL if mariadbd is still running
+  60 s after SIGTERM instead of waiting without a limit. In Fungi_BFD a ~78 s container start
+  plus an unbounded `wait` on mariadbd hung a TRAIN task for 20 h (Fungi_BFD_runs DECISIONS
+  D138); here a slow start failed the task and a mariadbd that ignored SIGTERM would hang it.
 - FUNANNOTATE_PREDICT no longer lets a late attempt clobber a delivered result. Nextflow can mark an attempt
   failed while its pod keeps running; the retry delivered, then the old attempt's `sync_back` replaced the
   delivered `predict_results/` and deleted the BUSCO result. With node-local scratch, an attempt whose GBK target

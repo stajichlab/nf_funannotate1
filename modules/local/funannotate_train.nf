@@ -403,7 +403,22 @@ process FUNANNOTATE_TRAIN {
                 --socket=\$MYSQL_SCRATCH/mysqld.sock \\
                 --pid-file=\$MYSQL_SCRATCH/mysqld.pid &
             MYSQLD_PID=\$!
-            stop_mysqldb() { kill \$MYSQLD_PID 2>/dev/null || true; wait \$MYSQLD_PID 2>/dev/null || true; }
+            # Bounded stop: SIGTERM, up to 60s, then SIGKILL. A bare `wait` on a
+            # mariadbd that does not exit blocks the task until its time limit
+            # (Fungi_BFD hit this as a 20 h hang, Fungi_BFD_runs DECISIONS D138).
+            stop_mysqldb() {
+                local waited=0
+                kill \$MYSQLD_PID 2>/dev/null || true
+                while kill -0 \$MYSQLD_PID 2>/dev/null && [ "\$waited" -lt 60 ]; do
+                    sleep 1
+                    waited=\$((waited + 1))
+                done
+                if kill -0 \$MYSQLD_PID 2>/dev/null; then
+                    echo "[WARN] mariadbd (pid \$MYSQLD_PID) still running 60s after SIGTERM; sending SIGKILL" >&2
+                    kill -9 \$MYSQLD_PID 2>/dev/null || true
+                fi
+                wait \$MYSQLD_PID 2>/dev/null || true
+            }
         else
             stop_mysqldb() { singularity instance stop mysqldb_${asmid}_\${SLURM_JOB_ID:-\$\$} 2>/dev/null || true; }
             # apptainer (not the old `singularity` module) so squashfuse is
@@ -475,11 +490,14 @@ process FUNANNOTATE_TRAIN {
         # a fixed short delay is exactly what produced "Can't connect to
         # MySQL server ... (111)" despite "instance started successfully"
         # (confirmed 2026-09-10, every conda cell -- the daemon just wasn't
-        # listening yet). 30 x 1s covers the slowest cold-start case seen so
-        # far with a wide margin; a still-failed daemon after that is treated
-        # as a real infra failure, not silently waited on forever.
+        # listening yet). The limit is MARIADB_START_TIMEOUT (below); a
+        # still-failed daemon after that is treated as a real infra failure,
+        # not silently waited on forever.
         MYSQL_READY=0
-        for _ in \$(seq 1 30); do
+        # MARIADB_START_TIMEOUT (default 180s; was a fixed 30s): a container
+        # took ~78s to start mariadbd on a loaded node in Fungi_BFD (D138).
+        MARIADB_START_TIMEOUT=\${MARIADB_START_TIMEOUT:-180}
+        for _ in \$(seq 1 "\$MARIADB_START_TIMEOUT"); do
             if \$MYSQL_CLIENT_BIN -uroot -h127.0.0.1 -P\${PORT} -e 'SELECT 1' >/dev/null 2>&1; then
                 MYSQL_READY=1
                 break
@@ -487,7 +505,7 @@ process FUNANNOTATE_TRAIN {
             sleep 1
         done
         if [ "\$MYSQL_READY" -ne 1 ]; then
-            echo "ERROR: mariadbd on 127.0.0.1:\${PORT} did not become ready within 30s" >&2
+            echo "ERROR: mariadbd on 127.0.0.1:\${PORT} did not become ready within \${MARIADB_START_TIMEOUT}s" >&2
             exit 1
         fi
         # mariadb-install-db (--auth-root-authentication-method=normal, above)
