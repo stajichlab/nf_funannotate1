@@ -187,3 +187,21 @@ aws $EP s3 cp s3://<bucket>/refdb/funannotate_db.tar.gz - | tar -xzf - -C /data/
   Jobs with an explicit `disk` request.
 - `k8s_max_cpus` / `k8s_max_memory` cap every task (16 / 32 GB on NRP). Raise
   them only together with Jobs.
+
+## GeneMark-only run
+
+`genemark_sidecar.nf` runs GeneMark-ES (or -ET when `--rnaseq_reads_dir` is set) once per genome and
+stops. On NRP use it through the same run Job, with these changes to the Job's environment:
+
+| Variable | Value |
+|---|---|
+| `PROFILE` | `genemark_sidecar,nrp` (pipeline profile first) |
+| `NF_EXTRA_ARGS` | `-main-script genemark_sidecar.nf` |
+| `PARAMS_FILE` | a YAML with `samples`, `target`, `publish_per_genome: true`, `genemark_force_container: false` |
+
+- `genemark_force_container: false` is required on k8s. The default (`true`) forces an `apptainer exec`
+  that does not exist inside a pod.
+- `publish_per_genome: true` writes `<target>/<out>/<out>.genemark.{gtf,mod}` and an empty
+  `<out>.other.gff3`. The default writes the flat layout that `--genemark_sidecar_dir` reads.
+- An empty `.gtf` means GeneMark skipped the genome (pre-flight or "too small"). There is no `.mod` then.
+- First-attempt task request is 4 CPUs / 16 GB (8 / 32 GB on retry), from `conf/site_nrp.config`.
