@@ -4,7 +4,7 @@
 # which expects the GX database under  /dev/shm/gxdb/all{.gxi,.gxs,...}.
 # Keeping the DB in /dev/shm (RAM) is required for acceptable FCS-GX performance.
 #
-#   source scripts/setup_fcs_shm.sh
+#   source bin/setup_fcs_shm.sh
 #   AAFTF fcs_gx_purge --db /dev/shm/gxdb/all ...
 #
 # Configure the source location of the GX database via FCS_GX_DB_SRC (a directory

@@ -40,8 +40,8 @@ conf/
   provision_singularity.config  # singularity.enabled=true + per-label container=
   profile_earlgrey.config       # masking params + resources (deferred)
   test.config                   # -stub-run: tiny resources, beforeScript=':', synthetic data
-scripts/                        # clean_genome_fa.py, setup_fcs_shm.sh, enforce_seqpair_readlen, fix_fastq_header_trinity, select_repeat_representatives.py
-bin/                            # (only if a migrated process needs it; auto-staged)
+bin/                            # helpers that processes call: clean_genome_fa.py, setup_fcs_shm.sh, enforce_seqpair_readlen, fix_fastq_header_trinity, select_repeat_representatives.py
+scripts/                        # tools run by hand or by build steps only (build_tools.sh, audit/backfill helpers)
 pixi.toml                       # [workspace] + per-tool environments for pixi provisioning
 run_annotate.sh                 # sbatch launcher
 run_earlgrey.sh                 # sbatch launcher (deferred)
@@ -120,7 +120,8 @@ autoMounts, cacheDir=`/bigdata/stajichlab/shared/lib/singularity_cache`,
    retry escalation for SRA_FETCH/TRAIN, GPU `clusterOptions` for signalp) +
    per-profile `workDir=work/annotate` and `trace/report/timeline` paths. Drop
    the reference's node-pinning `-w h04,h05,h06` (skill: use queue+resources).
-7. **Copy supporting scripts** referenced by processes into `scripts/`:
+7. **Copy supporting scripts** referenced by processes into `bin/` (not `scripts/`;
+   see the bin/ rule under Open items):
    `clean_genome_fa.py` (already expected by current stub), `setup_fcs_shm.sh`,
    `enforce_seqpair_readlen`, `fix_fastq_header_trinity`,
    `select_repeat_representatives.py` (for earlgrey).
@@ -162,10 +163,18 @@ autoMounts, cacheDir=`/bigdata/stajichlab/shared/lib/singularity_cache`,
 
 ## Open items / notes
 
+- **bin/ vs scripts/ rule.** Put any helper that a process calls or sources in
+  `bin/`. Under `-profile singularity` the task runs in `apptainer exec --no-home`
+  and Nextflow binds only `${projectDir}/bin` (plus the work dir and the
+  configured mounts). A script in `scripts/` is not visible in the container, so
+  the task fails with "No such file or directory" (seen 2026-10-10 with
+  `setup_fcs_shm.sh` in GENOME_CLEAN_BATCH). Reference these helpers as
+  `${projectDir}/bin/<name>`. Keep `scripts/` for tools that processes do not call.
+
 - GENOME_CLEAN depends on FCS-GX (`/dev/shm/gxdb` via `setup_fcs_shm.sh`) and is
   highmem (450 GB) — keep its `highmem` queue resourcing; this is the heaviest
   prerequisite for the SLURM path and won't run under `-profile local` for real.
 - `clean_genome_fa.py` (=`params.clean_script`) IS required (used in GENOME_CLEAN
-  after AAFTF purge); confirm it exists in reference `scripts/` and copy it.
+  after AAFTF purge); it lives in `bin/` here (the reference repo keeps it in `scripts/`).
 - Singularity images the user must build: funannotate, AAFTF, signalp6-gpu, the
   sra multi-tool image; mariadb (`mariadb.sif`) already exists in shared lib.

@@ -179,7 +179,7 @@ process FUNANNOTATE_PREDICT {
     esac
 
     # funannotate predict rejects FASTA deflines longer than 24 chars; NCBI-style
-    # headers survive the AAFTF clean verbatim (scripts/clean_genome_fa.py keeps
+    # headers survive the AAFTF clean verbatim (bin/clean_genome_fa.py keeps
     # headers untouched), so rewrite each header to its accession (first
     # whitespace token). Idempotent -- safe on already-short headers too.
     # params.predict_defline_first_word=false passes deflines through unchanged,

@@ -260,7 +260,7 @@ and keep the SIF file.
 To run the FCS-GX contamination screen, set `skip_fcs: false`. This also
 needs the NCBI FCS-GX database (about 470 GB), a node with about 500 GB of
 RAM, and `FCS_GX_DB_SRC` set to the database path (see
-`scripts/setup_fcs_shm.sh`).
+`bin/setup_fcs_shm.sh`).
 
 On a workstation, the `local` profile runs at most 4 tasks at the same time.
 To change this, add `executor { queueSize = 2 }` to `mylab.config`.
@@ -550,7 +550,7 @@ sequentially (`GENOME_CLEAN_BATCH`).
 - Already-cleaned genomes are skipped, so a killed batch resumes without redoing
   finished assemblies, and a fully-clean batch is never scheduled (no staging cost).
 - Each batch writes a manifest (`clean_batch_*.manifest.tsv`) of what it cleaned.
-- **Set `FCS_GX_DB_SRC`** to your gxdb path (see `scripts/setup_fcs_shm.sh`).
+- **Set `FCS_GX_DB_SRC`** to your gxdb path (see `bin/setup_fcs_shm.sh`).
 
 ### Resumable, persistent prediction
 
@@ -696,8 +696,8 @@ upstream `fix_fastq_headers.py`) if you can't build the Rust version.
 
 ### Site data scripts
 
-- `scripts/clean_genome_fa.py` — min-length contig filter (stdlib only).
-- `scripts/setup_fcs_shm.sh` — stages the NCBI **FCS-GX** database into
+- `bin/clean_genome_fa.py` — min-length contig filter (stdlib only).
+- `bin/setup_fcs_shm.sh` — stages the NCBI **FCS-GX** database into
   `/dev/shm` for `GENOME_CLEAN`. **Set `FCS_GX_DB_SRC`** to your gxdb path.
 
 ## Layout
@@ -713,7 +713,7 @@ nf_funannotate1/           # repo root = pipeline root (runs from GitHub)
     profile_earlgrey.config
     test.config                   # self-contained stub profile
   lib/SampleUtils.groovy          # auto-compiled by Nextflow (projectDir/lib)
-  scripts/                        # clean_genome_fa.py, setup_fcs_shm.sh, build_tools.sh, *.py fallbacks
+  scripts/                        # build_tools.sh, *.py fallbacks
   pixi.toml                       # per-label conda envs for the pixi profile
   run_annotate.sh, run_earlgrey.sh
   tools/bin/                      # built Rust helpers (gitignored)
