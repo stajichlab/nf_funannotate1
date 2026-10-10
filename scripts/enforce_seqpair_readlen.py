@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# this is superceded by rust tool which is in bin
 """
 Enforce equal read lengths in paired-end FASTQ files.
 
