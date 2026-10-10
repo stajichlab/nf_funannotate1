@@ -88,11 +88,36 @@ process INTERPROSCAN_RUN {
     export TMPDIR
     IPS6_WORK=\$(mktemp -d "\$TMPDIR/ips6_${out}.XXXXXX")
 
+    # IPS6 stops the WHOLE run ("Invalid character(s) found in the input FASTA
+    # file") if any residue is outside its alphabet ACDEFGHIKLMNPQRSTVWYUOXBZJ.
+    # funannotate proteins can carry an internal stop '*' in models it flags
+    # for fixing (seen: 1 of 10,150 in Penicillium citrinum NRRL 1841). Drop a
+    # terminal '*' and turn any other disallowed residue into X. Protein IDs
+    # and lengths are unchanged, so funannotate maps the results as before.
+    # Changed IDs are listed in ips6_input_changed.txt in the task dir.
+    IPS6_INPUT="\$IPS6_WORK/${out}.proteins.ips6.faa"
+    awk -v chg=ips6_input_changed.txt '
+        function flush() {
+            if (hdr == "") return
+            s = toupper(seq); o = s
+            sub(/\\*+\$/, "", s)
+            gsub(/[^ACDEFGHIKLMNPQRSTVWYUOXBZJ]/, "X", s)
+            if (s == "") s = "X"
+            if (s != o) { n++; print id > chg }
+            print hdr; print s
+        }
+        /^>/ { flush(); hdr = \$0; id = substr(\$1, 2); seq = ""; next }
+        { gsub(/[ \\t\\r]/, ""); seq = seq \$0 }
+        END { flush(); printf "INFO: %d protein(s) edited for the IPS6 alphabet\\n", n + 0 > "/dev/stderr" }
+    ' ${proteins} > "\$IPS6_INPUT"
+    touch ips6_input_changed.txt
+
     # The containers inherit TMPDIR (node-local, e.g. /scratch/<user>/<job>)
     # but do not mount it, so tools that write temp files there fail with
     # "Read-only file system" (seen: PROSITE ps_scan.pl). Bind it.
     cat > ips6_local.config <<-END_CONFIG
     executor { memory = '${execGb} GB' }
+    trace { fields = 'name,status,exit,cpus,memory,duration,realtime,%cpu,peak_rss' }
     apptainer {
         cacheDir   = '${params.sif_dir}'
         autoMounts = true
@@ -116,12 +141,16 @@ process INTERPROSCAN_RUN {
 
     # IPS6 requires --outdir to exist already. It can also exit 0 after a
     # failed parameter check, so success is judged by its output files below.
+    # The nested trace (ips6_trace.tsv, kept in this task's work dir) records
+    # each IPS6 sub-task's cpus / %cpu / peak RSS / realtime, for sizing this
+    # process's cpus and memory from real runs.
     mkdir -p ips6_out
     ${params.iprscan6_nextflow} run ${pipeline} ${revArg} \\
         -profile ${params.iprscan6_profile} \\
         -c ips6_local.config ${licArg} \\
         -w \$IPS6_WORK \\
-        --input ${proteins} \\
+        -with-trace ips6_trace.tsv \\
+        --input "\$IPS6_INPUT" \\
         --datadir ${params.iprscan6_datadir} \\
         --interpro ${params.iprscan6_interpro} \\
         --formats xml,tsv --goterms --pathways \\
