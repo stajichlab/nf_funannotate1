@@ -56,6 +56,17 @@
 
 params.target = "${launchDir}/output"
 params.rnaseq_reads_dir = null
+// Layout of published results.
+//   false (default): flat <target>/<out>.genemark.gtf (+ .mod), what funannotate.nf's
+//                    --genemark_sidecar_dir reads.
+//   true:            one folder per genome, <target>/<out>/<out>.genemark.{gtf,mod} plus an
+//                    empty <out>.other.gff3, the layout of BFD's genemark_store/. Used by the
+//                    NRP GeneMark-only blocks (BFD reuse route "stored" needs .gtf + .other.gff3).
+params.publish_per_genome = false
+// true (default): force GeneMark to run through apptainer. Set false on k8s/NRP, where the
+// whole task already runs inside the braker3 image and there is no nested apptainer
+// (conf/executor_k8s.config sets genemark_container_mode = false).
+params.genemark_force_container = true
 
 include { INPUT_CHECK } from './subworkflows/local/input_check'
 include { GENEMARK_RUN } from './modules/local/genemark_run'
@@ -119,18 +130,29 @@ process ALIGN_RNASEQ_HINTS {
 process PUBLISH_GENEMARK {
     tag "${meta.id}"
     label 'process_single'
-    publishDir params.target, mode: 'copy', overwrite: true
+    publishDir { params.publish_per_genome ? "${params.target}/${meta.id}" : params.target },
+        mode: 'copy', overwrite: true
 
     input:
     tuple val(meta), path(gtf)
 
     output:
     path(gtf)
+    path("${meta.id}.other.gff3"), optional: true
 
     script:
-    """
-    # no-op: publishDir does the copy; this process just exists to attach one.
-    """
+    // publishDir does the copy. In per-genome layout also write the empty .other.gff3 that BFD's
+    // GENEMARK_RUN always writes (non-microsporidia: no Prodigal supplement), so a consumer
+    // can take the "stored" route. An empty .gtf means GeneMark skipped the genome (pre-flight
+    // or "too small"); the file is still published so consumers can tell skip from not-run.
+    if (params.publish_per_genome)
+        """
+        : > "${meta.id}.other.gff3"
+        """
+    else
+        """
+        # no-op: publishDir does the copy; this process just exists to attach one.
+        """
 
     stub:
     """
@@ -144,7 +166,8 @@ process PUBLISH_GENEMARK {
 process PUBLISH_GENEMARK_MOD {
     tag "${meta.id}"
     label 'process_single'
-    publishDir params.target, mode: 'copy', overwrite: true
+    publishDir { params.publish_per_genome ? "${params.target}/${meta.id}" : params.target },
+        mode: 'copy', overwrite: true
 
     input:
     tuple val(meta), path(mod)
@@ -168,7 +191,8 @@ workflow {
     // force container mode regardless of which provisioning profile is
     // loaded, so the sidecar result never depends on host-module GeneMark
     // being installed/licensed at the site running it.
-    params.genemark_container_mode = true
+    if (params.genemark_force_container.toString().toBoolean())
+        params.genemark_container_mode = true
 
     INPUT_CHECK()
 

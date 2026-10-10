@@ -22,7 +22,7 @@
 #   REVISION   git branch / tag / commit to run (default: pipeline default branch)
 #
 # Default provisioning is singularity (params.container_funannotate, pinned to
-# funannotate v1.9.0-rc.5) on SLURM. The `ucr_hpcc` profile is always loaded
+# funannotate v1.9.0-rc.6) on SLURM. The `ucr_hpcc` profile is always loaded
 # too, for its SLURM settings (see below). Swap axes via env vars:
 #   PROVISION=ucr_hpcc    sbatch run_annotate.sh   # UCR Lmod modules (funannotate/1.8 default module)
 #   PROVISION=conda       sbatch run_annotate.sh   # shared conda envs

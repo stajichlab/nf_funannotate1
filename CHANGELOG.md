@@ -25,6 +25,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hashes do not change. Rows without the column keep using `BUSCO_LINEAGE`.
 
 ### Fixed
+- FUNANNOTATE_TRAIN/UPDATE (pasa_mysql): mariadbd readiness wait is `MARIADB_START_TIMEOUT`
+  seconds (default 180; was 30), and `stop_mysqldb` sends SIGKILL if mariadbd is still running
+  60 s after SIGTERM instead of waiting without a limit. In Fungi_BFD a ~78 s container start
+  plus an unbounded `wait` on mariadbd hung a TRAIN task for 20 h (Fungi_BFD_runs DECISIONS
+  D138); here a slow start failed the task and a mariadbd that ignored SIGTERM would hang it.
 - FUNANNOTATE_PREDICT no longer lets a late attempt clobber a delivered result. Nextflow can mark an attempt
   failed while its pod keeps running; the retry delivered, then the old attempt's `sync_back` replaced the
   delivered `predict_results/` and deleted the BUSCO result. With node-local scratch, an attempt whose GBK target
@@ -48,6 +53,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   run instead of being recorded in `predict_skipped_too_small.tsv`. The catch now reads the copied log.
 
 ### Changed
+- `container_funannotate` is `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.6` (was v1.9.0-rc.5).
+  rc.6 fixes two crashes this pipeline does not hit: predict's `AUGUSTUS_BASE` error when the
+  Augustus config directory is not named `config` (`augustus_config` ends in `/config`), and
+  annotate with `--genbank`/`--gff` and no `--table` (ANNOTATE uses `-i`). The unbuilt rc.5 conda
+  manifests are renamed to `environments/conda/funannotate-1.9.0-rc.6{,-rust}.yml` (pip pin
+  `v1.9.0-rc.6`); `conda_env` default is `funannotate-1.9.0-rc.6`. README and
+  `tests/test_interproscan6.sh` use rc.6. The rc.6 image passed version, `check` and unit tests
+  on UCR HPCC; the full `funannotate test` run was still in progress.
 - `container_funannotate` is `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.5` (was v1.9.0-rc.4).
   README container references updated to match. Conda envs stay at `funannotate-1.9.0-rc.1`.
   Added conda manifests `environments/conda/funannotate-1.9.0-rc.5{,-rust}.yml` (pip pin
