@@ -16,6 +16,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   runs, so the default is to warn. The chosen file is staged as a process input
   (`FUNANNOTATE_ANNOTATE` now takes `tuple val(meta), path(sbt)`; `assets/NO_FILE` is the placeholder
   when no SBT applies). Stub-tested for the fallback case only; the strict and mismatch paths have not run.
+- Chunked GeneMark for `genemark_sidecar.nf` (`params.genemark_chunked`, default false): `GENEMARK_RUN` is now a
+  subworkflow (`GENEMARK_TRAIN`, then `GENEMARK_PREDICT_CHUNK` per chunk, then `GENEMARK_MERGE`) with the same `gtf`
+  and `mod` emits. A genome with >= `genemark_chunk_min_contigs` (25,000) contigs that trains fresh in ES mode in
+  container mode is trained once (`gmes_petap.pl --ES --training_only`), predicted in chunks of ~20,000 contigs with
+  `--predict_with`, and merged and validated; every other row takes the old single-task route
+  (`modules/local/genemark_train.nf` is the old process body plus that route). Same-model chunked output is
+  byte-identical to the monolithic `--predict_with` run. `genemark_chunked.tsv` records one row per chunk;
+  `bin/genemark_chunked_missing.py` lists chunked genomes with no result. Failed chunks are ignored after the last
+  retry. Not chunked: fast-reuse rows, fresh ET rows, host mode. `train_predict.nf` and `predict_reuse.nf` still use
+  `modules/local/genemark_run.nf`. See `docs/genemark_chunked.md`.
 - Refit EVM weights (#42): `predict_evm_weights` = `augustus:1 hiq:3 genemark:2 snap:1 pasa:4`
   when the genome has a PASA training set, `predict_evm_weights_norna` =
   `augustus:2 hiq:5 genemark:4 snap:1` otherwise; appended to predict's single `-w` group,

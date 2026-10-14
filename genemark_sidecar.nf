@@ -69,7 +69,7 @@ params.publish_per_genome = false
 params.genemark_force_container = true
 
 include { INPUT_CHECK } from './subworkflows/local/input_check'
-include { GENEMARK_RUN } from './modules/local/genemark_run'
+include { GENEMARK_RUN } from './subworkflows/local/genemark_run'
 
 // Independent RNA-seq-to-genome spliced alignment for GeneMark --ET intron
 // hints -- plain hisat2 + samtools, deliberately NOT routed through any
