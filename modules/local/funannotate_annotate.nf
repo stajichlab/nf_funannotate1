@@ -6,7 +6,7 @@ process FUNANNOTATE_ANNOTATE {
     tag "${meta.id}"
 
     input:
-    val(meta)
+    tuple val(meta), path(sbt)
 
     output:
     tuple val(meta), path("${meta.id}.annotate.done"), emit: marker
@@ -22,6 +22,9 @@ process FUNANNOTATE_ANNOTATE {
     def antiSmArg = antiSm.exists() ? "--antismash ${antiSm}" : ""
     def tmhmm     = file("${params.target}/${meta.id}/annotate_misc/TMRs.gff3")
     def tmhmmArg  = tmhmm.exists() ? "--tmhmm ${tmhmm}" : ""
+    // `sbt` is the per-genome SBT, else --sbt_template, else the assets/NO_FILE
+    // placeholder (annotate_genome.nf): then funannotate uses its own default.
+    def sbtArg    = sbt.name == 'NO_FILE' ? "" : "--sbt ${sbt}"
     """
     export AUGUSTUS_CONFIG_PATH=${params.augustus_config}
     export FUNANNOTATE_DB=${params.funannotate_db}
@@ -40,7 +43,7 @@ process FUNANNOTATE_ANNOTATE {
     funannotate annotate -i ${params.target}/${out} -o ${params.target}/${out} \\
         --species "${species}" --strain "${strain}" \\
         --busco_db ${busco_lineage} --rename ${locustag} \\
-        --sbt ${params.sbt_template} \\
+        ${sbtArg} \\
         --header_length ${header_length} \\
         ${antiSmArg} \\
         ${tmhmmArg} \\

@@ -131,9 +131,48 @@ workflow ANNOTATE_GENOME {
     }
 
     if (params.run_annotate.toBoolean()) {
-        FUNANNOTATE_ANNOTATE(annotate_ready_ch.filter { meta ->
-            FunannotateUtils.gbkResult("${params.target}/${meta.id}/annotate_results", meta.id as String) == null
-        })
+        // SBT per genome: the samples.csv `SBT` column (a path, or a file name under
+        // --sbt_dir), else --sbt_template, else none (funannotate's own template).
+        // --sbt is an alias for --sbt_template (--sbt wins when both are given).
+        // An unusable SBT entry or a BioSample mismatch only warns, since an NCBI
+        // deposit is not required for these runs; --sbt_strict turns both into errors.
+        def strict      = params.sbt_strict.toBoolean()
+        def sbt_file    = (params.sbt ?: params.sbt_template) as String
+        def sbt_default = sbt_file && file(sbt_file).exists() ? file(sbt_file).toRealPath() : null
+        if (!sbt_default) {
+            log.warn "SBT template '${sbt_file}' not found; genomes without a usable SBT column entry use funannotate's default template"
+        }
+        def sbt_by_id = channel.fromPath(params.samples)
+            .splitCsv(header: true)
+            .map { row -> tuple(SampleUtils.makeSampleTag(row.SPECIES?.trim() ?: '', row.STRAIN?.trim() ?: ''),
+                                row.SBT?.trim() ?: '', row.BIOSAMPLE?.trim() ?: '') }
+        def annotate_in = annotate_ready_ch
+            .filter { meta ->
+                FunannotateUtils.gbkResult("${params.target}/${meta.id}/annotate_results", meta.id as String) == null
+            }
+            .map { meta -> tuple(meta.id, meta) }
+            .join(sbt_by_id)
+            .map { _id, meta, sbt_name, biosample ->
+                def sbt = SampleUtils.resolveSbt(sbt_name, params.sbt_dir as String, launchDir.toString())
+                if (sbt_name && !sbt) {
+                    def msg = "${meta.id}: SBT '${sbt_name}' not found (sbt_dir=${params.sbt_dir ?: launchDir})"
+                    if (strict) error "${msg}; --sbt_strict is set"
+                    log.warn "${msg}; using ${sbt_default ?: 'funannotate default template'}"
+                }
+                def chosen = sbt ?: sbt_default
+                // The SBT must name the same BioSample as the sheet's BIOSAMPLE column.
+                // A template that names none (the generic default) is not checked.
+                if (chosen && biosample) {
+                    def named = SampleUtils.sbtBiosamples(chosen)
+                    if (named && !named.contains(biosample)) {
+                        def msg = "${meta.id}: SBT ${chosen.name} names BioSample ${named.join(',')} but the sheet has ${biosample}"
+                        if (strict) error "${msg}; --sbt_strict is set"
+                        log.warn msg
+                    }
+                }
+                tuple(meta, chosen ?: file("${projectDir}/assets/NO_FILE"))
+            }
+        FUNANNOTATE_ANNOTATE(annotate_in)
     }
 
     emit:
