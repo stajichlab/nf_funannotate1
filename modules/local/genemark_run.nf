@@ -278,8 +278,13 @@ process GENEMARK_RUN {
     if [ -n "${shared_mod}" ] && [ "${force_independent}" != "true" ]; then
         echo "[INFO] GENEMARK_RUN ${out}: fast-reuse (--predict_with) against shared model ${shared_mod}"
         cp "${shared_mod}" genemark-shared.mod
+        # Same --max_intron / --soft_mask as the fresh --ES call above: with them, --predict_with a genome's own ES
+        # model reproduces that ES run's CDS chains (BFD GENEMARK_RUN_DESIGN.md, DECISIONS D135: 100% identical on 6
+        # genomes; without them 99.0-100%). --soft_mask is what makes GeneMark use the soft-masked repeats and sets the
+        # mask penalty, so a reuse call that omits it predicts with a different masking setting.
         run_gmes --predict_with genemark-shared.mod \\
-            --sequence genome.fa --cores ${task.cpus} --fungus "\${GCODE_ARGS[@]}" 2>&1 | tee "\$GMES_LOG"
+            --sequence genome.fa --max_intron ${params.max_intronlen} --soft_mask 2000 \\
+            --cores ${task.cpus} --fungus "\${GCODE_ARGS[@]}" 2>&1 | tee "\$GMES_LOG"
     elif [ "${mode}" = "ET" ] && [ -n "${training_bam}" ] && [ -s "${training_bam}" ]; then
         echo "[INFO] GENEMARK_RUN ${out}: fresh ET self-training seeded by RNA-seq intron hints from ${training_bam}"
         run_bam2hints --intronsonly --in="${training_bam}" --out=raw_hints.gff

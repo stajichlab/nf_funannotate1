@@ -34,6 +34,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hashes do not change. Rows without the column keep using `BUSCO_LINEAGE`.
 
 ### Fixed
+- GENEMARK_RUN fast-reuse (`--predict_with`) now passes `--max_intron ${params.max_intronlen} --soft_mask 2000`, the
+  options the fresh `--ES`/`--ET` calls already use (as BFD's GENEMARK_RUN does, DECISIONS D135: 100% identical CDS
+  chains to the ES run on 6 genomes with them, 99.0-100% without). `--soft_mask` makes GeneMark use the soft-masked
+  repeats and sets the mask penalty, so the old reuse call predicted with a different masking setting. Checked on a
+  1,759-contig genome with a stored ES model: with the options the GTF is byte-identical to the ES-equivalent
+  monolithic prediction (67,486 records, 8,024 genes); without them it had 67,471 records and 8,021 genes (15 records of
+  3 genes missing). GTFs already stored from reuse runs were made without the options and can differ slightly
+  (about 0.02% of records here, up to about 1% of CDS chains in BFD's wave 1 genomes) if regenerated.
 - FUNANNOTATE_TRAIN/UPDATE (pasa_mysql): mariadbd readiness wait is `MARIADB_START_TIMEOUT`
   seconds (default 180; was 30), and `stop_mysqldb` sends SIGKILL if mariadbd is still running
   60 s after SIGTERM instead of waiting without a limit. In Fungi_BFD a ~78 s container start
