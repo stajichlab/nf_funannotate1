@@ -174,6 +174,10 @@ process INTERPROSCAN_RUN {
     gzip -c ips6_out/${out}.iprscan.tsv > ${miscdir}/iprscan.tsv.gz.part
     mv ${miscdir}/iprscan.tsv.gz.part ${miscdir}/iprscan.tsv.gz
     mv ${miscdir}/iprscan.xml.gz.part ${miscdir}/iprscan.xml.gz
+    # Record the md5 of the proteins scanned, so the done-check in annotate_genome.nf can tell
+    # when a later re-prediction made this result stale. Written last, after the results.
+    md5sum ${proteins} | cut -d' ' -f1 > ${miscdir}/iprscan.proteins.md5.part
+    mv ${miscdir}/iprscan.proteins.md5.part ${miscdir}/iprscan.proteins.md5
     rm -rf \$IPS6_WORK ips6_out
     touch ${out}.iprscan.done
 
