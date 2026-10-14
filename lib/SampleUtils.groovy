@@ -92,4 +92,31 @@ class SampleUtils {
             taxonid     : row.NCBI_TAXONID?.trim(),
         ]
     }
+
+    /**
+     * Resolve a per-sample SBT file named in the optional samples.csv `SBT` column.
+     * A relative name is looked up under `sbtDir` (--sbt_dir) when that is set,
+     * otherwise under `launchDir`; an absolute path is used as-is. Returns the
+     * real (symlink-resolved) path, or null when the column is empty or the file
+     * does not exist, so the caller can fall back to --sbt_template.
+     */
+    static java.nio.file.Path resolveSbt(String name, String sbtDir, String launchDir) {
+        if (!name?.trim()) return null
+        def f = new File(name.trim())
+        if (!f.isAbsolute()) f = new File(sbtDir ?: launchDir, name.trim())
+        return (f.isFile() && f.canRead()) ? f.toPath().toRealPath() : null
+    }
+
+    /**
+     * BioSample accessions (SAMN/SAMEA/SAMD...) written in an SBT file, e.g. the
+     * `BioSample` user-object. Empty for a generic template that names none, in
+     * which case no consistency check applies.
+     */
+    static List<String> sbtBiosamples(java.nio.file.Path sbt) {
+        def text = sbt.toFile().getText('UTF-8')
+        def m = (text =~ /\b(SAM[NED][A-Z]?\d+)\b/)
+        def found = [] as LinkedHashSet
+        while (m.find()) found << m.group(1)
+        return found as List<String>
+    }
 }

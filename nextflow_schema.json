@@ -114,8 +114,29 @@
         },
         "sbt_template": {
           "type": "string",
-          "description": "NCBI submission template (.sbt) used by funannotate.",
+          "description": "NCBI submission template (.sbt) used by funannotate annotate for genomes with no usable SBT column entry. If the file is missing, annotate runs without --sbt.",
           "default": "${launchDir}/lib/template.sbt"
+        },
+        "sbt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Alias for sbt_template: the default NCBI submission template (.sbt). Wins over sbt_template when both are set.",
+          "default": null
+        },
+        "sbt_strict": {
+          "type": "boolean",
+          "description": "Fail the run (instead of warning) when a per-genome SBT file is missing or names a different BioSample than the sheet's BIOSAMPLE column.",
+          "default": false
+        },
+        "sbt_dir": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Directory holding per-genome .sbt files. A relative name in the samples.csv SBT column is looked up here (default: the launch directory).",
+          "default": null
         }
       }
     },

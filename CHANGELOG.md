@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Per-genome SBT for `funannotate annotate`: an optional samples.csv `SBT` column (an absolute path,
+  or a file name under `--sbt_dir`; default the launch directory) overrides the default template for
+  that genome. A blank entry or missing file falls back to `--sbt_template`, then to funannotate's own
+  template (no `--sbt`). `--sbt FILE` is an alias for `--sbt_template` and wins when both are given.
+  An optional `BIOSAMPLE` column is checked against the BioSample named inside the SBT. A missing file
+  or mismatch warns; `--sbt_strict true` stops the run instead. NCBI deposit is not required for these
+  runs, so the default is to warn. The chosen file is staged as a process input
+  (`FUNANNOTATE_ANNOTATE` now takes `tuple val(meta), path(sbt)`; `assets/NO_FILE` is the placeholder
+  when no SBT applies). Stub-tested for the fallback case only; the strict and mismatch paths have not run.
 - Refit EVM weights (#42): `predict_evm_weights` = `augustus:1 hiq:3 genemark:2 snap:1 pasa:4`
   when the genome has a PASA training set, `predict_evm_weights_norna` =
   `augustus:2 hiq:5 genemark:4 snap:1` otherwise; appended to predict's single `-w` group,

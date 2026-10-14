@@ -48,6 +48,16 @@
                 "description": "Path to the input genome FASTA (.fa, .fna, .fasta, or .gz). Absolute path or relative to launchDir. If blank, the genome is resolved from params.source as <source>/<ASMID>/<ASMID>_genomic.fna.gz.",
                 "default": ""
             },
+            "SBT": {
+                "type": "string",
+                "description": "NCBI submission template (.sbt) for this genome (optional). An absolute path, or a file name under --sbt_dir (default: launchDir). If blank or the file is missing, --sbt_template is used; if that is missing too, funannotate annotate uses its own default template.",
+                "default": ""
+            },
+            "BIOSAMPLE": {
+                "type": "string",
+                "description": "NCBI BioSample accession (optional, e.g. SAMN64094693). Only used to check that the SBT file names the same BioSample.",
+                "default": ""
+            },
             "PHYLUM": {
                 "type": "string",
                 "description": "Phylum name (optional). Used by --taxon PHYLUM:Ascomycota to filter samples.",
