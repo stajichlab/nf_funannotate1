@@ -53,7 +53,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   run instead of being recorded in `predict_skipped_too_small.tsv`. The catch now reads the copied log.
 
 ### Changed
-- `container_funannotate` is `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.6` (was v1.9.0-rc.5).
+- `container_funannotate` is `<sif_dir>/funannotate-1.9.0.sif`, a local image of the 1.9.0 release
+  `ghcr.io/nextgenusfs/funannotate:v1.9.0` (was `docker://...:v1.9.0-rc.6`; the 1.9.0 pin itself was
+  made in 2be393a). Make the file with
+  `apptainer pull <sif_dir>/funannotate-1.9.0.sif docker://ghcr.io/nextgenusfs/funannotate:v1.9.0`.
+  `container_mariadb` still defaults to this image. Conda defaults (`conda_env`) are unchanged
+  (`funannotate-1.9.0-rc.6`, not built).
+- Under `-profile singularity` the `funannotate`, `genome_clean`, `sra`, `antismash`, `signalp`,
+  `skani`, `busco_genome` and `genemark` labels no longer run the `ucr_hpcc` host `module load`
+  chain (e.g. `module load funannotate`). Each has an apptainer-only `beforeScript`; `genemark` also
+  loads `miniconda3` for the host-side Python. A stub run on UCR HPCC (11 tasks, then 6 more for
+  `GENEMARK_RUN`) built the wrappers without the host tool modules. The real tools have not been run
+  with this change.
+- `container_funannotate` was `ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.6` (was v1.9.0-rc.5).
   rc.6 fixes two crashes this pipeline does not hit: predict's `AUGUSTUS_BASE` error when the
   Augustus config directory is not named `config` (`augustus_config` ends in `/config`), and
   annotate with `--genbank`/`--gff` and no `--table` (ANNOTATE uses `-i`). The unbuilt rc.5 conda
