@@ -917,6 +917,29 @@
           "default": false,
           "description": "Run funannotate predict in node-local $TMPDIR and copy only final results to params.target (avoids small-file I/O on network filesystems). Set true by -profile k8s/nrp."
         },
+        "genemark_chunked": {
+          "type": "boolean",
+          "default": false,
+          "description": "Chunked GeneMark route (genemark_sidecar.nf only): train once, predict in chunks of contigs, merge. Applies to genomes with at least genemark_chunk_min_contigs contigs that train fresh in ES mode, in container mode. false keeps the single-task route for every genome."
+        },
+        "genemark_chunk_min_contigs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 25000,
+          "description": "Contig count at or above which a genome takes the chunked GeneMark route."
+        },
+        "genemark_chunk_contigs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 20000,
+          "description": "Target contigs per chunk in the chunked GeneMark route (about 45 minutes at 20000 on 8 cores)."
+        },
+        "genemark_chunk_min_bp": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 100000,
+          "description": "A chunk with fewer bases than this is merged into its neighbour (gmes_petap.pl rejects input under 100,000 bp)."
+        },
         "genemark_local_scratch": {
           "type": "boolean",
           "default": false,
