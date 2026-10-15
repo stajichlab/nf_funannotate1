@@ -52,6 +52,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   monolithic prediction (67,486 records, 8,024 genes); without them it had 67,471 records and 8,021 genes (15 records of
   3 genes missing). GTFs already stored from reuse runs were made without the options and can differ slightly
   (about 0.02% of records here, up to about 1% of CDS chains in BFD's wave 1 genomes) if regenerated.
+- `GENEMARK_RUN` (`modules/local/genemark_run.nf`): an unset `params.genemark_local_scratch` now counts as false. Under the sidecar HPCC profile the parameter is not defined, and the task failed with `Cannot invoke method toBoolean() on null object`. Observed with the old module on 2026-10-14; the fix uses the same expression as the chunked GeneMark modules in PR #60.
 - FUNANNOTATE_TRAIN/UPDATE (pasa_mysql): mariadbd readiness wait is `MARIADB_START_TIMEOUT`
   seconds (default 180; was 30), and `stop_mysqldb` sends SIGKILL if mariadbd is still running
   60 s after SIGTERM instead of waiting without a limit. In Fungi_BFD a ~78 s container start
