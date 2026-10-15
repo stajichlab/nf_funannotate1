@@ -228,7 +228,7 @@ process GENEMARK_RUN {
     # and only the .gtf, .mod and stdout log come back. The EXIT trap copies them back on
     # every exit path (success, graceful skip, error) and removes the scratch dir.
     TASKDIR="\$PWD"
-    if [ "${params.genemark_local_scratch.toBoolean()}" = "true" ]; then
+    if [ "${(params.genemark_local_scratch ?: false).toString().toBoolean()}" = "true" ]; then
         GM_SCRATCH_ROOT="\${TMPDIR:-/tmp}"
         if [ ! -d "\$GM_SCRATCH_ROOT" ] || [ ! -w "\$GM_SCRATCH_ROOT" ]; then GM_SCRATCH_ROOT=/tmp; fi
         if GM_SCRATCH=\$(mktemp -d "\$GM_SCRATCH_ROOT/gmes_${out}.XXXXXX" 2>/dev/null); then
