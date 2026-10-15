@@ -64,6 +64,8 @@ process BUSCO_GENOME {
     fi
     cp "\$SUMMARY" "${meta.asmid}.BUSCO_summary.${meta.busco}.txt"
     rm -rf "\$SCRATCH/\$RUNDIR"
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'busco=busco --version'
     """
 
     stub:

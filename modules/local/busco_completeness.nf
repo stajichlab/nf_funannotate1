@@ -76,6 +76,8 @@ process BUSCO_COMPLETENESS {
             done
         fi
     fi
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'busco=busco --version'
     """
 
     stub:

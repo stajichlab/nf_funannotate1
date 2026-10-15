@@ -74,6 +74,8 @@ process SIGNALP_RUN {
     "${task.process}":
         signalp: \$(signalp6 --version 2>&1 | grep -oP '\\d+\\.\\d+\\S*' | head -1)
     END_VERSIONS
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'signalp=signalp6 --version 2>&1 | head -1'
     """
 
     stub:

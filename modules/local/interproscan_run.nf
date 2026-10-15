@@ -186,6 +186,9 @@ process INTERPROSCAN_RUN {
         interproscan: \${IPS6_VERSION}
         interpro_data: \${IPR_VERSION}
     END_VERSIONS
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'interproscan=echo \${IPS6_VERSION}' \\
+        'interpro_data=echo \${IPR_VERSION}'
     """
 
     stub:

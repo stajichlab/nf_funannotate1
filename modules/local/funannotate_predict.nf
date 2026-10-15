@@ -347,6 +347,14 @@ process FUNANNOTATE_PREDICT {
     sync "\$PREDICT_GBK" || true
     touch ${out}.predict.done
     echo "[INFO] Prediction complete for ${out} at \$PREDICTDIR"
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'funannotate=funannotate --version' \\
+        'augustus=augustus --version 2>&1 | head -1' \\
+        'minimap2=minimap2 --version' \\
+        'samtools=samtools --version | head -1' \\
+        'tantan=tantan --version 2>&1 | head -1' \\
+        'diamond=diamond --version' \\
+        'bedtools=bedtools --version'
     """
 
     stub:

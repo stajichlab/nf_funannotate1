@@ -50,6 +50,8 @@ process DEEPTMHMM_ANNOTATION {
     "${task.process}":
         deeptmhmm: 1.0-academic
     END_VERSIONS
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'deeptmhmm=echo 1.0-academic'
     """
 
     stub:

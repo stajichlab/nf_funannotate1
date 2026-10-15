@@ -732,3 +732,17 @@ real tools. The SRA/RNA-seq subgraph is exercised with `--run_sra_fetch true`.
 Post-predict steps (antismash/interpro/signalp/annotate) run in the same pass for
 genomes predicted in that run, and skip cleanly for genomes already complete
 (`predict_results/*.gbk` or `.gbk.gz` present and not stale).
+
+## Tool versions per sample
+
+Each per-sample process (GENOME_CLEAN, MASKREPEAT_TANTAN_RUN, GENEMARK_RUN,
+FUNANNOTATE_TRAIN/PREDICT/UPDATE/ANNOTATE, BUSCO_*, ANTISMASH_RUN,
+INTERPROSCAN*, SIGNALP_RUN, DEEPTMHMM_ANNOTATION) runs `bin/record_versions.sh`
+at the end of its script. It runs the real `--version` commands inside the task
+container and writes `<target>/<sample>/versions/<STEP>.versions.yml`. The file
+also records the container image, pipeline version/commit, host and time.
+A task that storeDir skips does not run, so it writes no record.
+
+Merge the records into one TSV per sample, and optionally one combined TSV:
+
+    bin/merge_versions.py results/annotation --all results/annotation/tool_versions.tsv
