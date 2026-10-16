@@ -44,6 +44,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hashes do not change. Rows without the column keep using `BUSCO_LINEAGE`.
 
 ### Fixed
+- `GENEMARK_TRAIN` (`modules/local/genemark_train.nf`): the fast-reuse (`--predict_with`) call now passes `--max_intron` and `--soft_mask 2000`, like the fresh ES/ET calls. This is the same change #61 made in `modules/local/genemark_run.nf`; #60 added this module with the old call.
 - GENEMARK_RUN fast-reuse (`--predict_with`) now passes `--max_intron ${params.max_intronlen} --soft_mask 2000`, the
   options the fresh `--ES`/`--ET` calls already use (as BFD's GENEMARK_RUN does, DECISIONS D135: 100% identical CDS
   chains to the ES run on 6 genomes with them, 99.0-100% without). `--soft_mask` makes GeneMark use the soft-masked
