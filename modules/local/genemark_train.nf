@@ -59,8 +59,8 @@
 // would train FRESH in ES mode (container mode only) stops after `gmes_petap.pl --ES --training_only`
 // and writes chunks/chunk_NNNN.fa.gz (+ <out>.train.mod). GENEMARK_PREDICT_CHUNK predicts each
 // chunk with `--predict_with <model>`; GENEMARK_MERGE merges, validates and emits gtf + mod.
-// Not chunked: fast-reuse rows (this module's reuse call omits --max_intron/--soft_mask, so a
-// chunked reuse would not match it), fresh ET rows with a training BAM (ET equivalence untested),
+// Not chunked: fast-reuse rows (the sidecar always trains fresh, and a reuse row is one
+// task), fresh ET rows with a training BAM (ET equivalence untested),
 // and host (non-container) mode. In the chunked route this task emits NO `<out>.genemark.gtf` or
 // `<out>.genemark.mod`; those names exist only on the monolithic route.
 process GENEMARK_TRAIN {
@@ -390,8 +390,10 @@ process GENEMARK_TRAIN {
     if [ -n "${shared_mod}" ] && [ "${force_independent}" != "true" ]; then
         echo "[INFO] GENEMARK_RUN ${out}: fast-reuse (--predict_with) against shared model ${shared_mod}"
         cp "${shared_mod}" genemark-shared.mod
+        # --max_intron and --soft_mask 2000 match the fresh ES/ET calls (BFD DECISIONS D135)
         run_gmes --predict_with genemark-shared.mod \\
-            --sequence genome.fa --cores ${task.cpus} --fungus "\${GCODE_ARGS[@]}" 2>&1 | tee "\$GMES_LOG"
+            --sequence genome.fa --max_intron ${params.max_intronlen} --soft_mask 2000 \\
+            --cores ${task.cpus} --fungus "\${GCODE_ARGS[@]}" 2>&1 | tee "\$GMES_LOG"
     elif [ "${mode}" = "ET" ] && [ -n "${training_bam}" ] && [ -s "${training_bam}" ]; then
         echo "[INFO] GENEMARK_RUN ${out}: fresh ET self-training seeded by RNA-seq intron hints from ${training_bam}"
         run_bam2hints --intronsonly --in="${training_bam}" --out=raw_hints.gff
