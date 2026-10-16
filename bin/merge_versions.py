@@ -6,14 +6,14 @@ Usage: merge_versions.py ROOT [--all OUT.tsv]
 ROOT holds <sample>/versions/*.versions.yml. Writes
 ROOT/<sample>/versions/<sample>.tool_versions.tsv per sample, and optionally
 one combined TSV. Columns: sample, step, tool, version, container, pipeline,
-host, recorded.
+host, recorded, retroactive, note.
 """
 import argparse
 import glob
 import os
 import re
 
-COLS = ["sample", "step", "tool", "version", "container", "pipeline", "host", "recorded"]
+COLS = ["sample", "step", "tool", "version", "container", "pipeline", "host", "recorded", "retroactive", "note"]
 KV = re.compile(r'^(\s*)([^:\s][^:]*):\s*"(.*)"\s*$')
 
 
