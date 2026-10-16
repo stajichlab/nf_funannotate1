@@ -2,6 +2,8 @@
 // Stages the ~470 GB FCS-GX database into /dev/shm ONCE (~30 min), then
 // cleans every genome in the batch sequentially against that in-memory DB,
 // amortizing the staging cost over up to clean_batch_size genomes.
+// The phylum taxid per genome comes from TAXON_PHYLUM (meta.phylum); taxonkit
+// is not in this image.
 // Only used when params.skip_fcs is false; GENOME_CLEAN handles the per-genome
 // fallback (clean_batch_size=0 or --skip_fcs).
 //
@@ -19,7 +21,7 @@ process GENOME_CLEAN_BATCH {
     path "clean_batch_*.manifest.tsv", emit: manifest
 
     script:
-    def batch_tsv = items.collect { row -> "${row[0].asmid}\t${row[1]}\t${row[0].taxonid}" }.join('\n')
+    def batch_tsv = items.collect { row -> "${row[0].asmid}\t${row[1]}\t${row[0].taxonid}\t${row[0].phylum ?: ""}" }.join('\n')
     """
     set -uo pipefail
     source /etc/profile.d/modules.sh 2>/dev/null || true
@@ -30,7 +32,6 @@ process GENOME_CLEAN_BATCH {
     if [ ! -d "\$SCRATCH" ] || [ ! -w "\$SCRATCH" ]; then
         SCRATCH="."
     fi
-    TAXONKIT_DB=${taxondb}
     DEST=${launchDir}/input_clean_genomes
     mkdir -p \$DEST/clean
 
@@ -57,7 +58,7 @@ BATCH_EOF
 
     i=0
     fcs_fails=0
-    while IFS=\$'\\t' read -r asmid gz taxonid; do
+    while IFS=\$'\\t' read -r asmid gz taxonid phylum; do
         [ -z "\$asmid" ] && continue
         i=\$((i+1))
         target=\$DEST/\${asmid}.fa.gz
@@ -76,10 +77,6 @@ BATCH_EOF
             continue
         fi
 
-        phylum=\$(echo \$taxonid | taxonkit --data-dir \$TAXONKIT_DB lineage | taxonkit --data-dir \$TAXONKIT_DB reformat -f "{p}" --output-ambiguous-result | cut -f3 | taxonkit --data-dir \$TAXONKIT_DB name2taxid | cut -f2 | uniq | head -n 1)
-        if [ -z "\$phylum" ]; then
-            phylum=\$(echo \$taxonid | taxonkit --data-dir \$TAXONKIT_DB lineage | taxonkit --data-dir \$TAXONKIT_DB reformat -f "{K}" --output-ambiguous-result | cut -f3 | taxonkit --data-dir \$TAXONKIT_DB name2taxid | uniq | cut -f2 | head -n 1)
-        fi
         echo "[\$i/\$n_total][INFO] \$asmid taxonid=\$taxonid phylum=\$phylum"
 
         # Accept gzipped (NCBI_ASM .fna.gz) or plain (local GENOME column) FASTA input.
@@ -99,7 +96,7 @@ BATCH_EOF
         # matching the same [FAIL]/fcs_fails bookkeeping the fcs_gx_purge
         # branch already uses below.
         if AAFTF fcs_gx_purge --db /dev/shm/gxdb/all \\
-            -i \$SCRATCH/\${asmid}.raw.fa --cpus ${task.cpus} \\
+            -i \$SCRATCH/\${asmid}.raw.fa \\
             -o \$SCRATCH/\${asmid}.purge.fasta \\
             -t "\$phylum" -w \$SCRATCH/\${asmid}.fcs_report \\
             && [ -s \$SCRATCH/\${asmid}.purge.fasta ] ; then
@@ -134,7 +131,7 @@ BATCH_EOF
     """
 
     stub:
-    def batch_tsv = items.collect { row -> "${row[0].asmid}\t${row[1]}\t${row[0].taxonid}" }.join('\n')
+    def batch_tsv = items.collect { row -> "${row[0].asmid}\t${row[1]}\t${row[0].taxonid}\t${row[0].phylum ?: ""}" }.join('\n')
     """
     DEST=${launchDir}/input_clean_genomes
     mkdir -p \$DEST/clean
@@ -143,7 +140,7 @@ BATCH_EOF
     cat > batch.tsv <<'BATCH_EOF'
 ${batch_tsv}
 BATCH_EOF
-    while IFS=\$'\\t' read -r asmid gz taxonid; do
+    while IFS=\$'\\t' read -r asmid gz taxonid phylum; do
         [ -z "\$asmid" ] && continue
         echo ">stub_\${asmid}" | pigz -c > \$DEST/\${asmid}.fa.gz
         touch \$DEST/clean/\${asmid}.purge.fasta \$DEST/clean/\${asmid}.purge.fcs_gx-taxonomy.tsv
