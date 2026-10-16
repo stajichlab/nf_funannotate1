@@ -11,6 +11,7 @@
  *             samples with no cleaned file are silently dropped with a warning.
  */
 
+include { TAXON_PHYLUM       } from './../../modules/local/taxon_phylum'
 include { GENOME_CLEAN       } from './../../modules/local/genome_clean'
 include { GENOME_CLEAN_BATCH } from './../../modules/local/genome_clean_batch'
 
@@ -30,16 +31,25 @@ workflow CLEAN_GENOMES {
         !(fgz.exists() && fgz.size() > 0) && !fa.exists()
     }
 
+    // taxonkit runs in its own container (params.container_taxonkit): the AAFTF
+    // >= 0.7 image no longer ships it. TAXON_PHYLUM adds meta.phylum (numeric
+    // NCBI taxid) for the FCS-GX purge. Not needed with --skip_fcs.
+    def jobs_ready = jobs_to_clean
+    if (!params.skip_fcs.toBoolean()) {
+        TAXON_PHYLUM(jobs_to_clean.combine(taxondb).map { meta, gz, db -> tuple(meta, gz, db) })
+        jobs_ready = TAXON_PHYLUM.out.phylum.map { meta, gz, f -> tuple(meta + [phylum: f.text.trim()], gz) }
+    }
+
     def clean_done_ch
     int clean_batch_size = params.clean_batch_size as int
     if (clean_batch_size > 0 && !params.skip_fcs.toBoolean()) {
         // Wrap each collated batch in a single-element list so .combine() appends
         // taxondb as the 2nd tuple element rather than spreading the batch rows.
-        def clean_batches = jobs_to_clean.collate(clean_batch_size).map { batch -> [ batch ] }
+        def clean_batches = jobs_ready.collate(clean_batch_size).map { batch -> [ batch ] }
         GENOME_CLEAN_BATCH(clean_batches.combine(taxondb))
         clean_done_ch = GENOME_CLEAN_BATCH.out.manifest.collect().ifEmpty([])
     } else {
-        GENOME_CLEAN(jobs_to_clean.combine(taxondb))
+        GENOME_CLEAN(jobs_ready.combine(taxondb))
         clean_done_ch = GENOME_CLEAN.out.genome.map { meta, gz -> gz }.collect().ifEmpty([])
     }
 

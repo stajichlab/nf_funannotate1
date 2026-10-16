@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `params.container_taxonkit` and a `TAXON_PHYLUM` process. `taxonkit` runs in its own container
+  (label `taxonkit`) because the AAFTF >= 0.7 image no longer ships it. `TAXON_PHYLUM` resolves the
+  numeric phylum taxid and adds it to `meta.phylum`. `GENOME_CLEAN` and `GENOME_CLEAN_BATCH` read it from
+  there. The `singularity` axis binds `params.taxondb` read-only into the container. The `ucr_hpcc`
+  axis loads the `taxonkit` module. The `conda` and `pixi` axes reuse the `genome_clean` environment.
 - Per-task tool-version records. Each per-sample process (`GENOME_CLEAN`, `MASKREPEAT_TANTAN_RUN`,
   `GENEMARK_RUN`, `FUNANNOTATE_TRAIN/PREDICT/UPDATE/ANNOTATE`, `BUSCO_*`, `ANTISMASH_RUN`,
   `INTERPROSCAN*`, `SIGNALP_RUN`, `DEEPTMHMM_ANNOTATION`) calls `bin/record_versions.sh` at the end of its

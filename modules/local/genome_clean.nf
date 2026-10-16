@@ -1,6 +1,7 @@
 // FCS-GX contaminant purge + length-filter for a single genome assembly.
 // Uses storeDir so the task is skipped if the cleaned .fa.gz already exists.
-// Runs under the 'genome_clean' provisioning label (AAFTF + taxonkit + FCS-GX);
+// Runs under the 'genome_clean' provisioning label (AAFTF + FCS-GX). The phylum
+// taxid comes from TAXON_PHYLUM (meta.phylum); taxonkit is no longer in this image;
 // resources are overridden per-profile by withName: '.*:GENOME_CLEAN' in
 // conf/profile_annotate.config (500 GB highmem with FCS, 8 GB short without).
 process GENOME_CLEAN {
@@ -11,7 +12,7 @@ process GENOME_CLEAN {
     storeDir "${launchDir}/input_clean_genomes"
 
     input:
-    tuple val(meta), path(genome_gz), val(taxondb)
+    tuple val(meta), path(genome_gz), val(taxondb)   // taxondb is unused now; kept so the call site is unchanged
 
     output:
     tuple val(meta), path("${meta.asmid}.fa.gz"), emit: genome
@@ -19,7 +20,7 @@ process GENOME_CLEAN {
     script:
     def out      = meta.id
     def asmid    = meta.asmid
-    def taxonid  = meta.taxonid
+    def phylum   = meta.phylum
     """
     if [ ! -f "${genome_gz}" ]; then
         echo "ERROR: genome_gz not found at path: ${genome_gz}" >&2
@@ -51,18 +52,12 @@ process GENOME_CLEAN {
     else
         # Ensure /dev/shm/gxdb is present on this node; register for cleanup when done.
         source ${params.fcs_shm_script}
-        TAXONKIT_DB=${taxondb}
-        phylum=\$(echo ${taxonid} | taxonkit --data-dir \$TAXONKIT_DB lineage | taxonkit --data-dir \$TAXONKIT_DB reformat -f "{p}" --output-ambiguous-result | cut -f3 | taxonkit --data-dir \$TAXONKIT_DB name2taxid | cut -f2 | uniq | head -n 1)
-        if [ -z "\$phylum" ]; then
-            phylum=\$(echo ${taxonid} | taxonkit --data-dir \$TAXONKIT_DB lineage | taxonkit --data-dir \$TAXONKIT_DB reformat -f "{K}" --output-ambiguous-result | cut -f3 | taxonkit --data-dir \$TAXONKIT_DB name2taxid | uniq | cut -f2 | head -n 1)
-            # weird we are getting 2 lines from name2taxid when input is Fungi add the uniq/head -n 1 to ensure only one line
-        fi
-        echo "[INFO] Phylum for ${asmid} (taxonid=${taxonid}): \$phylum"
+        echo "[INFO] Phylum for ${asmid} (from TAXON_PHYLUM): ${phylum}"
         echo "[INFO] FCS-GX purge + cleaning genome for ${asmid}..."
         AAFTF fcs_gx_purge --db /dev/shm/gxdb/all \
-            -i \$SCRATCH/${asmid}.raw.fa --cpus ${task.cpus} \
+            -i \$SCRATCH/${asmid}.raw.fa \
             -o \$SCRATCH/${asmid}.purge.fasta \
-            -t "\$phylum" -w \$SCRATCH/${asmid}.fcs_report
+            -t "${phylum}" -w \$SCRATCH/${asmid}.fcs_report
         mkdir -p ${launchDir}/input_clean_genomes/clean
         cat \$SCRATCH/${asmid}.purge.fasta | \
             ${params.clean_script} --len ${params.min_contig_len} > ${asmid}.fa
@@ -85,8 +80,7 @@ process GENOME_CLEAN {
     echo "[INFO] Clean genome written: ${asmid}.fa.gz (\$(du -sh ${asmid}.fa.gz | cut -f1))"
     rm -f \$SCRATCH/${asmid}.raw.fa
     ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
-        'AAFTF=AAFTF --version' \\
-        'taxonkit=taxonkit version' \\
+        'AAFTF=AAFTF --version 2>&1 | grep -E '\\''^AAFTF [0-9]'\\'' | head -1' \\
         'fcs_gx=command -v gx >/dev/null && ls \$(dirname \$(command -v gx))/../conda-meta 2>/dev/null | grep ncbi-fcs-gx | head -1' \\
         'pigz=pigz --version'
     """
