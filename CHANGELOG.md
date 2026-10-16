@@ -7,7 +7,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
-- `params.container_taxonkit` and a `TAXON_PHYLUM` process. `taxonkit` runs in its own container
+- `params.taxonkit_container` and a `TAXON_PHYLUM` process. `taxonkit` runs in its own container
   (label `taxonkit`) because the AAFTF >= 0.7 image no longer ships it. `TAXON_PHYLUM` resolves the
   numeric phylum taxid and adds it to `meta.phylum`. `GENOME_CLEAN` and `GENOME_CLEAN_BATCH` read it from
   there. The `singularity` axis binds `params.taxondb` read-only into the container. The `ucr_hpcc`

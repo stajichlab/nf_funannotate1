@@ -198,11 +198,11 @@ min_contig_len: 2000
 pasa_mysql: false
 
 # Genome-clean image (AAFTF + FCS-GX client; taxonkit is a separate image, see
-# container_taxonkit). The default is
+# taxonkit_container). The default is
 # <sif_dir>/AAFTF.sif. This line makes Nextflow pull the public image
 # instead. Remove it if you made AAFTF.sif (see "Container images" below).
 container_genome_clean: docker://ghcr.io/stajichlab/aaftf:latest
-container_taxonkit: https://depot.galaxyproject.org/singularity/taxonkit:0.20.0--h9ee0642_1
+taxonkit_container: https://depot.galaxyproject.org/singularity/taxonkit:0.20.0--h9ee0642_1
 ```
 
 ```groovy

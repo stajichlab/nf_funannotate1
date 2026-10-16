@@ -1,6 +1,6 @@
 // Resolve the numeric NCBI taxid of a genome's phylum (kingdom as fallback)
 // with taxonkit. AAFTF fcs_gx_purge -t needs that taxid.
-// taxonkit runs in its own container (params.container_taxonkit) because the
+// taxonkit runs in its own container (params.taxonkit_container) because the
 // AAFTF >= 0.7 image no longer ships it.
 process TAXON_PHYLUM {
     label 'taxonkit'

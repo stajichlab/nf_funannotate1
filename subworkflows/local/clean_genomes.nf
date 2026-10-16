@@ -31,7 +31,7 @@ workflow CLEAN_GENOMES {
         !(fgz.exists() && fgz.size() > 0) && !fa.exists()
     }
 
-    // taxonkit runs in its own container (params.container_taxonkit): the AAFTF
+    // taxonkit runs in its own container (params.taxonkit_container): the AAFTF
     // >= 0.7 image no longer ships it. TAXON_PHYLUM adds meta.phylum (numeric
     // NCBI taxid) for the FCS-GX purge. Not needed with --skip_fcs.
     def jobs_ready = jobs_to_clean
