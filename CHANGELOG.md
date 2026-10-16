@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Per-task tool-version records. Each per-sample process (`GENOME_CLEAN`, `MASKREPEAT_TANTAN_RUN`,
+  `GENEMARK_RUN`, `FUNANNOTATE_TRAIN/PREDICT/UPDATE/ANNOTATE`, `BUSCO_*`, `ANTISMASH_RUN`,
+  `INTERPROSCAN*`, `SIGNALP_RUN`, `DEEPTMHMM_ANNOTATION`) calls `bin/record_versions.sh` at the end of its
+  script. It runs the tools' `--version` commands inside the task container and writes
+  `<target>/<id>/versions/<STEP>.versions.yml` (container image, pipeline version and commit, host, time).
+  A task skipped by `storeDir` writes no record. `bin/merge_versions.py` merges the records into one TSV
+  per sample. A record written after the fact carries `retroactive: "true"` and a `note`.
 - Reuse check for InterProScan and antiSMASH results. `INTERPROSCAN_RUN` records the md5 of the
   proteins it scanned (`annotate_misc/iprscan.proteins.md5`) and `ANTISMASH_RUN` records the md5 of the
   predict GBK it ran on (`antismash_local/antismash.input.md5`). The done-check in
