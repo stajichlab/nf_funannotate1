@@ -55,6 +55,10 @@ process FUNANNOTATE_ANNOTATE {
         exit 1
     fi
     touch ${out}.annotate.done
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'funannotate=funannotate --version' \\
+        'augustus=augustus --version 2>&1 | head -1' \\
+        'diamond=diamond --version'
     """
 
     stub:

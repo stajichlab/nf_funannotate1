@@ -30,6 +30,9 @@ process MASKREPEAT_TANTAN_RUN {
     funannotate mask -i "\$GENOME_IN" -o ${asmid}.masked.fasta -m tantan --cpus ${task.cpus}
     # Deliver the soft-masked genome gzip-compressed to save space; consumers inflate it.
     pigz -f ${asmid}.masked.fasta
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'funannotate=funannotate --version' \\
+        'tantan=tantan --version 2>&1 | head -1'
     """
 
     stub:

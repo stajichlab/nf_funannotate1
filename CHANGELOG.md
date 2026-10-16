@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Per-task tool-version records. Each per-sample process (`GENOME_CLEAN`, `MASKREPEAT_TANTAN_RUN`,
+  `GENEMARK_RUN`, `FUNANNOTATE_TRAIN/PREDICT/UPDATE/ANNOTATE`, `BUSCO_*`, `ANTISMASH_RUN`,
+  `INTERPROSCAN*`, `SIGNALP_RUN`, `DEEPTMHMM_ANNOTATION`) calls `bin/record_versions.sh` at the end of its
+  script. It runs the tools' `--version` commands inside the task container and writes
+  `<target>/<id>/versions/<STEP>.versions.yml` (container image, pipeline version and commit, host, time).
+  A task skipped by `storeDir` writes no record. `bin/merge_versions.py` merges the records into one TSV
+  per sample. A record written after the fact carries `retroactive: "true"` and a `note`.
+- Reuse check for InterProScan and antiSMASH results. `INTERPROSCAN_RUN` records the md5 of the
+  proteins it scanned (`annotate_misc/iprscan.proteins.md5`) and `ANTISMASH_RUN` records the md5 of the
+  predict GBK it ran on (`antismash_local/antismash.input.md5`). The done-check in
+  `annotate_genome.nf` reuses a result only if it is at least 100 bytes (the stub writes a 30-byte
+  placeholder) and, when a record exists, the md5 still matches the current input; a result whose input
+  changed (for example after re-prediction) is rerun, and the reason is logged. Results with no record
+  (written before this change, and IPS5 output) are reused as before. `FunannotateUtils.md5Of`,
+  `reuseStatus` and `reusable` hold the logic.
 - Per-genome SBT for `funannotate annotate`: an optional samples.csv `SBT` column (an absolute path,
   or a file name under `--sbt_dir`; default the launch directory) overrides the default template for
   that genome. A blank entry or missing file falls back to `--sbt_template`, then to funannotate's own

@@ -26,6 +26,8 @@ process INTERPROSCAN5_RUN {
     "${task.process}":
         interproscan: \$(interproscan.sh --version 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+' | head -1)
     END_VERSIONS
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'interproscan=interproscan.sh --version 2>&1 | grep -i version | head -1'
     """
 
     stub:

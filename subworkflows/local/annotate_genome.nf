@@ -26,11 +26,36 @@ include { FUNANNOTATE_ANNOTATE } from './../../modules/local/funannotate_annotat
 
 // funannotate annotate gzips a plain iprscan.xml after parsing it and deletes
 // the original, and INTERPROSCAN_RUN (IPS6) writes the .gz directly -- so
-// either form means InterProScan is done for this assembly.
-def iprscanDone(meta) {
-    return ['iprscan.xml', 'iprscan.xml.gz'].any { f ->
-        file("${params.target}/${meta.id}/annotate_misc/${f}").exists()
-    }
+// either form means InterProScan is done for this assembly. A result is reused only if it is
+// a real file (>= 100 bytes; the stub writes a 30-byte placeholder) and, when INTERPROSCAN_RUN
+// recorded the md5 of the proteins it scanned (annotate_misc/iprscan.proteins.md5), that md5
+// still matches predict_results/<id>.proteins.fa. Results without a record are reused.
+def iprscanStatus(meta) {
+    def misc = "${params.target}/${meta.id}/annotate_misc"
+    def xml  = ['iprscan.xml', 'iprscan.xml.gz'].collect { new File("${misc}/${it}") }.find { it.exists() }
+    return FunannotateUtils.reuseStatus(
+        xml,
+        new File("${params.target}/${meta.id}/predict_results/${meta.id}.proteins.fa"),
+        new File("${misc}/iprscan.proteins.md5"),
+        100L)
+}
+def iprscanDone(meta) { return FunannotateUtils.reusable(iprscanStatus(meta)) }
+
+// antiSMASH: the JSON in antismash_local/, checked against the predict GBK it ran on
+// (antismash_local/antismash.input.md5, written by ANTISMASH_RUN).
+def antismashStatus(meta) {
+    def dir = new File("${params.target}/${meta.id}/antismash_local")
+    def json = dir.isDirectory() ? dir.listFiles().find { it.name.endsWith('.json') || it.name.endsWith('.json.gz') } : null
+    def predictDir = "${params.target}/${meta.id}/predict_results"
+    def gbk = FunannotateUtils.gbkResult(predictDir, meta.id as String)
+    return FunannotateUtils.reuseStatus(json, gbk, new File(dir, 'antismash.input.md5'), 100L)
+}
+def antismashDone(meta) { return FunannotateUtils.reusable(antismashStatus(meta)) }
+
+// Log why a result is being regenerated (only for results that exist but cannot be reused).
+def logRerun(String what, meta, String status) {
+    if (status == 'stale') log.info "${meta.id}: ${what} result is stale (input changed since it was computed); rerunning"
+    else if (status == 'tiny') log.info "${meta.id}: ${what} result is empty or a placeholder; rerunning"
 }
 
 workflow ANNOTATE_GENOME {
@@ -46,13 +71,11 @@ workflow ANNOTATE_GENOME {
     if (params.run_antismash.toBoolean()) {
         SETUP_ANTISMASH_DB()
         def as_todo = annotate_ready_ch.filter { meta ->
-            def asDir = file("${params.target}/${meta.id}/antismash_local")
-            !(asDir.isDirectory() && asDir.list()?.any { it.endsWith('.json') || it.endsWith('.json.gz') })
+            def st = antismashStatus(meta)
+            logRerun('antiSMASH', meta, st)
+            !FunannotateUtils.reusable(st)
         }
-        def as_done = annotate_ready_ch.filter { meta ->
-            def asDir = file("${params.target}/${meta.id}/antismash_local")
-            asDir.isDirectory() && asDir.list()?.any { it.endsWith('.json') || it.endsWith('.json.gz') }
-        }
+        def as_done = annotate_ready_ch.filter { meta -> antismashDone(meta) }
         // Gate on the DB being ready (storeDir means this is a no-op after the
         // first run) -- .combine() forces ANTISMASH_RUN to wait rather than
         // racing SETUP_ANTISMASH_DB on a cold cache.
@@ -63,7 +86,11 @@ workflow ANNOTATE_GENOME {
     }
 
     if (params.run_interpro.toBoolean()) {
-        def ipr_todo = annotate_ready_ch.filter { meta -> !iprscanDone(meta) }
+        def ipr_todo = annotate_ready_ch.filter { meta ->
+            def st = iprscanStatus(meta)
+            logRerun('InterProScan', meta, st)
+            !FunannotateUtils.reusable(st)
+        }
         def ipr_done = annotate_ready_ch.filter { meta -> iprscanDone(meta) }
         if (params.interproscan_engine == 'ips5') {
             INTERPROSCAN5_RUN(ipr_todo)

@@ -360,6 +360,8 @@ process GENEMARK_RUN {
     fi
 
     echo "[INFO] GENEMARK_RUN complete for ${out}"
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        "genemark_image=echo ${params.container_genemark}"
     """
 
     stub:

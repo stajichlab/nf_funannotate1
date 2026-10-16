@@ -40,12 +40,18 @@ process ANTISMASH_RUN {
         -c ${task.cpus} \\
         \$GBK
     gzip ${outdir}/*.json
+    # Record the md5 of the predict GBK this ran on (the .gbk, else the .gbk.gz) so the done-check
+    # in annotate_genome.nf can tell when a later re-prediction made this result stale.
+    SRC_GBK="${gbk}"; [ -f "\$SRC_GBK" ] || SRC_GBK="${gbk}.gz"
+    md5sum "\$SRC_GBK" | cut -d' ' -f1 > ${outdir}/antismash.input.md5
     touch ${out}.antismash.done
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         antismash: \$(antismash --version 2>&1 | grep -oP '(?<=antiSMASH )\\S+' || antismash --version 2>&1 | head -1)
     END_VERSIONS
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'antismash=antismash --version 2>&1 | head -1'
     """
 
     stub:

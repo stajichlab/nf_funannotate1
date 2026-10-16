@@ -781,6 +781,16 @@ process FUNANNOTATE_TRAIN {
     echo "mysql is ${params.pasa_mysql}"
     if [ "${params.pasa_mysql}" = "true" ]; then stop_mysqldb; fi
     echo "[INFO] stopped mysql"
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'funannotate=funannotate --version' \\
+        'augustus=augustus --version 2>&1 | head -1' \\
+        'minimap2=minimap2 --version' \\
+        'samtools=samtools --version | head -1' \\
+        'tantan=tantan --version 2>&1 | head -1' \\
+        'diamond=diamond --version' \\
+        'bedtools=bedtools --version' \\
+        'hisat2=hisat2 --version | head -1' \\
+        'trinity=Trinity --version 2>&1 | head -1'
     """
 
     stub:

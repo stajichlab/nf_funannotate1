@@ -294,4 +294,35 @@ class FunannotateUtils {
     ) 9>'${f}.lock' || exit 1
 fi"""
     }
+
+    // md5 (lowercase hex) of a file's bytes; the same value `md5sum` prints, so a task can
+    // record it in bash and the done-check below can compare it here.
+    static String md5Of(File f) {
+        def md = java.security.MessageDigest.getInstance('MD5')
+        f.withInputStream { is ->
+            byte[] buf = new byte[1 << 16]
+            int n
+            while ((n = is.read(buf)) > 0) md.update(buf, 0, n)
+        }
+        return md.digest().collect { String.format('%02x', it & 0xff) }.join('')
+    }
+
+    // Can an existing annotate-step result (iprscan.xml.gz, antiSMASH json) be reused?
+    //   'missing'    no result file
+    //   'tiny'       result smaller than minBytes: empty, truncated, or a stub placeholder
+    //   'stale'      a recorded input md5 differs from the current input (e.g. after re-prediction)
+    //   'unrecorded' result is fine but no md5 was recorded (older output); reused as before
+    //   'ok'         result is fine and its recorded md5 matches the current input
+    // `input` is the file the result was computed from; `record` holds that file's md5 as
+    // written by the task. A missing input cannot be checked, so it does not make a result stale.
+    static String reuseStatus(File result, File input, File record, long minBytes) {
+        if (result == null || !result.exists()) return 'missing'
+        if (result.size() < minBytes) return 'tiny'
+        if (!record.exists()) return 'unrecorded'
+        if (input == null || !input.exists()) return 'ok'
+        def recorded = record.text.trim().split(/\s+/)[0]
+        return recorded == md5Of(input) ? 'ok' : 'stale'
+    }
+
+    static boolean reusable(String status) { return status == 'ok' || status == 'unrecorded' }
 }

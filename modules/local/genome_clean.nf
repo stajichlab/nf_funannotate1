@@ -84,6 +84,11 @@ process GENOME_CLEAN {
     pigz -f ${asmid}.fa
     echo "[INFO] Clean genome written: ${asmid}.fa.gz (\$(du -sh ${asmid}.fa.gz | cut -f1))"
     rm -f \$SCRATCH/${asmid}.raw.fa
+    ${projectDir}/bin/record_versions.sh "${params.target}/${meta.id}/versions" "${task.process}" "${meta.id}" "${task.container ?: 'native'}" "${workflow.manifest.version ?: ''}@${workflow.commitId ?: workflow.revision ?: 'local'}" \\
+        'AAFTF=AAFTF --version' \\
+        'taxonkit=taxonkit version' \\
+        'fcs_gx=command -v gx >/dev/null && ls \$(dirname \$(command -v gx))/../conda-meta 2>/dev/null | grep ncbi-fcs-gx | head -1' \\
+        'pigz=pigz --version'
     """
 
     stub:
