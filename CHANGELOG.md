@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Translation table 26 (CUG=Ala, e.g. Pachysolen tannophilus) no longer aborts GeneMark or Prodigal.
+  `gmes_petap.pl` accepts only `--gcode` 1, 6 and 29, so `GENEMARK_RUN`, `GENEMARK_TRAIN` and
+  `GENEMARK_PREDICT_CHUNK` now run table 26 with GeneMark's default code 1. `PRODIGAL_RUN` falls back to
+  table 1 for any table Prodigal 2.6.3 rejects (it accepts 1-6, 9-16 and 21-25) and logs a warning.
+
 ### Added
 - `params.taxonkit_container` and a `TAXON_PHYLUM` process. `taxonkit` runs in its own container
   (label `taxonkit`) because the AAFTF >= 0.7 image no longer ships it. `TAXON_PHYLUM` resolves the

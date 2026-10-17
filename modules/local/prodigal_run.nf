@@ -84,6 +84,9 @@ process PRODIGAL_RUN {
     script:
     def out           = meta.id
     def transl_table  = meta.transl_table
+    // prodigal 2.6.3 accepts only tables 1-6, 9-16 and 21-25 (tested 0-31: others exit 15,
+    // "Invalid translation table specified."). Any other table (e.g. 26) falls back to table 1.
+    def prodigal_table = (transl_table.toString() in ['1','2','3','4','5','6','9','10','11','12','13','14','15','16','21','22','23','24','25']) ? transl_table.toString() : '1'
     def mode          = params.prodigal_mode ?: 'single'
     def prodigalLineages = (params.prodigal_lineages ?: []).collect { it.toString() }
     def skip = !prodigalLineages.isEmpty() && !prodigalLineages.contains(meta.busco?.toString())
@@ -139,8 +142,11 @@ process PRODIGAL_RUN {
     # renameGFF/EVM validation expects. Note: prodigal emits CDS rows only --
     # bin/prodigal_gff_hier.py re-emits them as gene/mRNA/CDS blocks so EVM
     # can use the source structurally (see header comment "Hierarchy fix").
-    echo "[INFO] PRODIGAL_RUN ${out}: prodigal -p ${mode} -g ${transl_table} on \$(grep -c '>' genome.fa) contigs"
-    run_prodigal -i genome.fa -f gff -p ${mode} -g ${transl_table} \\
+    if [ "${prodigal_table}" != "${transl_table}" ]; then
+        echo "[WARN] PRODIGAL_RUN ${out}: prodigal does not support translation table ${transl_table}; using table ${prodigal_table} (differs from funannotate predict --table)" >&2
+    fi
+    echo "[INFO] PRODIGAL_RUN ${out}: prodigal -p ${mode} -g ${prodigal_table} on \$(grep -c '>' genome.fa) contigs"
+    run_prodigal -i genome.fa -f gff -p ${mode} -g ${prodigal_table} \\
         -o "${out}.prodigal.raw.gff3" -a "${out}.prodigal.faa"
 
     if [ ! -s "${out}.prodigal.raw.gff3" ]; then
