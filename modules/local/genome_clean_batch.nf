@@ -85,41 +85,39 @@ BATCH_EOF
         else
             cat "\$gz" > \$SCRATCH/\${asmid}.raw.fa
         fi
-        # AAFTF fcs_gx_purge's own exit code is NOT a reliable success signal:
-        # it can return 0 even when run_gx.py silently produced no report
-        # (confirmed 2026-09-26 -- a stale/corrupt /dev/shm/gxdb caused every
-        # genome in a batch to hit this: fcs_gx_purge exited 0, the downstream
-        # cat of the purge fasta failed on the missing file, yet the
-        # unconditional echo/manifest-append below still logged [OK] and
-        # recorded a target path that was never actually written). Gate
-        # success on the target file actually existing and non-empty,
-        # matching the same [FAIL]/fcs_fails bookkeeping the fcs_gx_purge
-        # branch already uses below.
-        if AAFTF fcs_gx_purge --db /dev/shm/gxdb/all \\
-            -i \$SCRATCH/\${asmid}.raw.fa \\
-            -o \$SCRATCH/\${asmid}.purge.fasta \\
+        # AAFTF >= 0.7: fcs_gx_purge -o is an output DIRECTORY. It gets
+        # <input prefix>.fcsgx_cleaned.fasta and <input prefix>.fcs_gx_report.txt; the input
+        # prefix here is <asmid>.raw. Its exit code is NOT a reliable success signal (it can
+        # return 0 although run_gx.py produced no report; a stale or corrupt /dev/shm/gxdb did
+        # this on 2026-09-26), so success is gated on the cleaned file existing and being non-empty.
+        FCS_OUT=\$SCRATCH/\${asmid}.fcs_out
+        PURGED=\$FCS_OUT/\${asmid}.raw.fcsgx_cleaned.fasta
+        mkdir -p \$FCS_OUT
+        if AAFTF fcs_gx_purge -d /dev/shm/gxdb/all \\
+            -i \$SCRATCH/\${asmid}.raw.fa -c ${task.cpus} \\
+            -o \$FCS_OUT \\
             -t "\$phylum" -w \$SCRATCH/\${asmid}.fcs_report \\
-            && [ -s \$SCRATCH/\${asmid}.purge.fasta ] ; then
-            cat \$SCRATCH/\${asmid}.purge.fasta | ${params.clean_script} --len ${params.min_contig_len} > \$SCRATCH/\${asmid}.clean.fa \\
+            && [ -s "\$PURGED" ] ; then
+            ${params.clean_script} --len ${params.min_contig_len} < \$PURGED > \$SCRATCH/\${asmid}.clean.fa \\
                 && pigz -c \$SCRATCH/\${asmid}.clean.fa > \${target}.tmp \\
                 && mv \${target}.tmp \$target
             rm -f \$SCRATCH/\${asmid}.clean.fa
-            if [ -s \$target ]; then
+            if [ -s \$target ] && [ "\$(pigz -dc \$target | grep -c '^>')" -gt 0 ]; then
                 echo "[\$i/\$n_total][OK] \$asmid -> \$target (\$(du -sh \$target | cut -f1))"
-                pigz -f \$SCRATCH/\${asmid}.purge.fasta
-                [ -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv ] && pigz -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv
-                mv \$SCRATCH/\${asmid}.purge.fasta.gz \$DEST/clean/ 2>/dev/null || true
-                [ -f \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv.gz ] && mv \$SCRATCH/\${asmid}.purge.fcs_gx-taxonomy.tsv.gz \$DEST/clean/
+                pigz -c \$PURGED > \$DEST/clean/\${asmid}.purge.fasta.gz 2>/dev/null || true
+                [ -f \$FCS_OUT/\${asmid}.raw.fcs_gx_report.txt ] && pigz -c \$FCS_OUT/\${asmid}.raw.fcs_gx_report.txt > \$DEST/clean/\${asmid}.fcs_gx_report.txt.gz
                 printf '%s\\t%s\\n' "\$asmid" "\$target" >> \$MANIFEST
             else
-                echo "[\$i/\$n_total][FAIL] \$asmid: \$target was not produced (clean/compress/move step failed)" >&2
+                echo "[\$i/\$n_total][FAIL] \$asmid: \$target was not produced or has no contigs (clean/compress/move step failed)" >&2
+                rm -f \$target
                 fcs_fails=\$((fcs_fails+1))
             fi
         else
-            echo "[\$i/\$n_total][FAIL] fcs_gx_purge failed for \$asmid (no report / empty purge.fasta)" >&2
+            echo "[\$i/\$n_total][FAIL] fcs_gx_purge failed for \$asmid (no report / empty cleaned fasta)" >&2
             fcs_fails=\$((fcs_fails+1))
         fi
-        rm -f \$SCRATCH/\${asmid}.raw.fa \$SCRATCH/\${asmid}.purge.fasta
+        rm -rf \$FCS_OUT
+        rm -f \$SCRATCH/\${asmid}.raw.fa
     done < batch.tsv
 
     echoed_manifest=\$(grep -c . \$MANIFEST || echo 0)
@@ -143,7 +141,7 @@ BATCH_EOF
     while IFS=\$'\\t' read -r asmid gz taxonid phylum; do
         [ -z "\$asmid" ] && continue
         echo ">stub_\${asmid}" | pigz -c > \$DEST/\${asmid}.fa.gz
-        touch \$DEST/clean/\${asmid}.purge.fasta \$DEST/clean/\${asmid}.purge.fcs_gx-taxonomy.tsv
+        touch \$DEST/clean/\${asmid}.purge.fasta \$DEST/clean/\${asmid}.fcs_gx_report.txt
         printf '%s\\t%s\\n' "\$asmid" "\$DEST/\${asmid}.fa.gz" >> \$MANIFEST
     done < batch.tsv
     """

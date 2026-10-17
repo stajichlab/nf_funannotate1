@@ -107,6 +107,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (e.g. a 456 kb assembly that passes pre-flight) failed the task and, after retries, aborted the whole
   run instead of being recorded in `predict_skipped_too_small.tsv`. The catch now reads the copied log.
 
+### Fixed
+- `GENOME_CLEAN` and `GENOME_CLEAN_BATCH` follow the newer AAFTF 0.7 `fcs_gx_purge`: `-o` is an output
+  directory that receives `<input prefix>.fcsgx_cleaned.fasta` and `<input prefix>.fcs_gx_report.txt`.
+  With the old `-o <file>` call the new image wrote a directory, the cleaned genome came out empty,
+  and the task still reported success. Both modules now fail when the cleaned file is missing or has no
+  contigs. The archived report is `input_clean_genomes/clean/<asmid>.fcs_gx_report.txt.gz` (it was
+  `<asmid>.purge.fcs_gx-taxonomy.tsv.gz`). `-c ${task.cpus}` is passed again.
+
 ### Changed
 - `container_funannotate` is `<sif_dir>/funannotate-1.9.0.sif`, a local image of the 1.9.0 release
   `ghcr.io/nextgenusfs/funannotate:v1.9.0` (was `docker://...:v1.9.0-rc.6`; the 1.9.0 pin itself was
