@@ -58,11 +58,15 @@ process GENOME_CLEAN {
         # <input prefix>.fcs_gx_report.txt; the input prefix here is ${asmid}.raw.
         FCS_OUT=\$SCRATCH/${asmid}.fcs_out
         mkdir -p \$FCS_OUT
+        PURGED=\$FCS_OUT/${asmid}.raw.fcsgx_cleaned.fasta
+        # AAFTF releases before 0.7 (e.g. the AAFTF/0.6.0 module) take -o <file>; 0.7 takes -o <dir>.
+        # The help goes to a variable first so grep cannot close the pipe early.
+        FCS_HELP=\$(AAFTF fcs_gx_purge --help 2>&1 || true)
+        if [[ "\$FCS_HELP" == *"--outdir"* ]]; then FCS_O=\$FCS_OUT; else FCS_O=\$PURGED; fi
         AAFTF fcs_gx_purge -d /dev/shm/gxdb/all \
             -i \$SCRATCH/${asmid}.raw.fa -c ${task.cpus} \
-            -o \$FCS_OUT \
+            -o \$FCS_O \
             -t "${phylum}" -w \$SCRATCH/${asmid}.fcs_report
-        PURGED=\$FCS_OUT/${asmid}.raw.fcsgx_cleaned.fasta
         # fcs_gx_purge's exit code is not a reliable success signal; require the cleaned file.
         if [ ! -s "\$PURGED" ]; then
             echo "ERROR: fcs_gx_purge produced no \$PURGED for ${asmid}" >&2
