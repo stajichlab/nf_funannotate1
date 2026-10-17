@@ -54,18 +54,32 @@ process GENOME_CLEAN {
         source ${params.fcs_shm_script}
         echo "[INFO] Phylum for ${asmid} (from TAXON_PHYLUM): ${phylum}"
         echo "[INFO] FCS-GX purge + cleaning genome for ${asmid}..."
-        AAFTF fcs_gx_purge --db /dev/shm/gxdb/all \
-            -i \$SCRATCH/${asmid}.raw.fa \
-            -o \$SCRATCH/${asmid}.purge.fasta \
+        # AAFTF >= 0.7: -o is an output DIRECTORY. It gets <input prefix>.fcsgx_cleaned.fasta and
+        # <input prefix>.fcs_gx_report.txt; the input prefix here is ${asmid}.raw.
+        FCS_OUT=\$SCRATCH/${asmid}.fcs_out
+        mkdir -p \$FCS_OUT
+        AAFTF fcs_gx_purge -d /dev/shm/gxdb/all \
+            -i \$SCRATCH/${asmid}.raw.fa -c ${task.cpus} \
+            -o \$FCS_OUT \
             -t "${phylum}" -w \$SCRATCH/${asmid}.fcs_report
+        PURGED=\$FCS_OUT/${asmid}.raw.fcsgx_cleaned.fasta
+        # fcs_gx_purge's exit code is not a reliable success signal; require the cleaned file.
+        if [ ! -s "\$PURGED" ]; then
+            echo "ERROR: fcs_gx_purge produced no \$PURGED for ${asmid}" >&2
+            exit 1
+        fi
         mkdir -p ${launchDir}/input_clean_genomes/clean
-        cat \$SCRATCH/${asmid}.purge.fasta | \
-            ${params.clean_script} --len ${params.min_contig_len} > ${asmid}.fa
-        pigz \$SCRATCH/${asmid}.purge.fasta
-        [ -f \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv ] && pigz \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv
+        ${params.clean_script} --len ${params.min_contig_len} < \$PURGED > ${asmid}.fa
+        if [ ! -s ${asmid}.fa ]; then
+            echo "ERROR: no contigs left in ${asmid}.fa after the FCS-GX purge and length filter" >&2
+            exit 1
+        fi
+        pigz -c \$PURGED > \$SCRATCH/${asmid}.purge.fasta.gz
+        [ -f \$FCS_OUT/${asmid}.raw.fcs_gx_report.txt ] && pigz -c \$FCS_OUT/${asmid}.raw.fcs_gx_report.txt > \$SCRATCH/${asmid}.fcs_gx_report.txt.gz
         mv \$SCRATCH/${asmid}.purge.fasta.gz ${launchDir}/input_clean_genomes/clean/
-        [ -f \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv.gz ] && \
-            mv \$SCRATCH/${asmid}.purge.fcs_gx-taxonomy.tsv.gz ${launchDir}/input_clean_genomes/clean/
+        [ -f \$SCRATCH/${asmid}.fcs_gx_report.txt.gz ] && \
+            mv \$SCRATCH/${asmid}.fcs_gx_report.txt.gz ${launchDir}/input_clean_genomes/clean/
+        rm -rf \$FCS_OUT
     fi
     # Normalize FASTA deflines to the accession (first whitespace token).
     # funannotate rejects headers >24 chars and, more importantly, requires ONE
@@ -91,6 +105,6 @@ process GENOME_CLEAN {
     echo ">stub_${asmid}" | pigz -c > ${asmid}.fa.gz
     mkdir -p ${launchDir}/input_clean_genomes/clean
     touch ${launchDir}/input_clean_genomes/clean/${asmid}.purge.fasta
-    touch ${launchDir}/input_clean_genomes/clean/${asmid}.purge.fcs_gx-taxonomy.tsv
+    touch ${launchDir}/input_clean_genomes/clean/${asmid}.fcs_gx_report.txt
     """
 }
