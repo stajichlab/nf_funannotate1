@@ -2,7 +2,9 @@ name: CI
 
 # Cheap, network-light validation: confirm the config parses and the workflow
 # graph executes end-to-end via the self-contained `test` profile under -stub-run
-# (no SLURM, no real tools). Heavy real runs happen on the HPCC, not in CI.
+# (no real tools). A second job stub-runs against a stock containerized SLURM
+# (no site partitions) to prove the portable slurm+singularity profiles work
+# outside UCR. Heavy real runs happen on clusters, not in CI.
 
 on:
   push:
@@ -41,3 +43,38 @@ jobs:
 
       - name: Schema-driven --help renders
         run: nextflow run . --help
+
+  config-matrix:
+    name: Config parses (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - annotate,slurm,singularity
+          - annotate,local,singularity
+          - annotate,slurm,conda
+          - annotate,slurm,pixi
+          - annotate,slurm,ucr_hpcc
+          - annotate,nrp
+          - earlgrey,slurm,singularity
+          - test,slurm,singularity
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: nf-core/setup-nextflow@v2
+        with:
+          version: "25.10.0"
+      - name: Resolve config for profile
+        run: nextflow config . -profile "${{ matrix.profile }}" > /dev/null
+
+  slurm-stub:
+    name: Stub-run on a stock SLURM cluster
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests/slurm/run_slurm_stub.sh
+        run: bash tests/slurm/run_slurm_stub.sh
