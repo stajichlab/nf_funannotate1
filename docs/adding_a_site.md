@@ -1,98 +1,82 @@
 # Adding a new HPC site
 
-This pipeline uses an **institutional profile** model (inspired by nf-core/configs).
-Site-specific concerns — tool provisioning and SLURM partition names — live in one
-file, separate from the portable pipeline logic.
-
-## What is site-specific
-
-Two things differ between HPC sites:
-
-| Concern | Where it lives | Example |
-|---------|---------------|---------|
-| Tool provisioning (`beforeScript`) | `conf/provision_<site>.config` | `module load funannotate/dev-1.8.18` |
-| SLURM partition names (`queue`) | `conf/provision_<site>.config` | `queue = 'epyc'` |
-
-Everything else — resource sizes (cpus/memory/time), pipeline params, process
-logic — lives in the portable `conf/profile_annotate.config` and is unchanged
-across sites.
-
-## Steps
-
-**1. Copy the UCR HPCC template**
+Most sites need **no new profile**. Use the portable `slurm` + `singularity`
+profiles and describe your cluster in one small config file:
 
 ```bash
-cp conf/provision_ucr_hpcc.config conf/provision_<yoursite>.config
+nextflow run stajichlab/nf_funannotate1 \
+    -profile annotate,slurm,singularity -c mysite.config -resume
 ```
 
-**2. Replace Lmod module names**
+## Option A (recommended): `slurm` + `singularity` + a site config
 
-Each `withLabel` block has a `beforeScript` that loads tools. Swap the UCR module
-names for whatever your site calls them:
+Requirements: Apptainer/Singularity on every compute node, a shared filesystem
+for the launch directory and the image cache, internet on the first run.
+
+**1. Copy the template**
+
+```bash
+cp ~/.nextflow/assets/stajichlab/nf_funannotate1/conf/site_template.config mysite.config
+```
+
+**2. Set what differs at your site.** Everything is optional:
+
+| Concern | Setting | Default if omitted |
+|---------|---------|--------------------|
+| Container cache | `params.sif_dir` (or export `NXF_APPTAINER_CACHE`) | `<launchDir>/singularity_cache` |
+| Partition | `process.queue`, or `withLabel:`/`withName:` `queue` | cluster default partition |
+| Account / QOS / extra flags | `process.clusterOptions` (keep `-N 1 -n 1`) | `-N 1 -n 1` |
+| Shared databases | `params.*` paths (see the template) | downloaded under `<launchDir>` |
+| GPUs (SignalP / DeepTMHMM) | `--signalp_gpu` / `--deeptmhmm_gpu`, plus a GPU `queue` | CPU |
 
 ```groovy
-// UCR HPCC
-withLabel: 'funannotate' {
-    beforeScript = '''
-        source /etc/profile.d/modules.sh 2>/dev/null || true
-        module load funannotate/dev-1.8.18
-        module load fastp
-    '''
-}
-
-// Your site — replace module names as needed
-withLabel: 'funannotate' {
-    beforeScript = '''
-        source /etc/profile.d/modules.sh 2>/dev/null || true
-        module load Funannotate/1.8.18-foss-2023a
-        module load fastp/0.23.4
-    '''
+params.sif_dir = '/shared/containers'
+process {
+    queue          = 'batch'
+    clusterOptions = '-N 1 -n 1 --account=mylab'
+    withName: '.*:FUNANNOTATE_TRAIN' { queue = { task.attempt <= 2 ? 'medium' : 'large' } }
 }
 ```
 
-If your site uses conda/pixi/singularity instead of Lmod, see
-`conf/provision_pixi.config` and `conf/provision_singularity.config` for those
-patterns — they follow the same `beforeScript`/`container` convention.
+Use a closure for `queue` only when it depends on `task.attempt`; otherwise a
+plain string works.
 
-**3. Replace SLURM partition names**
-
-The `withName` block at the bottom of the file maps each process to a UCR
-partition (`short`, `epyc`, `highmem`, `gpu`). Replace them with your site's
-partition names:
-
-```groovy
-// UCR HPCC
-withName: '.*:FUNANNOTATE_TRAIN' { queue = { task.attempt <= 2 ? 'epyc' : 'highmem' } }
-
-// Your site
-withName: '.*:FUNANNOTATE_TRAIN' { queue = { task.attempt <= 2 ? 'medium' : 'large' } }
-```
-
-If your SLURM cluster doesn't use named partitions (or uses a default), you can
-remove the `queue =` lines entirely — Nextflow will submit to the default partition.
-
-**4. Register the profile in `nextflow.config`**
-
-Add a one-liner under the `provisioning axis` comment in `profiles {}`:
-
-```groovy
-yoursite { includeConfig 'conf/provision_yoursite.config' }
-```
-
-**5. Run**
+**3. Run a stub check, then one genome**
 
 ```bash
-nextflow run . -profile annotate,slurm,yoursite -resume
+nextflow run stajichlab/nf_funannotate1 -profile test,slurm,singularity -c mysite.config -stub-run
+nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,singularity -c mysite.config --n_test 1 -resume
 ```
 
-## Portable alternatives
+The stub run submits real (empty) SLURM jobs, so it checks your partition and
+account settings without needing the tools or databases.
 
-If Lmod modules aren't available at your site, use one of the existing portable
-provisioning profiles:
+## Option B: an institutional profile (Lmod modules)
+
+Only for sites without a container runtime. UCR HPCC does this with
+`conf/provision_ucr_hpcc.config` (Lmod `beforeScript` per process label) and
+`conf/site_ucr_hpcc.config` (shared paths). To add one:
+
+1. `cp conf/provision_ucr_hpcc.config conf/provision_<yoursite>.config`
+2. Replace the module names in each `withLabel` `beforeScript`
+   (`module load funannotate/dev-1.8.18` becomes whatever your site calls it)
+   and the partition names in the `withName` blocks.
+3. Register it in `profiles {}` in `nextflow.config`, mirroring the `ucr_hpcc`
+   entry (which also sets `process.shell = ['/bin/bash', '-l']` so `module load` works):
+
+```groovy
+yoursite { process.shell = ['/bin/bash', '-l']; includeConfig 'conf/provision_yoursite.config' }
+```
+
+4. Run: `nextflow run . -profile annotate,slurm,yoursite -resume`
+
+## Other portable provisioning profiles
+
+If you cannot use containers, these also work without site-specific modules:
 
 | Profile | How tools are provided |
 |---------|----------------------|
-| `singularity` | Container image per process label (see `provision_singularity.config`) |
+| `conda` | Shared frozen conda envs (see `environments/conda/`) |
 | `pixi` | Project-local pixi environments (see `provision_pixi.config`) |
 
 Note: `funannotate` and `signalp` lack public biocontainers; the singularity

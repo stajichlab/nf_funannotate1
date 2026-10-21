@@ -3,8 +3,11 @@
 ## Quick start
 
 ```bash
-nextflow run . -profile annotate,slurm,ucr_hpcc --samples samples.csv -resume
+nextflow run . -profile annotate,slurm,singularity -c mysite.config --samples samples.csv -resume
 ```
+
+(`-profile annotate,local,singularity` on a workstation; `ucr_hpcc` in place of `singularity` on UCR HPCC.
+`mysite.config` holds your partitions/cache paths; see [Adding a site](adding_a_site.md).)
 
 Profiles compose across three orthogonal axes — pick one from each:
 
@@ -12,7 +15,7 @@ Profiles compose across three orthogonal axes — pick one from each:
 |------|---------|-------|
 | pipeline | `annotate` | funannotate.nf (genome cleaning → masking → training → prediction → annotation) |
 | executor | `slurm` \| `local` | `slurm` submits jobs via SBATCH; `local` runs on the head node |
-| provisioning | `ucr_hpcc` \| `pixi` \| `singularity` | `ucr_hpcc` = UCR HPCC Lmod modules; see [Adding a site](adding_a_site.md) for other HPC environments |
+| provisioning | `singularity` \| `pixi` \| `conda` \| `ucr_hpcc` | `singularity` is portable (containers); `ucr_hpcc` = UCR HPCC Lmod modules (institutional example); see [Adding a site](adding_a_site.md) |
 
 ## Samplesheet (`samples.csv`)
 
@@ -49,13 +52,13 @@ Saccharomyces cerevisiae,S288C,GCA_000146045.2,YAL,saccharomycetes_odb10,12,4932
 
 ```bash
 # Process only one assembly
-nextflow run . -profile annotate,slurm,ucr_hpcc --asmid GCA_000002655.1
+nextflow run . -profile annotate,slurm,singularity --asmid GCA_000002655.1
 
 # Process only Ascomycota
-nextflow run . -profile annotate,slurm,ucr_hpcc --taxon PHYLUM:Ascomycota
+nextflow run . -profile annotate,slurm,singularity --taxon PHYLUM:Ascomycota
 
 # Smoke-test with the first 2 assemblies
-nextflow run . -profile annotate,slurm,ucr_hpcc --n_test 2 -stub-run
+nextflow run . -profile annotate,slurm,singularity --n_test 2 -stub-run
 ```
 
 ## Key parameters
@@ -81,7 +84,7 @@ Run `nextflow run . --help` for the full schema-driven parameter list.
 ## Resume a run
 
 ```bash
-nextflow run . -profile annotate,slurm,ucr_hpcc --samples samples.csv -resume
+nextflow run . -profile annotate,slurm,singularity --samples samples.csv -resume
 ```
 
 Nextflow's `cache = 'lenient'` (set in `nextflow.config`) handles NFS timestamp
@@ -103,7 +106,7 @@ files so the full DAG can be traced without running real tools.
 To use EarlGrey (TE-discovery) instead of tantan repeat masking:
 
 ```bash
-nextflow run . -profile annotate,slurm,ucr_hpcc \
+nextflow run . -profile annotate,slurm,singularity \
     --run_repeatmasker false --run_earlgrey true \
     --earlgrey_outdir results/repeatlibrary \
     --masked_dir input_clean_genomes
@@ -114,5 +117,5 @@ to build a curated TE library; RepeatMasker then applies it to every conspecific
 strain. Requires the `earlgrey` profile for resource defaults:
 
 ```bash
--profile annotate,earlgrey,slurm,ucr_hpcc
+-profile annotate,earlgrey,slurm,singularity
 ```
