@@ -11,7 +11,7 @@ reference.
   - [1. Install the requirements](#1-install-the-requirements)
   - [2. Make a launch directory](#2-make-a-launch-directory)
   - [3. Write `samples.csv`](#3-write-samplescsv)
-  - [4. Put the RNA-seq reads where the pipeline finds them](#4-put-the-rna-seq-reads-where-the-pipeline-finds-them)
+  - [4. Choose where the RNA-seq reads come from](#4-choose-where-the-rna-seq-reads-come-from)
   - [5. Write your site settings (two files)](#5-write-your-site-settings-two-files)
   - [6. Run](#6-run)
   - [7. Outputs](#7-outputs)
@@ -148,12 +148,45 @@ Fusarium graminearum,PH-1,FGRA_PH1,FGRAPH,hypocreales_odb10,1,229533,genomes/Fus
 | `NCBI_TAXONID` | NCBI taxonomy ID. Use the closest valid taxon for an unpublished genome. |
 | `GENOME` | Path to the genome FASTA. |
 
-### 4. Put the RNA-seq reads where the pipeline finds them
+### 4. Choose where the RNA-seq reads come from
 
-The pipeline looks for RNA-seq reads **per species** in `rnaseq_reads/`, by
-file name. The name is `SPECIES` with spaces changed to `_`. For
-`Aspergillus nidulans`, the name is `Aspergillus_nidulans`. All strains of one
-species share the same reads.
+RNA-seq is handled **per species** (all strains of a species share the same
+reads) and every species uses one of two strategies. They are alternatives, not
+steps: a species is either supplied with your own reads or fetched from SRA, and
+you normally do not combine the two. You can use a different strategy for each
+species in the same run.
+
+| | A. Your own reads | B. Public reads from NCBI SRA |
+|---|---|---|
+| **You do** | put the files in `rnaseq_reads/` (below) | nothing; leave `rnaseq_reads/` without files for that species |
+| **Pipeline does** | uses your files as they are; no network access | queries SRA for the species taxon, downloads up to `--max_rnaseq_runs` runs, trims and normalizes them |
+| **Result** | `rnaseq_reads/<Species_name>_norm_{R1,R2,SE}.fastq.gz` | the same three files, written by the pipeline, plus `rnaseq_reads/sra_query/<Species_name>.sra_query.csv` listing the runs chosen |
+| **Needs** | nothing extra | internet on the compute nodes and the `sra_tools` container |
+
+How the pipeline decides, for each species:
+
+1. If `rnaseq_reads/<Species_name>_norm_*.fastq.gz` already exist, they are
+   reused and no download is made (results are cached in `rnaseq_reads/`). This is
+   also how a re-run after a failure avoids repeating the downloads.
+2. If a `rnaseq_reads/sra_query/<Species_name>.sra_query.csv` exists, the SRA
+   search is not repeated. A CSV with only the header line means "no SRA runs":
+   this is what stops the search for strategy A.
+3. Otherwise the pipeline searches SRA and downloads (strategy B).
+
+Mixing is possible but you must do it yourself: reads you put in
+`rnaseq_reads/` are not combined with SRA reads. To add your own libraries to
+public ones, join them into the `_norm_` files yourself. To switch a species from B
+to A, replace its files and CSV. To switch from A to B, delete its three
+`_norm_` files and its `sra_query` CSV.
+
+Two global switches: `--run_sra_fetch false` disables SRA for every species (and
+RNA-seq training for species without your own reads), and `--skip_sra_query true`
+reuses the cached query CSVs without contacting NCBI.
+
+#### Strategy A: supply your own reads
+
+The pipeline looks for the files by name. The name is `SPECIES` with spaces
+changed to `_`. For `Aspergillus nidulans`, the name is `Aspergillus_nidulans`.
 
 Each species needs three read files and one query file:
 
@@ -197,10 +230,17 @@ Notes:
   deep libraries, subsample or normalize them first.
 - Training is skipped when a species has less than 50 MB of compressed reads
   in total (`--train_min_rnaseq_bytes`, default `50000000`).
-- A species with no files in `rnaseq_reads/` makes the pipeline search NCBI
-  SRA for public RNA-seq. To stop this for all species, use
-  `--run_sra_fetch false`. That setting also turns off RNA-seq training for
-  all species.
+- A species with no files in `rnaseq_reads/` uses strategy B (SRA search and
+  download). Without the header-only query CSV, a species with your reads would
+  still trigger an SRA search.
+
+#### Strategy B: let the pipeline fetch from SRA
+
+Add nothing to `rnaseq_reads/`. Run the pipeline; for each species it writes the
+query result to `rnaseq_reads/sra_query/<Species_name>.sra_query.csv` and the
+normalized reads next to it. Check the CSV before a long run with
+`--stop_after_sra_query true`, which stops once the queries are done. To remove
+an unwanted run, list it in `rnaseq_blacklist.csv` in the launch directory.
 
 ### 5. Write your site settings (two files)
 
