@@ -14,9 +14,9 @@ Written for UCR HPCC (SLURM, containers) and runnable on any site that has the p
 
 ```bash
 mkdir -p /path/to/sra_e2e/logs && cd /path/to/sra_e2e      # an empty launch directory
-REPO=/path/to/nf_funannotate1 PROTEINS=/path/to/swissprot_fungi.faa \
+REPO=/path/to/nf_funannotate1 PROTEINS=/path/to/swissprot_fungi.faa SIF_DIR=/path/to/singularity_cache \
     sbatch $REPO/tests/e2e_sra/run_e2e.sbatch
-# UCR HPCC: PROTEINS=/bigdata/stajichlab/shared/projects/BFD/Fungi_BFD/lib/swissprot_fungi.faa
+# UCR HPCC: SIF_DIR=/bigdata/stajichlab/shared/lib/singularity_cache PROTEINS=/bigdata/stajichlab/shared/projects/BFD/Fungi_BFD/lib/swissprot_fungi.faa
 # (or put the file at lib/swissprot_fungi.faa in the launch directory, the default)
 ```
 

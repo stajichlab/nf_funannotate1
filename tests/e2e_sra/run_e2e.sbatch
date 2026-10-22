@@ -16,6 +16,11 @@
 # Optional env:
 #   SITE_CONFIG=/path/mysite.config   partitions / sif_dir for a site other than UCR HPCC
 #   PROTEINS=/path/swissprot_fungi.faa   protein evidence (default: ./lib/swissprot_fungi.faa)
+#   SIF_DIR=/path/singularity_cache   shared container cache, exported as NXF_APPTAINER_CACHE. Set it: a
+#                                     sif_dir given only in a site config does not reach container_funannotate
+#                                     (nextflow.config evaluates it first), so the funannotate image would be
+#                                     looked up in <launch dir>/singularity_cache. UCR HPCC:
+#                                     /bigdata/stajichlab/shared/lib/singularity_cache
 #   PROVISION / EXECUTOR / SITE_PROFILE   as for run_annotate.sh (default: slurm + singularity;
 #                                         the ucr_hpcc profile is added automatically on UCR HPCC)
 #   REVISION=<tag|branch|sha>         pin a revision when PIPELINE is a project name
@@ -38,6 +43,7 @@ done
 PROTEINS="${PROTEINS:-$PWD/lib/swissprot_fungi.faa}"
 [ -s "$PROTEINS" ] || { echo "protein evidence not found: $PROTEINS (set PROTEINS=...)" >&2; exit 2; }
 
+[ -z "${SIF_DIR:-}" ] || export NXF_APPTAINER_CACHE="$SIF_DIR"
 export PIPELINE="$REPO"                         # run this checkout, not the published project
 RUN=(bash "$REPO/run_annotate.sh" -params-file params.yaml --proteins "$PROTEINS")
 step() { echo; echo "=== [$(date '+%F %T')] step $1: $2"; }
