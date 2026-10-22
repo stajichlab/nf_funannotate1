@@ -83,17 +83,17 @@ Compose one option from each axis: `-profile <pipeline>,<executor>,<provisioning
   `-c`. See [docs/adding_a_site.md](docs/adding_a_site.md) and
   [Running on your own SLURM cluster](README_Extended.md#running-on-your-own-slurm-cluster).
 - **Kubernetes (NRP Nautilus):** `-profile annotate,nrp` replaces the executor and
-  provisioning picks. See [k8s/README.md](k8s/README.md).
+  provisioning picks. Any NRP user can use it, not only UCR. See
+  [k8s/README.md](k8s/README.md).
+- **Two clusters at once** (for example SLURM plus NRP): give each its own
+  `samples.csv` slice and launch directory. See
+  [docs/multi_cluster.md](docs/multi_cluster.md).
 
 ### UCR HPCC
 
-UCR HPCC is the institutional example, not a requirement. Use the `ucr_hpcc`
-profile (Lmod modules) or the `run_annotate.sh` launcher, which auto-detects it:
-
-```bash
-nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,ucr_hpcc -resume --n_test 1
-sbatch /path/to/nf_funannotate1/run_annotate.sh --n_test 1
-```
+UCR HPCC is the institutional example, not a requirement. Its Lmod profile,
+launcher auto-detection and shared paths are in
+[docs/site_ucr_hpcc.md](docs/site_ucr_hpcc.md).
 
 ## Outputs
 
@@ -116,4 +116,6 @@ transcript FASTA), plus `funannotate_db/` and `work/` caches (keep them for `-re
 - [docs/usage.md](docs/usage.md) — usage and parameters
 - [docs/output.md](docs/output.md) — full list of outputs
 - [docs/adding_a_site.md](docs/adding_a_site.md) — SLURM site configuration
+- [docs/multi_cluster.md](docs/multi_cluster.md) — splitting one batch across clusters (e.g. SLURM + NRP)
+- [docs/site_ucr_hpcc.md](docs/site_ucr_hpcc.md) — UCR HPCC as a worked example site
 - [CHANGELOG.md](CHANGELOG.md) · [CITATIONS.md](CITATIONS.md)
