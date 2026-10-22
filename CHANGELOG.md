@@ -7,15 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
-- The funannotate image and `apptainer.cacheDir` now follow a `sif_dir` set by a site profile. Under
-  `-profile annotate,slurm,ucr_hpcc,singularity` `container_funannotate` stayed at
-  `<launchDir>/singularity_cache/funannotate-1.9.0.sif` (a string built in `nextflow.config` before the
-  profile set `sif_dir`) while the other images used the site's shared cache, so the setup tasks failed with
-  "container image not found" (found by the HPCC end-to-end test). `container_funannotate` now defaults to
-  `''` and is resolved in `conf/provision_singularity.config`, and in `FunannotateUtils.mariadbImage` for the
-  other provisioning axes. Test: `tests/test_sif_dir_resolution.sh` (in CI). **A `sif_dir` set in a `-c` file is
-  still read too late for every image path; set it with `--sif_dir`, in a params file, or `NXF_APPTAINER_CACHE`
-  (docs and the `-c` examples corrected).**
+- A `sif_dir` set in a `-c` site config file now reaches every `<sif_dir>/<name>.sif` image (funannotate, AAFTF,
+  antismash, signalp, deeptmhmm, and the SignalP GPU model cache), as it already did for `--sif_dir`, a params
+  file, an environment variable and a site profile. These paths were strings built when the config was parsed,
+  before a `-c` file is read; they are now worked out when a task starts (`container` closures in
+  `conf/provision_singularity.config`). `container_*` default to `''`, and an explicit value still wins.
+  `apptainer.cacheDir` (where `docker://` images are pulled) cannot be lazy: it follows `--sif_dir`, a params file,
+  a site profile or `NXF_APPTAINER_CACHE`, but not a `-c` file alone. Nextflow now prints a few harmless
+  "Access to undefined parameter" warnings at the start of a run. Test: `tests/test_sif_dir_resolution.sh`
+  (7 cases, in CI). Earlier, the funannotate image stayed in `<launchDir>/singularity_cache` under
+  `-profile annotate,slurm,ucr_hpcc,singularity` (found by the UCR HPCC end-to-end test; #80).
 - `SRA_QUERY_BATCH` no longer queries SRA without an organism clause. For a species with no `NCBI_TAXONID`,
   `bash` < 4.4 aborted the clause builder on an empty array (`set -u`), so the query dropped the organism
   term and returned the top RNA-seq runs of any organism. Found by the live NCBI test

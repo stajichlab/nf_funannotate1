@@ -23,20 +23,28 @@ cp ~/.nextflow/assets/stajichlab/nf_funannotate1/conf/site_template.config mysit
 
 | Concern | Setting | Default if omitted |
 |---------|---------|--------------------|
-| Container cache | `sif_dir` in your params file, `--sif_dir`, or export `NXF_APPTAINER_CACHE`. Not in this `-c` config (see below) | `<launchDir>/singularity_cache` |
+| Container cache | `params.sif_dir` (here, in a params file, or `--sif_dir`), or export `NXF_APPTAINER_CACHE`. See the note below the example | `<launchDir>/singularity_cache` |
 | Partition | `process.queue`, or `withLabel:`/`withName:` `queue` | cluster default partition |
 | Account / QOS / extra flags | `process.clusterOptions` (keep `-N 1 -n 1`) | `-N 1 -n 1` |
 | Shared databases | `params.*` paths (see the template) | downloaded under `<launchDir>` |
 | GPUs (SignalP / DeepTMHMM) | `--signalp_gpu` / `--deeptmhmm_gpu`, plus a GPU `queue` | CPU |
 
 ```groovy
-// (set sif_dir in your params file, not here: a `-c` file is read after the image paths are built)
+params.sif_dir = '/shared/containers'
 process {
     queue          = 'batch'
     clusterOptions = '-N 1 -n 1 --account=mylab'
     withName: '.*:FUNANNOTATE_TRAIN' { queue = { task.attempt <= 2 ? 'medium' : 'large' } }
 }
 ```
+
+`sif_dir` sets where every `<name>.sif` image is looked up. A `sif_dir` in this `-c` file is honoured
+for all of them. One thing it does not reach: `apptainer.cacheDir`, where `docker://` images
+are pulled, is fixed earlier. If you rely on automatic pulls, also export `NXF_APPTAINER_CACHE`
+(or pass `--sif_dir`, or set it in a params file, which do reach the cache). Nextflow also prints
+a few harmless `Access to undefined parameter` warnings at the start of a run: the image paths
+are worked out when each task starts, and reading a parameter at that point triggers them.
+
 
 Use a closure for `queue` only when it depends on `task.attempt`; otherwise a
 plain string works.

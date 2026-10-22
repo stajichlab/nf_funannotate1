@@ -40,7 +40,7 @@ process SIGNALP_RUN {
         # conversion itself needs a real GPU to run, so it happens here
         # rather than at image-build time. Cached at a persistent, shared
         # location so it only runs once across all pipeline runs/genomes.
-        GPU_MODELS="${params.signalp_gpu_models}"
+        GPU_MODELS="${params.signalp_gpu_models ?: params.sif_dir + '/signalp6-fast-gpu-models'}"
         if [ ! -f "\$GPU_MODELS/.converted" ]; then
             echo "[INFO] SIGNALP_RUN ${out}: no cached GPU model conversion at \$GPU_MODELS -- converting now"
             SIGNALP_DIR=\$(python3 -c "import signalp, os; print(os.path.dirname(signalp.__file__))")
