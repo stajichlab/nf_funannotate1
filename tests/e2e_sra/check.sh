@@ -3,6 +3,7 @@
 #   bash check.sh             after the first run: query, reads, Trinity, annotation exist
 #   bash check.sh rerun       after a second launch: the SRA steps were reused, not repeated
 #   bash check.sh own-reads   after the own-reads launch (README.md step 4): no query was made
+#   bash check.sh key-removed after deleting the key too: the species was searched again
 set -uo pipefail
 MODE="${1:-run1}"; LOGDIR="logs/nextflow"
 SPECIES="Yarrowia_lipolytica Cryptococcus_deneoformans"
@@ -22,6 +23,7 @@ run1)
     done
     n=$(find genome_annotation -name '*.gbk' -size +0c 2>/dev/null | wc -l)
     check "GBK per genome (found $n, want 2)"    '[ "$n" -ge 2 ]'
+    find rnaseq_reads -maxdepth 1 -name '*_norm_*' -exec stat -c '%n %Y %s' {} + | sort > .e2e_reads.snapshot
     echo "--- chosen runs ---"; for sp in $SPECIES; do printf '%-28s %s\n' "$sp" "$(sed 1d rnaseq_reads/sra_query/$sp.sra_query.csv | cut -d, -f3 | paste -sd' ' -)"; done ;;
 rerun)
     # Run again after `rm -rf work .nextflow`, so nothing is resumed: the SRA outputs must come
@@ -31,13 +33,20 @@ rerun)
     for sp in $SPECIES; do
         check "$sp: query reused, not repeated" 'grep -q "Reusing cached result for '"$sp"'" /tmp/e2e_cmdlog.$$ && ! grep -q "Found .* paired-end accessions for '"$sp"'" /tmp/e2e_cmdlog.$$'
     done
-    check "SRA_FETCH skipped (storeDir)"          '[ -n "$L" ] && grep -q "skipping.*SRA_FETCH" "$L"'
+    check "read files untouched (same size and mtime as after run 1)" 'find rnaseq_reads -maxdepth 1 -name "*_norm_*" -exec stat -c "%n %Y %s" {} + | sort | cmp -s - .e2e_reads.snapshot'
     check "no download ran (no fasterq/prefetch)" '! grep -qiE "prefetch|fasterq-dump|fastq-dump" /tmp/e2e_cmdlog.$$'
     rm -f /tmp/e2e_cmdlog.$$ ;;
 own-reads)
     cat work/*/*/.command.log 2>/dev/null > /tmp/e2e_cmdlog.$$
     check "Yarrowia query reused (header-only CSV + key)" 'grep -q "Reusing cached result for Yarrowia_lipolytica" /tmp/e2e_cmdlog.$$'
     check "no NCBI query for Yarrowia"                    '! grep -q "Found .* paired-end accessions for Yarrowia_lipolytica" /tmp/e2e_cmdlog.$$'
+    rm -f /tmp/e2e_cmdlog.$$ ;;
+key-removed)
+    f=rnaseq_reads/sra_query/Yarrowia_lipolytica.sra_query
+    cat work/*/*/.command.log 2>/dev/null > /tmp/e2e_cmdlog.$$
+    check "Yarrowia searched again (no key)"   'grep -q "Found .* paired-end accessions for Yarrowia_lipolytica" /tmp/e2e_cmdlog.$$'
+    check "CSV lists runs again"               '[ "$(grep -c . "'"$f"'.csv")" -ge 2 ]'
+    check "key written again"                  '[ -s "'"$f"'.key" ]'
     rm -f /tmp/e2e_cmdlog.$$ ;;
 esac
 echo "passed=$pass failed=$fail"; [ "$fail" -eq 0 ]

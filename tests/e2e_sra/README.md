@@ -8,6 +8,20 @@ Plan a few hours on a cluster; the genomes are about 20 Mb each.
 Written for UCR HPCC (SLURM, containers) and runnable on any site that has the pipeline's
 [site config](../../docs/adding_a_site.md); the NRP variant is at the end.
 
+## One job for the whole sequence
+
+`run_e2e.sbatch` does steps 1 to 5 below in one job (a failed check stops it):
+
+```bash
+mkdir -p /path/to/sra_e2e/logs && cd /path/to/sra_e2e      # an empty launch directory
+mkdir -p lib && cp /path/to/swissprot_fungi.faa lib/       # protein evidence (or set PROTEINS=)
+REPO=/path/to/nf_funannotate1 sbatch $REPO/tests/e2e_sra/run_e2e.sbatch
+```
+
+Add `SITE_CONFIG=/path/mysite.config` away from UCR HPCC (UCR HPCC is detected and its
+profile added), `STOP_AFTER=2` to stop after the first run, or `sbatch -p <partition>`.
+The log is `logs/sra_e2e.<jobid>.log`. The manual steps follow.
+
 ## 1. Set up a launch directory
 
 ```bash
