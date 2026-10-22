@@ -430,8 +430,8 @@ A minimal `mysite.config` (every line is optional; with none of it the jobs go t
 your cluster's default partition and images cache under `./singularity_cache`):
 
 ```groovy
-params.sif_dir = '/shared/containers'          // image cache visible to all nodes
-
+// sif_dir (the image cache visible to all nodes) goes in your params file, not here: a -c file
+// is read after the image paths are built (docs/adding_a_site.md)
 process {
     queue          = 'batch'                   // your default partition
     clusterOptions = '-N 1 -n 1 --account=mylab'  // keep -N 1 -n 1; add account/QOS flags

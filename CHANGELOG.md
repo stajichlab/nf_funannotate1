@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- The funannotate image and `apptainer.cacheDir` now follow a `sif_dir` set by a site profile. Under
+  `-profile annotate,slurm,ucr_hpcc,singularity` `container_funannotate` stayed at
+  `<launchDir>/singularity_cache/funannotate-1.9.0.sif` (a string built in `nextflow.config` before the
+  profile set `sif_dir`) while the other images used the site's shared cache, so the setup tasks failed with
+  "container image not found" (found by the HPCC end-to-end test). `container_funannotate` now defaults to
+  `''` and is resolved in `conf/provision_singularity.config`, and in `FunannotateUtils.mariadbImage` for the
+  other provisioning axes. Test: `tests/test_sif_dir_resolution.sh` (in CI). **A `sif_dir` set in a `-c` file is
+  still read too late for every image path; set it with `--sif_dir`, in a params file, or `NXF_APPTAINER_CACHE`
+  (docs and the `-c` examples corrected).**
 - `SRA_QUERY_BATCH` no longer caches a failed query forever. A completed query writes
   `<species>.sra_query.key` (`v2|<taxonid>`); a cached header-only CSV is reused only when that key
   matches, so a CSV left by a timed-out query (or an older version) is searched again, and the new

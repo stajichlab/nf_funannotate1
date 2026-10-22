@@ -44,6 +44,9 @@ jobs:
       - name: SRA query cache rule (fake esearch/efetch)
         run: bash tests/test_sra_query_cache.sh
 
+      - name: sif_dir resolution (site profile, env var)
+        run: bash tests/test_sif_dir_resolution.sh
+
       - name: Schema-driven --help renders
         run: nextflow run . --help
 
