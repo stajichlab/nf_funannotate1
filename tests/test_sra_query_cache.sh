@@ -14,6 +14,9 @@
 #  10. taxon list 162425+227321           -> query ORs the species name and both txids; key lists both; CSV taxonid = first
 #  11. same list, header-only CSV + key    -> reused
 #  12. tag Fusarium_sp. (not a binomial)   -> query has only the txid terms
+#  13. top run's BioSample is host-associated  -> dropped, next run kept
+#  14. top run's BioSample is a mutant         -> dropped, next run kept
+#  15. BioSample lookup returns nothing        -> fails open, both kept
 #   9. 0 matches                           -> efetch not called; completed query: header-only CSV + key
 #
 # Usage: bash tests/test_sra_query_cache.sh     (needs nextflow; ~1 min)
@@ -29,16 +32,29 @@ TAG=Aspergillus_nidulans; TID=162425
 SQ="$T/launch/rnaseq_reads/sra_query"
 CALLS="$T/calls.log"
 
-# esearch passes through; efetch logs the call, then fails or returns one runinfo row.
-printf '#!/bin/sh\ncat >/dev/null 2>&1; echo "esearch $*" >> "%s"; echo ESEARCH\n' "$CALLS" > "$BIN/esearch"
+# Fake edirect. esearch logs its query and passes it on stdout; efetch logs the call, then
+# answers a BioSample docsum lookup (FAKE_DOC1 / FAKE_DOC2 by accession), fails (FAKE_FAIL), or
+# returns runinfo rows. Runinfo columns used by the module: 1 Run, 2 date, 4 spots, 13 strategy,
+# 16 layout, 19 platform, 26 BioSample, 30 SampleName.
+cat > "$BIN/esearch" <<EOS
+#!/bin/sh
+cat >/dev/null 2>&1
+echo "esearch \$*" >> "$CALLS"
+echo "ESEARCH \$*"
+EOS
 cat > "$BIN/efetch" <<EOS
 #!/bin/sh
+in=\$(cat)
 echo "efetch \$*" >> "$CALLS"
+case "\$*" in *docsum*)
+    case "\$in" in *'SAMN1['*) printf '%s' "\${FAKE_DOC1:-}";; *'SAMN2['*) printf '%s' "\${FAKE_DOC2:-}";; esac
+    exit 0;; esac
 [ -n "\${FAKE_FAIL:-}" ] && exit 1
-echo "Run,ReleaseDate,LoadDate,spots,spots_with_mates,avgLength,size_MB,AssemblyName,download_path,Experiment,LibraryName,LibraryStrategy,LibrarySource,LibrarySelection,LibraryLayout,InsertSize,InsertDev,Platform,Model,SRAStudy,BioProject,Sample,BioSample,SampleName"
+echo "Run,ReleaseDate,LoadDate,spots,bases,spots_with_mates,avgLength,size_MB,AssemblyName,download_path,Experiment,LibraryName,LibraryStrategy,LibrarySelection,LibrarySource,LibraryLayout,InsertSize,InsertDev,Platform,Model,SRAStudy,BioProject,Study_Pubmed_id,ProjectID,Sample,BioSample,SampleType,TaxID,ScientificName,SampleName"
+echo "SRR1111111,2024-06-01,x,500000,x,x,x,x,x,x,x,mycelium,RNA-Seq,x,x,PAIRED,x,x,ILLUMINA,x,SRP1,PRJ1,x,x,x,SAMN1,x,x,x,sampleA"
+[ "\${FAKE_ROWS:-1}" = 2 ] && echo "SRR2222222,2024-01-01,x,500000,x,x,x,x,x,x,x,mycelium,RNA-Seq,x,x,PAIRED,x,x,ILLUMINA,x,SRP1,PRJ1,x,x,x,SAMN2,x,x,x,sampleB"
+exit 0
 EOS
-# runinfo columns used by the module: 1 Run, 2 date, 4 spots, 13 strategy, 16 layout, 19 platform; pad to 30.
-echo 'echo "SRR1234567,2024-01-01,x,500000,x,x,x,x,x,x,x,mycelium,RNA-Seq,x,x,PAIRED,x,x,ILLUMINA,x,SRP1,PRJ1,x,x,x,x,x,x,x,sampleA"' >> "$BIN/efetch"
 printf '#!/bin/sh\necho "${FAKE_COUNT:-1}"\n' > "$BIN/xtract"   # esearch Count
 printf '#!/bin/sh\nexit 0\n' > "$BIN/sleep"       # no 30/60 s retry backoff
 command -v timeout >/dev/null || printf '#!/bin/sh\nshift\nexec "$@"\n' > "$BIN/timeout"   # macOS has none
@@ -94,6 +110,14 @@ reset; echo "$HDR" > "$SQ/$TAG.sra_query.csv"; echo "v2|162425+227321" > "$SQ/$T
 check "11 list + matching key: reused" '[ "$NCALL" -eq 0 ]'
 reset; TAGV=Fusarium_sp. TIDV=5506 run FAKE_COUNT=1
 check "12 non-binomial tag: txid only" 'grep -q "(txid5506\[Organism\])" "$CALLS" && ! grep -q "Fusarium sp" "$CALLS"'
+
+runs() { sed 1d "$SQ/$TAG.sra_query.csv" | cut -d, -f3 | paste -sd' ' -; }
+reset; run FAKE_ROWS=2 FAKE_DOC1="Title: THP-1 macrophage co-culture" FAKE_DOC2="Title: mycelium"
+check "13 host BioSample dropped, next kept" '[ "$(runs)" = "SRR2222222" ]'
+reset; run FAKE_ROWS=2 FAKE_DOC1="strain: NE579 upf1delta" FAKE_DOC2="Title: mycelium"
+check "14 mutant BioSample dropped, next kept" '[ "$(runs)" = "SRR2222222" ]'
+reset; run FAKE_ROWS=2
+check "15 empty lookup fails open" '[ "$(runs)" = "SRR1111111 SRR2222222" ]'
 
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ] || { echo "--- last nextflow log ---"; tail -30 "$T/nf.log"; exit 1; }
