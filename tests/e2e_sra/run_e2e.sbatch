@@ -40,9 +40,10 @@ START_AT="${START_AT:-1}"
 mkdir -p logs
 
 # Inputs for the launch directory.
-for f in samples.csv params.yaml fetch_genomes.sh check.sh; do
-    [ -e "$f" ] || cp "$HERE/$f" .
-done
+# samples.csv and params.yaml are copied once (edit them in the launch directory); the scripts are
+# refreshed every time, so a fixed check.sh is never shadowed by an old copy.
+for f in samples.csv params.yaml; do [ -e "$f" ] || cp "$HERE/$f" .; done
+cp -f "$HERE/fetch_genomes.sh" "$HERE/check.sh" .
 PROTEINS="${PROTEINS:-$PWD/lib/swissprot_fungi.faa}"
 [ -s "$PROTEINS" ] || { echo "protein evidence not found: $PROTEINS (set PROTEINS=...)" >&2; exit 2; }
 
