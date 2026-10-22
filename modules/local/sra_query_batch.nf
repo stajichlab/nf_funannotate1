@@ -5,16 +5,17 @@
 // present in rnaseq_reads/sra_query/ are reused without re-querying (rule below).
 //
 // Cache marker: a query that completed writes <species_tag>.sra_query.key =
-// "v2|<taxonid>". A cached CSV is reused when it lists at least one run, or when
-// it is header-only AND its key matches the current taxonid (a completed query that
+// "v2|<taxonids>" (the species' distinct taxon IDs, '+'-joined). A cached CSV is reused when
+// it lists at least one run, or when it is header-only AND its key matches the current
+// taxon IDs (a completed query that
 // really found nothing). A header-only CSV with no matching key -- written by a
 // failed query (all 3 attempts timed out), by an older version of this module, or
-// for a different taxonid -- is queried again, and publishDir overwrite is true so
+// for different taxon IDs -- is queried again, and publishDir overwrite is true so
 // the new result replaces it. (Ported from Fungi_BFD.) To keep own RNA-seq reads
 // and skip the search, use --skip_sra_query true, or write the key by hand.
 //
 // The runinfo fetch is capped to the first 250 UIDs (efetch -start 1 -stop
-// 250 -- esearch itself has no -retmax flag) and given a 300s timeout per
+// min(Count, 250) -- esearch itself has no -retmax flag) and given a 300s timeout per
 // attempt. Without the cap, a heavily-sequenced species (e.g.
 // Cryptococcus neoformans, Fusarium graminearum, Neurospora crassa -- each
 // with 900+ matching SRA records) makes the runinfo fetch take well over the
@@ -43,6 +44,8 @@
 // the automated top-5 pick matters (spot-check the resulting sra_query.csv;
 // LibraryName/SampleName aren't retained in the CSV, so cross-reference
 // accessions against SRA runinfo/BioSample directly if verifying).
+// A second pass on the ranked short-list reads each run's BioSample record and drops host-
+// associated and mutant runs the keyword filter missed (biosample_excluded below).
 // Resources overridden per-profile by withName: '.*:SRA_QUERY_BATCH' in
 // conf/profile_annotate.config (short queue, retry on failure).
 // Community samples are excluded too: LibrarySource (runinfo col 15)
@@ -82,29 +85,81 @@ process SRA_QUERY_BATCH {
 
     printf '${batch_args}\\n' > batch_input.tsv
 
-    # Entrez organism term: txid<N> when samples.csv has NCBI_TAXONID, else the
-    # species name from the tag (underscores -> spaces). A blank taxonid used to
-    # build 'txid[Organism:noexp]', which matches nothing, so species without an
-    # NCBI_TAXONID silently got "Found 0 accessions".
+    # Entrez organism clause. \$2 is the '+'-joined list of the species' distinct taxon IDs
+    # (see fetch_rnaseq / funannotate.nf): the species name (only for a plain "Genus epithet"
+    # tag, not sp./cf./aff./x) OR txid<id> for each ID, all as expanded [Organism] terms, so
+    # runs filed under the species, a strain or a child taxon are found. The old term,
+    # txid<first id>[Organism:noexp], missed every run when the first ID was strain-level
+    # (Lentinula_edodes, found in Fungi_BFD). With no taxon ID at all it uses the tag as a name
+    # (a blank ID used to build 'txid[Organism:noexp]', which matches nothing).
     org_term() {
-        local stag="\$1" tid="\$2"
-        if [ -n "\$tid" ]; then
-            printf 'txid%s[Organism:noexp]' "\$tid"
-        else
-            printf '%s[Organism:noexp]' "\$(printf '%s' "\$stag" | tr '_' ' ')"
+        local stag="\$1" tids="\$2" genus epithet t out=""
+        genus="\${stag%%_*}"; epithet="\${stag#*_}"; epithet="\${epithet%%_*}"
+        if [[ "\$genus" =~ ^[A-Z][a-z]+\$ && "\$epithet" =~ ^[a-z][a-z-]+\$ && ! "\$epithet" =~ ^(sp|cf|aff|x)\$ ]]; then
+            out="\\"\${genus} \${epithet}\\"[Organism]"
         fi
+        # Unquoted on purpose: IDs are numeric, and an empty array under `set -u` aborted this
+        # function on bash < 4.4, leaving the organism clause empty and matching every organism.
+        for t in \${tids//+/ }; do
+            out="\${out:+\$out OR }txid\${t}[Organism]"
+        done
+        [ -n "\$out" ] || out="\\"\$(printf '%s' "\$stag" | tr '_' ' ')\\"[Organism]"
+        printf '(%s)' "\$out"
+    }
+
+    # esearch, then efetch runinfo for min(Count, 250) records. Asking efetch for
+    # -stop 250 when the query matches fewer records makes it request past the end;
+    # NCBI answers 400 and edirect retries, which ran all 3 attempts into the 300 s
+    # timeout (Cryptococcus_deneoformans, 215 matches, 2026-09-27, found in Fungi_BFD).
+    # Count 0 is a completed query with an empty result (exit 0, empty runinfo).
+    FETCH_RUNINFO='env=\$(esearch -db sra -query "\$1") || exit 1
+        n=\$(printf "%s" "\$env" | xtract -pattern ENTREZ_DIRECT -element Count)
+        [ -n "\$n" ] || exit 1
+        [ "\$n" -gt 0 ] || exit 0
+        printf "%s" "\$env" | efetch -format runinfo -start 1 -stop \$(( n < 250 ? n : 250 ))'
+
+    # ── BioSample-level second pass ─────────────────────────────────────────
+    # The LibraryName/SampleName keyword filter misses runs whose runinfo LibraryName is blank and
+    # SampleName is a bare GEO accession; the host or mutant signal then lives only in the
+    # BioSample Title/Attributes, which runinfo never exposes (found in Fungi_BFD: Trichophyton_rubrum
+    # top picks were THP-1 macrophage co-culture; Cryptococcus_deneoformans picks included an
+    # NMD-deficient upf1delta mutant, whose intron-retained transcripts are wrong PASA evidence).
+    # Only the ranked short-list (15) is looked up (~1.2 s each). Fails OPEN (keeps the run) on a
+    # lookup timeout or empty reply: far more likely a NCBI hiccup than a real signal. A first pass,
+    # not a guarantee -- spot-check the CSV on heavily studied species.
+    HOST_KEYWORD_RE='(mouse|murine| mice | rat |rabbit|macrophage|phagocyt|in.?vivo|infect|co.?infec|co.?cultur|amoeba|acanthamoeba|galleria|zebrafish|elegans| host |blood|serum|plasma|csf|cerebrospinal|lung|brain|spleen|kidney| liver |tissue|biopsy|patient|clinical|autopsy|necropsy|bronch|thp-?1|rumen|ruemn|rumin|microbiom|metagenom|metatranscript|faec|fecal|feces|sludge|compost)'
+    biosample_is_host_associated() {
+        local biosample="\$1" doc
+        BS_DOC=""
+        [ -z "\$biosample" ] && return 1
+        # < /dev/null: esearch reads stdin, and this runs inside the candidate while-read loop;
+        # without it esearch swallowed the rest of the list and only the first run was kept.
+        doc=\$(timeout 15 bash -c "esearch -db biosample -query '\${biosample}[Accession]' | efetch -format docsum" < /dev/null 2>/dev/null)
+        [ -z "\$doc" ] && return 1
+        BS_DOC=\$(printf '%s' "\$doc" | tr '[:upper:]' '[:lower:]')
+        printf '%s' "\$BS_DOC" | grep -qE "\$HOST_KEYWORD_RE"
+    }
+    # Mutant/engineered strains, checked on the same docsum (BS_DOC, no second lookup). Also catches
+    # gene::marker disruptions (msd1::NAT) and overexpression (OE-MSD1, 'overexpression').
+    MUTANT_KEYWORD_RE='(delta|Δ|∆|mutant|knock.?(out|down)|deletion|::|over.?express|(^|[^a-z])oe-|rnai|crispr)'
+    biosample_excluded() {
+        BS_REASON="" BS_DOC=""
+        if biosample_is_host_associated "\$1"; then BS_REASON="host-associated"; return 0; fi
+        if [ -n "\$BS_DOC" ] && printf '%s' "\$BS_DOC" | grep -qE "\$MUTANT_KEYWORD_RE"; then BS_REASON="a mutant strain"; return 0; fi
+        return 1
     }
 
     query_species() {
         local stag="\$1" tid="\$2" attempt
         local ORG
         ORG=\$(org_term "\$stag" "\$tid")
+        [ -n "\$ORG" ] && [ "\$ORG" != "()" ] || { echo "[WARN] \${stag}: empty organism clause, not querying SRA"; return 1; }
         [ -n "\$tid" ] || echo "[WARN] \${stag}: no NCBI_TAXONID in samples.csv; querying SRA by name: \${ORG}"
 
         for attempt in 1 2 3; do
             rm -f "_runinfo_\${stag}.tmp"
-            if timeout 300 bash -c \\
-                    "esearch -db sra -query '\${ORG} AND RNA-Seq[Strategy] AND PAIRED[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND (BGISEQ[Platform] OR Illumina[Platform])' | efetch -format runinfo -start 1 -stop 250" \\
+            if timeout 300 bash -c "\$FETCH_RUNINFO" _ \\
+                    "\${ORG} AND RNA-Seq[Strategy] AND PAIRED[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND (BGISEQ[Platform] OR Illumina[Platform])" \\
                     < /dev/null > "_runinfo_\${stag}.tmp"; then
                 return 0
             fi
@@ -115,24 +170,26 @@ process SRA_QUERY_BATCH {
         return 1
     }
 
-    while IFS=\$(printf '\\t') read -r species_tag taxonid; do
+    while IFS=\$(printf '\\t') read -r species_tag taxonids; do
+        taxonid="\${taxonids%%+*}"     # first (most frequent) ID: the CSV taxonid column
         cached="${cache_dir}/\${species_tag}.sra_query.csv"
         cached_key="${cache_dir}/\${species_tag}.sra_query.key"
         # Reuse when the CSV has a run row, or is header-only with a matching key
         # (see the header comment). Anything else is queried again.
         if [ -s "\$cached" ] && { [ "\$(grep -c . "\$cached")" -gt 1 ] || \\
-               { [ -f "\$cached_key" ] && [ "\$(cat "\$cached_key")" = "v2|\${taxonid}" ]; }; }; then
+               { [ -f "\$cached_key" ] && [ "\$(cat "\$cached_key")" = "v2|\${taxonids}" ]; }; }; then
             cp "\$cached" "\${species_tag}.sra_query.csv"
             echo "[INFO] Reusing cached result for \${species_tag}"
             continue
         fi
 
-        if query_species "\${species_tag}" "\${taxonid}"; then
+        if query_species "\${species_tag}" "\${taxonids}"; then
             printf 'species_tag,taxonid,sra_accession,spots,platform,layout\\n' > "\${species_tag}.sra_query.csv"
             # col 1=Run, col 2=ReleaseDate, col 4=spots, col 12=LibraryName, col 13=LibraryStrategy,
-            # col 16=LibraryLayout, col 19=Platform, col 30=SampleName.
+            # col 16=LibraryLayout, col 19=Platform, col 26=BioSample, col 30=SampleName.
             # Prepend a platform rank (0=Illumina, 1=BGI/other) so the top 5 prefer Illumina,
-            # then most-recent ReleaseDate first, then spot count desc as a final tiebreaker.
+            # then most-recent ReleaseDate first, then spot count desc as a final tiebreaker. The
+            # short-list is widened to 15 so the BioSample second pass can reject some and backfill.
             # Best-effort keyword filter on LibraryName/SampleName excludes likely
             # host-associated/co-infection samples -- see module header comment.
             awk -F',' -v BL="${launchDir}/rnaseq_blacklist.csv" '
@@ -145,6 +202,7 @@ process SRA_QUERY_BATCH {
                 NR>1 && \$13=="RNA-Seq" && \$16=="PAIRED" && \$1~/^[SDE]RR/ && \$4+0>=250000 {
                     meta = " " tolower(\$12 " " \$30) " "
                     if (meta ~ /(mouse|murine| mice | rat |rabbit|macrophage|phagocyt|in.?vivo|infect|co.?infec|co.?cultur|amoeba|acanthamoeba|galleria|zebrafish|elegans| host |blood|serum|plasma|csf|cerebrospinal|lung|brain|spleen|kidney| liver |tissue|biopsy|patient|clinical|autopsy|necropsy|bronch|rumen|ruemn|rumin|microbiom|metagenom|metatranscript|faec|fecal|feces|sludge|compost)/) next
+                    if (meta ~ /(delta|Δ|∆|mutant|knock.?(out|down)|deletion|::|over.?express|(^|[^a-z])oe-|rnai|crispr)/) next
                     # LibrarySource (col 15) METATRANSCRIPTOMIC/METAGENOMIC = community sample, not this species.
                     if (\$15 ~ /^META/) next
                     # Known mislabeled studies (SRAStudy col 21 / BioProject col 22) -- see header comment.
@@ -153,22 +211,30 @@ process SRA_QUERY_BATCH {
                     # Same submitter as those studies (CenterName; runinfo has no author field): keep, but warn.
                     if (toupper(\$0) ~ /SICHUAN AGRICULTURAL UNIVERSITY/) print "[WARN] SRA_QUERY: " \$1 " (" \$21 ") is from SICHUAN AGRICULTURAL UNIVERSITY -- check it is not a rumen/community sample" > "/dev/stderr"
                     rank = (\$19 ~ /[Ii]llumina/) ? 0 : 1
-                    printf "%d,%s,%s,%s,%s\\n", rank, \$2, \$1, \$4, \$19
+                    printf "%d,%s,%s,%s,%s,%s\\n", rank, \$2, \$1, \$4, \$19, \$26
                 }' "_runinfo_\${species_tag}.tmp" | \\
                 sort -t',' -k1,1n -k2,2r -k4,4rn | \\
-                head -n 5 | \\
-                while IFS=',' read -r rank reldate acc spots platform; do
-                    printf '%s,%s,%s,%s,%s,PAIRED\\n' "\${species_tag}" "\${taxonid}" "\$acc" "\$spots" "\$platform"
-                done >> "\${species_tag}.sra_query.csv"
-            rm -f "_runinfo_\${species_tag}.tmp"
-            printf 'v2|%s\\n' "\${taxonid}" > "\${species_tag}.sra_query.key"
+                head -n 15 > "_cand_\${species_tag}.tmp"
+            # Second pass on the ranked short-list: the BioSample record (Title/Attributes), which runinfo
+            # does not carry, rejects host-associated and mutant runs the keyword filter missed. Keep 5.
+            KEPT=0
+            while IFS=',' read -r rank reldate acc spots platform biosample; do
+                [ "\$KEPT" -ge 5 ] && break
+                if biosample_excluded "\$biosample"; then
+                    echo "[INFO] \${species_tag}: excluding \$acc (BioSample \$biosample looks like \$BS_REASON on second-pass check)"
+                    continue
+                fi
+                printf '%s,%s,%s,%s,%s,PAIRED\\n' "\${species_tag}" "\${taxonid}" "\$acc" "\$spots" "\$platform" >> "\${species_tag}.sra_query.csv"
+                KEPT=\$((KEPT + 1))
+            done < "_cand_\${species_tag}.tmp"
+            rm -f "_runinfo_\${species_tag}.tmp" "_cand_\${species_tag}.tmp"
             NHITS=\$(awk 'END{print NR-1}' "\${species_tag}.sra_query.csv")
-            echo "[INFO] Found \$NHITS paired-end accessions for \${species_tag} (taxonid=\${taxonid})"
+            echo "[INFO] Found \$NHITS paired-end accessions for \${species_tag} (taxonids=\${taxonids})"
             # SE fallback: if no PE hits and enable_single_end, query SINGLE layout
             if [ "${params.enable_single_end}" = "true" ] && [ "\$NHITS" -eq 0 ]; then
                 rm -f "_runinfo_se_\${species_tag}.tmp"
-                if timeout 300 bash -c \\
-                        "esearch -db sra -query '\$(org_term "\${species_tag}" "\${taxonid}") AND RNA-Seq[Strategy] AND SINGLE[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND Illumina[Platform]' | efetch -format runinfo -start 1 -stop 250" \\
+                if timeout 300 bash -c "\$FETCH_RUNINFO" _ \\
+                        "\$(org_term "\${species_tag}" "\${taxonids}") AND RNA-Seq[Strategy] AND SINGLE[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND Illumina[Platform]" \\
                         < /dev/null > "_runinfo_se_\${species_tag}.tmp"; then
                     awk -F',' -v BL="${launchDir}/rnaseq_blacklist.csv" '
                         BEGIN {
@@ -180,6 +246,7 @@ process SRA_QUERY_BATCH {
                         NR>1 && \$13=="RNA-Seq" && \$16=="SINGLE" && \$1~/^[SDE]RR/ && \$4+0>=250000 {
                             meta = " " tolower(\$12 " " \$30) " "
                             if (meta ~ /(mouse|murine| mice | rat |rabbit|macrophage|phagocyt|in.?vivo|infect|co.?infec|co.?cultur|amoeba|acanthamoeba|galleria|zebrafish|elegans| host |blood|serum|plasma|csf|cerebrospinal|lung|brain|spleen|kidney| liver |tissue|biopsy|patient|clinical|autopsy|necropsy|bronch|rumen|ruemn|rumin|microbiom|metagenom|metatranscript|faec|fecal|feces|sludge|compost)/) next
+                            if (meta ~ /(delta|Δ|∆|mutant|knock.?(out|down)|deletion|::|over.?express|(^|[^a-z])oe-|rnai|crispr)/) next
                             # LibrarySource (col 15) METATRANSCRIPTOMIC/METAGENOMIC = community sample, not this species.
                             if (\$15 ~ /^META/) next
                             # Known mislabeled studies (SRAStudy col 21 / BioProject col 22) -- see header comment.
@@ -187,18 +254,27 @@ process SRA_QUERY_BATCH {
                             if (\$1 in skip) next
                             # Same submitter as those studies (CenterName; runinfo has no author field): keep, but warn.
                             if (toupper(\$0) ~ /SICHUAN AGRICULTURAL UNIVERSITY/) print "[WARN] SRA_QUERY: " \$1 " (" \$21 ") is from SICHUAN AGRICULTURAL UNIVERSITY -- check it is not a rumen/community sample" > "/dev/stderr"
-                            printf "%s,%s,%s,%s\\n", \$2, \$1, \$4, \$19
+                            printf "%s,%s,%s,%s,%s\\n", \$2, \$1, \$4, \$19, \$26
                         }' "_runinfo_se_\${species_tag}.tmp" | \\
                         sort -t',' -k1,1r -k3,3rn | \\
-                        head -n ${params.max_rnaseq_se_runs} | \\
-                        while IFS=',' read -r reldate acc spots platform; do
-                            printf '%s,%s,%s,%s,%s,SINGLE\\n' "\${species_tag}" "\${taxonid}" "\$acc" "\$spots" "\$platform"
-                        done >> "\${species_tag}.sra_query.csv"
+                        head -n 15 > "_cand_se_\${species_tag}.tmp"
+                    SE_KEPT=0
+                    while IFS=',' read -r reldate acc spots platform biosample; do
+                        [ "\$SE_KEPT" -ge ${params.max_rnaseq_se_runs} ] && break
+                        if biosample_excluded "\$biosample"; then
+                            echo "[INFO] \${species_tag}: excluding SE \$acc (BioSample \$biosample looks like \$BS_REASON on second-pass check)"
+                            continue
+                        fi
+                        printf '%s,%s,%s,%s,%s,SINGLE\\n' "\${species_tag}" "\${taxonid}" "\$acc" "\$spots" "\$platform" >> "\${species_tag}.sra_query.csv"
+                        SE_KEPT=\$((SE_KEPT + 1))
+                    done < "_cand_se_\${species_tag}.tmp"
                 fi
-                rm -f "_runinfo_se_\${species_tag}.tmp"
+                rm -f "_runinfo_se_\${species_tag}.tmp" "_cand_se_\${species_tag}.tmp"
                 NHITS=\$(awk 'END{print NR-1}' "\${species_tag}.sra_query.csv")
                 echo "[INFO] SE fallback: \$NHITS single-end accessions for \${species_tag}"
             fi
+            # Completed query (PE, plus SE fallback when enabled): mark the result valid.
+            printf 'v2|%s\\n' "\${taxonids}" > "\${species_tag}.sra_query.key"
         else
             printf 'species_tag,taxonid,sra_accession,spots,platform,layout\\n' > "\${species_tag}.sra_query.csv"
             echo "[WARN] All 3 attempts failed for \${species_tag}; writing empty CSV"
@@ -212,10 +288,11 @@ process SRA_QUERY_BATCH {
                         .join('\\n')
     """
     printf '${stub_args}\\n' > batch_input.tsv
-    while IFS=\$(printf '\\t') read -r species_tag taxonid; do
+    while IFS=\$(printf '\\t') read -r species_tag taxonids; do
+        taxonid="\${taxonids%%+*}"
         printf 'species_tag,taxonid,sra_accession,spots,platform,layout\\n' > "\${species_tag}.sra_query.csv"
         printf '%s,%s,SRR000001,1000000,ILLUMINA,PAIRED\\n' "\${species_tag}" "\${taxonid}" >> "\${species_tag}.sra_query.csv"
-        printf 'v2|%s\\n' "\${taxonid}" > "\${species_tag}.sra_query.key"
+        printf 'v2|%s\\n' "\${taxonids}" > "\${species_tag}.sra_query.key"
     done < batch_input.tsv
     echo "[STUB] SRA_QUERY_BATCH (${species_tags.size()} species)"
     """

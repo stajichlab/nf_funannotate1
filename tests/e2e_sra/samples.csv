@@ -1,0 +1,3 @@
+SPECIES,STRAIN,ASMID,LOCUSTAG,BUSCO_LINEAGE,TRANSL_TABLE,NCBI_TAXONID,GENOME
+Yarrowia lipolytica,CLIB122,GCF_000002525.2,YALI0TEST,saccharomycetes_odb10,1,284591,genomes/Yarrowia_lipolytica_CLIB122.fna.gz
+Cryptococcus deneoformans,JEC21,GCF_000091045.1,CNETEST,tremellomycetes_odb10,1,214684,genomes/Cryptococcus_deneoformans_JEC21.fna.gz

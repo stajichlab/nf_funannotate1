@@ -7,7 +7,16 @@ params.species_tag      = 'Aspergillus_nidulans'
 params.taxonid          = '162425'
 params.enable_single_end = false
 params.max_rnaseq_se_runs = 3
+params.species_list     = ''
 
+// params.species_list = 'Tag1:id+id,Tag2:id' runs several species as one batch (live test).
 workflow {
-    SRA_QUERY_BATCH(Channel.of(tuple([params.species_tag], [params.taxonid])))
+    def tags = [params.species_tag]
+    def ids  = [params.taxonid]
+    if (params.species_list) {
+        def pairs = params.species_list.toString().split(',').collect { it.split(':', 2) }
+        tags = pairs.collect { it[0] }
+        ids  = pairs.collect { it[1] }
+    }
+    SRA_QUERY_BATCH(Channel.of(tuple(tags, ids)))
 }

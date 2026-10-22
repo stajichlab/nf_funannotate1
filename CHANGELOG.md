@@ -7,6 +7,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- `SRA_QUERY_BATCH` no longer queries SRA without an organism clause. For a species with no `NCBI_TAXONID`,
+  `bash` < 4.4 aborted the clause builder on an empty array (`set -u`), so the query dropped the organism
+  term and returned the top RNA-seq runs of any organism. Found by the live NCBI test
+  (`tests/live_sra_query.sh`); the builder no longer uses an array and the query is refused if the clause is empty.
+- `SRA_QUERY_BATCH` checks each SRA run's BioSample (Title/Attributes) before keeping it, and drops
+  host-associated runs (macrophage, THP-1, tissue, ...) and mutant or engineered strains (`delta`,
+  `::`, `OE-`, knockout, RNAi, ...) that the LibraryName/SampleName keyword filter missed. The ranked
+  short-list is 15 runs (was 5), so rejected runs are backfilled; the first 5 clean ones are kept (SE:
+  `--max_rnaseq_se_runs`). A failed or empty BioSample lookup keeps the run. The keyword filter also
+  drops mutant names. Costs about 1.2 s per looked-up run. Ported from Fungi_BFD.
+- `SRA_QUERY_BATCH` searches SRA for the species name and **every** distinct `NCBI_TAXONID` of its
+  strains (`txid<id>[Organism]`, expanded to child taxa) instead of only the first ID with
+  `[Organism:noexp]`, which found nothing when the first ID was strain-level (Lentinula edodes). The
+  species name is added for plain "Genus epithet" tags. The CSV `taxonid` column keeps the first (most
+  frequent) ID, and the cache key becomes `v2|<id>+<id>...`. **Header-only CSVs whose key holds
+  only one ID are searched again for species with several IDs.** Ported from Fungi_BFD.
+- `SRA_QUERY_BATCH` asks `efetch` for `min(Count, 250)` runinfo records instead of a fixed 250. Past the end of a
+  smaller result NCBI answers 400 and edirect retried until all 3 attempts timed out, so species with 100-249
+  matching runs got an empty query. A query with 0 matches is now a completed (cached) empty result. Ported from Fungi_BFD.
 - `SRA_QUERY_BATCH` no longer caches a failed query forever. A completed query writes
   `<species>.sra_query.key` (`v2|<taxonid>`); a cached header-only CSV is reused only when that key
   matches, so a CSV left by a timed-out query (or an older version) is searched again, and the new

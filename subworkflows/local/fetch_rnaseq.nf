@@ -22,7 +22,7 @@ include { SRA_FETCH_SE      } from './../../modules/local/sra_fetch_se'
 workflow FETCH_RNASEQ {
 
     take:
-    ch_species  // channel: tuple(val(species_tag), val(taxonid))
+    ch_species  // channel: tuple(val(species_tag), val(taxonids)); taxonids = '+'-joined distinct taxon IDs
 
     main:
     // ── Step 1: SRA query ────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ workflow FETCH_RNASEQ {
     if (params.skip_sra_query.toBoolean()) {
         // Reuse pre-existing per-species CSVs; skip all NCBI network calls.
         sra_query_results = ch_species
-            .map { species_tag, _taxonid ->
+            .map { species_tag, _taxonids ->
                 def csv = file("${launchDir}/rnaseq_reads/sra_query/${species_tag}.sra_query.csv")
                 if (!csv.exists()) {
                     log.warn "skip_sra_query: no cached CSV for ${species_tag} — skipping this species"
