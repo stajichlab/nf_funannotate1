@@ -190,14 +190,16 @@ workflow {
                     tuple(species_tag, meta.taxonid)
                 }
                 .groupTuple(by: 0)
-                // Most frequent taxonid, ties by lowest id: the order groupTuple returns is not
-                // stable, and the SRA query cache key (v2|<taxonid>) must not flap between runs.
+                // All distinct taxon IDs of the species, '+'-joined: most frequent first, ties by
+                // lowest id, at most 10. The order groupTuple returns is not stable, and the SRA
+                // query cache key (v2|<taxonids>) must not flap between runs.
                 .map { species_tag, taxonids ->
-                    def counts = taxonids.collect { it.toString() }.countBy { it }
-                    def best = counts.keySet().sort { a, b ->
+                    def ids = taxonids.collect { it?.toString()?.trim() }.findAll { it }
+                    def counts = ids.countBy { it }
+                    def ranked = counts.keySet().sort { a, b ->
                         (counts[b] <=> counts[a]) ?: ((a.isLong() && b.isLong()) ? (a as long) <=> (b as long) : a <=> b)
-                    }.first()
-                    tuple(species_tag, best)
+                    }
+                    tuple(species_tag, ranked.take(10).join('+'))
                 }
 
             FETCH_RNASEQ(sra_input)

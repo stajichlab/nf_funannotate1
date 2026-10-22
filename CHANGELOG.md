@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- `SRA_QUERY_BATCH` searches SRA for the species name and **every** distinct `NCBI_TAXONID` of its
+  strains (`txid<id>[Organism]`, expanded to child taxa) instead of only the first ID with
+  `[Organism:noexp]`, which found nothing when the first ID was strain-level (Lentinula edodes). The
+  species name is added for plain "Genus epithet" tags. The CSV `taxonid` column keeps the first (most
+  frequent) ID, and the cache key becomes `v2|<id>+<id>...`. **Header-only CSVs whose key holds
+  only one ID are searched again for species with several IDs.** Ported from Fungi_BFD.
 - `SRA_QUERY_BATCH` asks `efetch` for `min(Count, 250)` runinfo records instead of a fixed 250. Past the end of a
   smaller result NCBI answers 400 and edirect retried until all 3 attempts timed out, so species with 100-249
   matching runs got an empty query. A query with 0 matches is now a completed (cached) empty result. Ported from Fungi_BFD.
