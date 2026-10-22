@@ -55,7 +55,7 @@ account settings without needing the tools or databases.
 
 Only for sites without a container runtime. UCR HPCC does this with
 `conf/provision_ucr_hpcc.config` (Lmod `beforeScript` per process label) and
-`conf/site_ucr_hpcc.config` (shared paths). To add one:
+`conf/site_ucr_hpcc.config` (shared paths); see [site_ucr_hpcc.md](site_ucr_hpcc.md). To add one:
 
 1. `cp conf/provision_ucr_hpcc.config conf/provision_<yoursite>.config`
 2. Replace the module names in each `withLabel` `beforeScript`

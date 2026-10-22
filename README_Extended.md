@@ -59,7 +59,7 @@ nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,singularity -c m
 
 `mysite.config` is a small file with your cluster's partition names, container cache
 and shared database paths (see [Running on your own SLURM cluster](#running-on-your-own-slurm-cluster)).
-On UCR HPCC use `-profile annotate,slurm,ucr_hpcc` instead.
+On UCR HPCC see [docs/site_ucr_hpcc.md](docs/site_ucr_hpcc.md).
 
 Nextflow caches the repo under `~/.nextflow/assets/`; add `-r <branch|tag>` to pin
 a revision and `-latest` to pull updates. Outputs and the `samples.csv` /
@@ -180,7 +180,7 @@ to A, replace its files and CSV. To switch from A to B, delete its three
 `_norm_` files and its `sra_query` CSV.
 
 Two global switches: `--run_sra_fetch false` disables SRA for every species (and
-RNA-seq training for species without your own reads), and `--skip_sra_query true`
+all RNA-seq training, including for species with your own reads: your reads are only used when it is `true`), and `--skip_sra_query true`
 reuses the cached query CSVs without contacting NCBI.
 
 #### Strategy A: supply your own reads
@@ -439,13 +439,8 @@ for sites that only have Lmod modules.
 
 ### UCR HPCC
 
-```bash
-# Lmod modules on SLURM, from a launch dir with samples.csv:
-nextflow run stajichlab/nf_funannotate1 -profile annotate,slurm,ucr_hpcc -resume --n_test 1
-
-# or, from a local checkout, use the sbatch launcher (auto-detects UCR HPCC)
-sbatch /path/to/nf_funannotate1/run_annotate.sh --n_test 1
-```
+The institutional example. Its profile, launcher behavior and shared paths are in
+[docs/site_ucr_hpcc.md](docs/site_ucr_hpcc.md). It is not needed at other sites.
 
 ## Orthogonal profiles
 
@@ -480,11 +475,9 @@ PROVISION=conda       sbatch run_annotate.sh     # shared conda envs
 EXECUTOR=local         sbatch run_annotate.sh     # head + tasks local
 ```
 
-On UCR HPCC, `PROVISION=conda`/`singularity` **layers on top of** `ucr_hpcc` rather than
-replacing it (`-profile annotate,slurm,ucr_hpcc,conda`) — `ucr_hpcc` still
-carries the SLURM SCRATCH/TMPDIR safety net regardless of which provisioning
-axis supplies the tools; only the last-loaded axis's `beforeScript`/`container`
-setting wins per process.
+On UCR HPCC the launcher keeps the `ucr_hpcc` profile in the list whatever
+`PROVISION` is; see [docs/site_ucr_hpcc.md](docs/site_ucr_hpcc.md#what-run_annotatesh-does-on-ucr-hpcc).
+Elsewhere `SITE_PROFILE` is empty, and `SITE_CONFIG=` passes your own `-c` file.
 
 It runs the pipeline **by project name** (`nextflow run stajichlab/nf_funannotate1`)
 rather than by file path, so it is safe under `sbatch` (which copies the script
@@ -518,7 +511,7 @@ PROVISION=singularity sbatch run_annotate.sh \
 ```
 
 `conda_env` resolves under `--conda_envs_root` (`$CONDA_ENVS_ROOT`, default
-`/bigdata/stajichlab/shared/condaenv` when set by `run_annotate.sh`); see
+`$HOME/.conda/nf_funannotate1` when unset; UCR HPCC: `/bigdata/stajichlab/shared/condaenv`); see
 `conf/provision_conda.config`. `container_funannotate` resolves relative to
 `--sif_dir` when not given as an absolute path/URI; see
 `conf/provision_singularity.config`.
@@ -539,7 +532,7 @@ Nextflow pulls most of these public images automatically into the `sif_dir` cach
 - edirect, prodigal, skani, busco, interproscan, setup, braker3 (biocontainers / Docker Hub)
 
 These images are not public. Build them and point at them with
-`--container_*` (defaults under `/bigdata/stajichlab/shared/lib/singularity_cache`):
+`--container_*` (defaults under `sif_dir`; UCR HPCC: `/bigdata/stajichlab/shared/lib/singularity_cache`):
 `signalp6-fast.sif` (fast mode, licensed),
 `DeepTMHMM-1.0.sif` (licensed), and the antismash-procps image. Build
 one-liners live in `conf/provision_singularity.config` next to each
@@ -561,9 +554,10 @@ The other MariaDB steps use `params.container_mariadb`: `SETUP_MARIADB_DATADIR`
 
 - **Default:** `container_mariadb` is unset, so these steps use
   `params.container_funannotate`. No separate MariaDB image is needed at any site.
-- **Override:** `--container_mariadb <path.sif | docker://uri>`. The old UCR
-  image (MariaDB 10.3.9) still works:
-  `--container_mariadb /bigdata/stajichlab/shared/lib/singularity_cache/mariadb.sif`.
+- **Override:** `--container_mariadb <path.sif | docker://uri>`. An older
+  separately built image (UCR's was MariaDB 10.3.9) still works:
+  `--container_mariadb /path/to/mariadb.sif`. UCR's path is in
+  [docs/site_ucr_hpcc.md](docs/site_ucr_hpcc.md).
 - **`docker://` URIs are not converted on every call.** (This applies when `container_funannotate`
   or `container_mariadb` is a `docker://` URI; the default is a local `.sif` and needs no conversion.)
   The pipeline maps the URI
@@ -634,7 +628,7 @@ like the `slurm` one in `nextflow.config`.
    clones the pinned workflow (6.0.2.2) and pre-pulls its images into
    `sif_dir`. Add `--data` to also download the InterPro data (tens of GB)
    into `--iprscan6_datadir`. Without these, parallel genome tasks would each
-   pull and download on their own. UCR's shared paths are set in
+   pull and download on their own. UCR's shared paths (an example) are set in
    `conf/site_ucr_hpcc.config`. The legacy InterProScan 5 path is
    `--interproscan_engine ips5`.
 5. **Conda axis only** — build the frozen envs once into shared storage with
@@ -646,6 +640,9 @@ like the `slurm` one in `nextflow.config`.
    `conf/site_<site>.config`, fill in the shared paths you have, and pass
    `-c conf/site_<site>.config` (or includeConfig it from a site profile).
    `conf/site_ucr_hpcc.config` is the filled-in UCR example.
+
+To split one batch between two clusters (for example SLURM and NRP), see
+[docs/multi_cluster.md](docs/multi_cluster.md).
 
 ## Input model (`samples.csv`)
 

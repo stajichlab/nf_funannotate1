@@ -32,6 +32,9 @@ Always list the pipeline profile first (`annotate,nrp`), and use Nextflow
 the k8s overrides win over `annotate`'s defaults. 25.10 applies them in
 file-definition order instead, and the run would then try to use apptainer.
 
+To split a batch between NRP and another cluster, see
+[docs/multi_cluster.md](../docs/multi_cluster.md).
+
 ## One-time setup
 
 1. **Overlay.** Copy `k8s/overlays/example/` into your deployment repo and fill

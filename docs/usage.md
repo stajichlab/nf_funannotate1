@@ -6,7 +6,7 @@
 nextflow run . -profile annotate,slurm,singularity -c mysite.config --samples samples.csv -resume
 ```
 
-(`-profile annotate,local,singularity` on a workstation; `ucr_hpcc` in place of `singularity` on UCR HPCC.
+(`-profile annotate,local,singularity` on a workstation; `ucr_hpcc` in place of `singularity` on UCR HPCC, see [site_ucr_hpcc.md](site_ucr_hpcc.md).
 `mysite.config` holds your partitions/cache paths; see [Adding a site](adding_a_site.md).)
 
 Profiles compose across three orthogonal axes — pick one from each:
@@ -67,7 +67,7 @@ nextflow run . -profile annotate,slurm,singularity --n_test 2 -stub-run
 |-----------|---------|-------------|
 | `--samples` | `samples.csv` | Samplesheet path |
 | `--target` | `genome_annotation/` | Output directory for annotations |
-| `--source` | _(UCR HPCC path)_ | NCBI_ASM source directory for genomes without a `GENOME` column |
+| `--source` | `<launch dir>/source` | NCBI_ASM source directory for genomes without a `GENOME` column |
 | `--skip_fcs` | `false` | Skip FCS-GX contaminant purge (no 470 GB highmem node needed) |
 | `--run_earlgrey` | `false` | Use EarlGrey TE discovery instead of tantan for repeat masking |
 | `--run_sra_fetch` | `true` | Fetch RNA-seq reads from SRA for funannotate training |
@@ -75,7 +75,7 @@ nextflow run . -profile annotate,slurm,singularity --n_test 2 -stub-run
 | `--run_antismash` | `false` | Run antiSMASH secondary metabolite prediction |
 | `--run_interpro` | `false` | Run InterProScan functional annotation |
 | `--interproscan_engine` | `ips6` | `ips6`: nested InterProScan 6 workflow (see `scripts/setup_interproscan6.sh`); `ips5`: legacy `interproscan.sh` |
-| `--iprscan6_datadir` | `<launchDir>/interproscan6_data` | InterPro data for IPS6 (`<datadir>/<db>/<version>/`); UCR: `/srv/projects/db/interproscan/6.0.0/110.0` |
+| `--iprscan6_datadir` | `<launchDir>/interproscan6_data` | InterPro data for IPS6 (`<datadir>/<db>/<version>/`); UCR example: `/srv/projects/db/interproscan/6.0.0/110.0` |
 | `--iprscan6_interpro` | `110.0` | Pinned InterPro data release; keep equal to the Matches API release |
 | `--run_signalp` | `false` | Run SignalP signal-peptide prediction (requires GPU partition) |
 
@@ -87,8 +87,8 @@ Run `nextflow run . --help` for the full schema-driven parameter list.
 nextflow run . -profile annotate,slurm,singularity --samples samples.csv -resume
 ```
 
-Nextflow's `cache = 'lenient'` (set in `nextflow.config`) handles NFS timestamp
-jitter on `/bigdata`-mounted filesystems. Completed processes are skipped; only
+Nextflow's `cache = 'lenient'` (set in `nextflow.config`) handles timestamp
+jitter on shared network filesystems. Completed processes are skipped; only
 changed or failed tasks re-run.
 
 ## Stub / dry run
