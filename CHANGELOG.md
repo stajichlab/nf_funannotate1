@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- `SRA_QUERY_BATCH` no longer queries SRA without an organism clause. For a species with no `NCBI_TAXONID`,
+  `bash` < 4.4 aborted the clause builder on an empty array (`set -u`), so the query dropped the organism
+  term and returned the top RNA-seq runs of any organism. Found by the live NCBI test
+  (`tests/live_sra_query.sh`); the builder no longer uses an array and the query is refused if the clause is empty.
 - `SRA_QUERY_BATCH` checks each SRA run's BioSample (Title/Attributes) before keeping it, and drops
   host-associated runs (macrophage, THP-1, tissue, ...) and mutant or engineered strains (`delta`,
   `::`, `OE-`, knockout, RNAi, ...) that the LibraryName/SampleName keyword filter missed. The ranked

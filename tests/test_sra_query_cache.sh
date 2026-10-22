@@ -17,6 +17,7 @@
 #  13. top run's BioSample is host-associated  -> dropped, next run kept
 #  14. top run's BioSample is a mutant         -> dropped, next run kept
 #  15. BioSample lookup returns nothing        -> fails open, both kept
+#  16. no taxon ID                          -> query still names the species (never an empty organism clause)
 #   9. 0 matches                           -> efetch not called; completed query: header-only CSV + key
 #
 # Usage: bash tests/test_sra_query_cache.sh     (needs nextflow; ~1 min)
@@ -66,7 +67,7 @@ rows() { grep -c . "$SQ/$TAG.sra_query.csv" 2>/dev/null || echo 0; }
 run() {  # run [FAKE_FAIL=1] ; reports number of efetch calls in $NCALL
     : > "$CALLS"
     ( cd "$T/launch" && env PATH="$BIN:$PATH" "$@" nextflow run "$HARNESS" -ansi-log false -w "$T/work" \
-        --species_tag "${TAGV:-$TAG}" --taxonid "${TIDV:-$TID}" > "$T/nf.log" 2>&1 )
+        --species_tag "${TAGV:-$TAG}" --taxonid "${TIDV:-$TID}"${SLIST:+ --species_list "$SLIST"} > "$T/nf.log" 2>&1 )
     NCALL=$(grep -c efetch "$CALLS" 2>/dev/null || true); NCALL=${NCALL:-0}
 }
 reset() { rm -rf "$T/launch" "$T/work"; mkdir -p "$SQ"; }
@@ -118,6 +119,10 @@ reset; run FAKE_ROWS=2 FAKE_DOC1="strain: NE579 upf1delta" FAKE_DOC2="Title: myc
 check "14 mutant BioSample dropped, next kept" '[ "$(runs)" = "SRR2222222" ]'
 reset; run FAKE_ROWS=2
 check "15 empty lookup fails open" '[ "$(runs)" = "SRR1111111 SRR2222222" ]'
+
+reset; SLIST="$TAG:" run FAKE_COUNT=1
+check "16 no taxon ID: query names the species (not an empty organism clause)" 'grep -q "(\"Aspergillus nidulans\"\[Organism\]) AND RNA-Seq" "$CALLS"'
+check "16 no taxon ID: key is v2|" '[ "$(cat "$SQ/$TAG.sra_query.key" 2>/dev/null)" = "v2|" ]'
 
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ] || { echo "--- last nextflow log ---"; tail -30 "$T/nf.log"; exit 1; }

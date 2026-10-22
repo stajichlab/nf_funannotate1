@@ -98,9 +98,10 @@ process SRA_QUERY_BATCH {
         if [[ "\$genus" =~ ^[A-Z][a-z]+\$ && "\$epithet" =~ ^[a-z][a-z-]+\$ && ! "\$epithet" =~ ^(sp|cf|aff|x)\$ ]]; then
             out="\\"\${genus} \${epithet}\\"[Organism]"
         fi
-        IFS='+' read -ra _tids <<< "\$tids"
-        for t in "\${_tids[@]}"; do
-            [ -n "\$t" ] && out="\${out:+\$out OR }txid\${t}[Organism]"
+        # Unquoted on purpose: IDs are numeric, and an empty array under `set -u` aborted this
+        # function on bash < 4.4, leaving the organism clause empty and matching every organism.
+        for t in \${tids//+/ }; do
+            out="\${out:+\$out OR }txid\${t}[Organism]"
         done
         [ -n "\$out" ] || out="\\"\$(printf '%s' "\$stag" | tr '_' ' ')\\"[Organism]"
         printf '(%s)' "\$out"
@@ -152,6 +153,7 @@ process SRA_QUERY_BATCH {
         local stag="\$1" tid="\$2" attempt
         local ORG
         ORG=\$(org_term "\$stag" "\$tid")
+        [ -n "\$ORG" ] && [ "\$ORG" != "()" ] || { echo "[WARN] \${stag}: empty organism clause, not querying SRA"; return 1; }
         [ -n "\$tid" ] || echo "[WARN] \${stag}: no NCBI_TAXONID in samples.csv; querying SRA by name: \${ORG}"
 
         for attempt in 1 2 3; do
