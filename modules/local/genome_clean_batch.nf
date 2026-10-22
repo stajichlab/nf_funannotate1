@@ -56,6 +56,8 @@ BATCH_EOF
         exit 1
     fi
 
+    # AAFTF 0.7 takes fcs_gx_purge -o <dir>; older releases take -o <file>. Detect once per batch.
+    FCS_HELP=\$(AAFTF fcs_gx_purge --help 2>&1 || true)
     i=0
     fcs_fails=0
     while IFS=\$'\\t' read -r asmid gz taxonid phylum; do
@@ -93,9 +95,11 @@ BATCH_EOF
         FCS_OUT=\$SCRATCH/\${asmid}.fcs_out
         PURGED=\$FCS_OUT/\${asmid}.raw.fcsgx_cleaned.fasta
         mkdir -p \$FCS_OUT
+        # AAFTF releases before 0.7 (e.g. the AAFTF/0.6.0 module) take -o <file>; 0.7 takes -o <dir>.
+        if [[ "\$FCS_HELP" == *"--outdir"* ]]; then FCS_O=\$FCS_OUT; else FCS_O=\$PURGED; fi
         if AAFTF fcs_gx_purge -d /dev/shm/gxdb/all \\
             -i \$SCRATCH/\${asmid}.raw.fa -c ${task.cpus} \\
-            -o \$FCS_OUT \\
+            -o \$FCS_O \\
             -t "\$phylum" -w \$SCRATCH/\${asmid}.fcs_report \\
             && [ -s "\$PURGED" ] ; then
             ${params.clean_script} --len ${params.min_contig_len} < \$PURGED > \$SCRATCH/\${asmid}.clean.fa \\

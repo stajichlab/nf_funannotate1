@@ -114,6 +114,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the task still reported success. Both modules now fail when the cleaned file is missing or has no
   contigs. The archived report is `input_clean_genomes/clean/<asmid>.fcs_gx_report.txt.gz` (it was
   `<asmid>.purge.fcs_gx-taxonomy.tsv.gz`). `-c ${task.cpus}` is passed again.
+  Both modules detect the CLI from `AAFTF fcs_gx_purge --help` (`--outdir` means 0.7) and pass `-o <file>` to older
+  releases such as the `AAFTF/0.6.0` module, so the `ucr_hpcc`, `conda` and `pixi` axes keep working.
+  The older CLI writes no report, so no report is archived for it.
 
 ### Changed
 - `container_funannotate` is `<sif_dir>/funannotate-1.9.0.sif`, a local image of the 1.9.0 release
