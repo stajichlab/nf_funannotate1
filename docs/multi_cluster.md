@@ -9,6 +9,25 @@ The pipeline has no scheduler that spans clusters. Each cluster runs its **own,
 independent** Nextflow run over a **different set of species**. You make the
 split, in the sample sheets.
 
+## In plain terms
+
+"Splitting a batch" means this: you have more genomes than one cluster should do alone, so you
+give half to each. Nothing links the two halves while they run. You start the pipeline twice, once on
+each cluster, each time with its own list of genomes (its own `samples.csv`), and when both are done
+you collect the results in one place.
+
+A worked example. You have 120 genomes of 80 species, 30 of which have RNA-seq worth using:
+
+1. Put the 30 RNA-seq species (all their strains) in `samples_slurm.csv`, and the other 50 species in
+   `samples_nrp.csv`. The RNA-seq species need Trinity and PASA, which want long, large-memory jobs, so
+   they go to the SLURM cluster. The rest only need the quick per-genome steps, which NRP handles well.
+2. On the SLURM cluster run the pipeline with `--samples samples_slurm.csv`. On NRP run it with
+   `samples_nrp.csv` and `run_sra_fetch: false` (no RNA-seq, so no training).
+3. When both finish, copy the `genome_annotation/` results of one into the other.
+
+The rest of this page explains how to choose the split, the settings that must match on both sides
+(reference data, image versions, cleaning), and how to merge the results.
+
 ## Why split
 
 | Work | Fits best | Why |
