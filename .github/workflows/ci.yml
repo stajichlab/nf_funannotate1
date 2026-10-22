@@ -41,6 +41,9 @@ jobs:
       - name: Stub-run the workflow (graph logic only)
         run: nextflow run . -profile test -stub-run
 
+      - name: SRA query cache rule (fake esearch/efetch)
+        run: bash tests/test_sra_query_cache.sh
+
       - name: Schema-driven --help renders
         run: nextflow run . --help
 

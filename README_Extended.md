@@ -168,9 +168,13 @@ How the pipeline decides, for each species:
 1. If `rnaseq_reads/<Species_name>_norm_*.fastq.gz` already exist, they are
    reused and no download is made (results are cached in `rnaseq_reads/`). This is
    also how a re-run after a failure avoids repeating the downloads.
-2. If a `rnaseq_reads/sra_query/<Species_name>.sra_query.csv` exists, the SRA
-   search is not repeated. A CSV with only the header line means "no SRA runs":
-   this is what stops the search for strategy A.
+2. If a `rnaseq_reads/sra_query/<Species_name>.sra_query.csv` lists at least one
+   run, the SRA search is not repeated. A CSV with only the header line is reused
+   only when a matching `<Species_name>.sra_query.key` file sits beside it (the
+   pipeline writes one when a query completes; its text is `v2|<NCBI_TAXONID>`).
+   Without the key, a header-only CSV may be left over from a failed query, so
+   the species is searched again. Writing both files is what stops the search for
+   strategy A.
 3. Otherwise the pipeline searches SRA and downloads (strategy B).
 
 Mixing is possible but you must do it yourself: reads you put in
@@ -195,7 +199,8 @@ Each species needs three read files and one query file:
 | `rnaseq_reads/<Species_name>_norm_R1.fastq.gz` | paired-end read 1 (all libraries joined) |
 | `rnaseq_reads/<Species_name>_norm_R2.fastq.gz` | paired-end read 2, in the same order as R1 |
 | `rnaseq_reads/<Species_name>_norm_SE.fastq.gz` | single-end reads, or an empty file |
-| `rnaseq_reads/sra_query/<Species_name>.sra_query.csv` | a header-only CSV. It stops the NCBI SRA search and download for this species. |
+| `rnaseq_reads/sra_query/<Species_name>.sra_query.csv` | a header-only CSV |
+| `rnaseq_reads/sra_query/<Species_name>.sra_query.key` | one line, `v2|<NCBI_TAXONID>` of the species. Together with the CSV it stops the NCBI SRA search for this species. |
 
 ```bash
 cd my_annotation
@@ -212,14 +217,23 @@ cp rnaseq_raw/Fgra_R1.fastq.gz rnaseq_reads/Fusarium_graminearum_norm_R1.fastq.g
 cp rnaseq_raw/Fgra_R2.fastq.gz rnaseq_reads/Fusarium_graminearum_norm_R2.fastq.gz
 : > rnaseq_reads/Fusarium_graminearum_norm_SE.fastq.gz
 
+# The key holds the species' NCBI_TAXONID from samples.csv (column 7 in the minimal
+# sheet; the most frequent one if strains differ). A different taxon ID, or no key, means a new search.
 for sp in Aspergillus_nidulans Fusarium_graminearum; do
     echo 'species_tag,taxonid,sra_accession,spots,platform,layout' \
         > rnaseq_reads/sra_query/${sp}.sra_query.csv
+    taxid=$(awk -F, -v s="${sp//_/ }" 'NR>1 && $1==s {print $7}' samples.csv \
+            | sort | uniq -c | sort -k1,1nr -k2,2n | awk 'NR==1{print $2}')
+    echo "v2|${taxid}" > rnaseq_reads/sra_query/${sp}.sra_query.key
 done
 ```
 
 For single-end data only, put the reads in `_norm_SE.fastq.gz` and make
 `_norm_R1` and `_norm_R2` empty files.
+
+Instead of the key files you can run with `--skip_sra_query true`. It reads the
+CSVs as they are and never contacts NCBI, but it **skips any species with no CSV**,
+so give every species a CSV.
 
 Notes:
 
@@ -231,8 +245,9 @@ Notes:
 - Training is skipped when a species has less than 50 MB of compressed reads
   in total (`--train_min_rnaseq_bytes`, default `50000000`).
 - A species with no files in `rnaseq_reads/` uses strategy B (SRA search and
-  download). Without the header-only query CSV, a species with your reads would
-  still trigger an SRA search.
+  download). Without the header-only query CSV and its key, a species with your
+  reads would still trigger an SRA search. The reads themselves are never
+  downloaded again, because the `_norm_` files are already there.
 
 #### Strategy B: let the pipeline fetch from SRA
 

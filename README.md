@@ -55,8 +55,8 @@ sif_dir: /shared/containers          # container images and Apptainer pull cache
 
 RNA-seq comes from **one of two sources, chosen per species** (normally not mixed):
 
-- **Your own reads:** place `<Species_name>_norm_R1/R2/SE.fastq.gz` and an empty
-  `sra_query/<Species_name>.sra_query.csv` in `rnaseq_reads/`. Nothing is downloaded.
+- **Your own reads:** place `<Species_name>_norm_R1/R2/SE.fastq.gz` and a header-only
+  `sra_query/<Species_name>.sra_query.csv` plus its `.key` in `rnaseq_reads/`. Nothing is downloaded.
 - **Public reads from NCBI SRA:** leave `rnaseq_reads/` empty for that species. The
   pipeline queries SRA, downloads and normalizes the reads into `rnaseq_reads/`.
 
