@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- `SRA_QUERY_BATCH` no longer caches a failed query forever. A completed query writes
+  `<species>.sra_query.key` (`v2|<taxonid>`); a cached header-only CSV is reused only when that key
+  matches, so a CSV left by a timed-out query (or an older version) is searched again, and the new
+  result replaces it (`publishDir overwrite: true`). The taxon ID chosen per species is now the most
+  frequent one, with ties to the lowest, so the key is stable. Ported from Fungi_BFD. **Existing
+  header-only CSVs without a key are queried again on the next run**; to keep own RNA-seq reads
+  without a search, add the key or use `--skip_sra_query true`. Test: `tests/test_sra_query_cache.sh`.
 - Translation table 26 (CUG=Ala, e.g. Pachysolen tannophilus) no longer aborts GeneMark or Prodigal.
   `gmes_petap.pl` accepts only `--gcode` 1, 6 and 29, so `GENEMARK_RUN`, `GENEMARK_TRAIN` and
   `GENEMARK_PREDICT_CHUNK` now run table 26 with GeneMark's default code 1. `PRODIGAL_RUN` falls back to

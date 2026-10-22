@@ -2,7 +2,16 @@
 // maxForks 4 caps concurrent jobs to avoid overwhelming NCBI.
 // Per-species esearch/efetch is retried up to 3 times inline with exponential
 // backoff before writing an empty CSV. Existing per-species CSVs already
-// present in rnaseq_reads/sra_query/ are reused without re-querying.
+// present in rnaseq_reads/sra_query/ are reused without re-querying (rule below).
+//
+// Cache marker: a query that completed writes <species_tag>.sra_query.key =
+// "v2|<taxonid>". A cached CSV is reused when it lists at least one run, or when
+// it is header-only AND its key matches the current taxonid (a completed query that
+// really found nothing). A header-only CSV with no matching key -- written by a
+// failed query (all 3 attempts timed out), by an older version of this module, or
+// for a different taxonid -- is queried again, and publishDir overwrite is true so
+// the new result replaces it. (Ported from Fungi_BFD.) To keep own RNA-seq reads
+// and skip the search, use --skip_sra_query true, or write the key by hand.
 //
 // The runinfo fetch is capped to the first 250 UIDs (efetch -start 1 -stop
 // 250 -- esearch itself has no -retmax flag) and given a 300s timeout per
@@ -52,7 +61,7 @@ process SRA_QUERY_BATCH {
     label 'process_single'
     tag "${species_tags[0]}_+${species_tags.size() - 1}_more"
 
-    publishDir "${launchDir}/rnaseq_reads/sra_query", mode: 'copy', overwrite: false
+    publishDir "${launchDir}/rnaseq_reads/sra_query", mode: 'copy', overwrite: true
 
     maxForks 4
 
@@ -61,6 +70,7 @@ process SRA_QUERY_BATCH {
 
     output:
     path("*.sra_query.csv"), emit: query_results
+    path("*.sra_query.key"), emit: query_keys, optional: true
 
     script:
     def cache_dir  = "${launchDir}/rnaseq_reads/sra_query"
@@ -107,7 +117,11 @@ process SRA_QUERY_BATCH {
 
     while IFS=\$(printf '\\t') read -r species_tag taxonid; do
         cached="${cache_dir}/\${species_tag}.sra_query.csv"
-        if [ -s "\$cached" ]; then
+        cached_key="${cache_dir}/\${species_tag}.sra_query.key"
+        # Reuse when the CSV has a run row, or is header-only with a matching key
+        # (see the header comment). Anything else is queried again.
+        if [ -s "\$cached" ] && { [ "\$(grep -c . "\$cached")" -gt 1 ] || \\
+               { [ -f "\$cached_key" ] && [ "\$(cat "\$cached_key")" = "v2|\${taxonid}" ]; }; }; then
             cp "\$cached" "\${species_tag}.sra_query.csv"
             echo "[INFO] Reusing cached result for \${species_tag}"
             continue
@@ -147,6 +161,7 @@ process SRA_QUERY_BATCH {
                     printf '%s,%s,%s,%s,%s,PAIRED\\n' "\${species_tag}" "\${taxonid}" "\$acc" "\$spots" "\$platform"
                 done >> "\${species_tag}.sra_query.csv"
             rm -f "_runinfo_\${species_tag}.tmp"
+            printf 'v2|%s\\n' "\${taxonid}" > "\${species_tag}.sra_query.key"
             NHITS=\$(awk 'END{print NR-1}' "\${species_tag}.sra_query.csv")
             echo "[INFO] Found \$NHITS paired-end accessions for \${species_tag} (taxonid=\${taxonid})"
             # SE fallback: if no PE hits and enable_single_end, query SINGLE layout
@@ -200,6 +215,7 @@ process SRA_QUERY_BATCH {
     while IFS=\$(printf '\\t') read -r species_tag taxonid; do
         printf 'species_tag,taxonid,sra_accession,spots,platform,layout\\n' > "\${species_tag}.sra_query.csv"
         printf '%s,%s,SRR000001,1000000,ILLUMINA,PAIRED\\n' "\${species_tag}" "\${taxonid}" >> "\${species_tag}.sra_query.csv"
+        printf 'v2|%s\\n' "\${taxonid}" > "\${species_tag}.sra_query.key"
     done < batch_input.tsv
     echo "[STUB] SRA_QUERY_BATCH (${species_tags.size()} species)"
     """

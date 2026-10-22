@@ -48,7 +48,7 @@ check how many tasks sit Pending on each side before assigning a big slice.
    **whole run**, not per genome, and your own reads are only used when it is `true`
    (see [RNA-seq strategies](../README_Extended.md#4-choose-where-the-rna-seq-reads-come-from)):
    - the RNA-seq slice: keep `run_sra_fetch` at its default `true`. For a species
-     with your own reads, put the `_norm_` files and the header-only `sra_query` CSV
+     with your own reads, put the `_norm_` files and the header-only `sra_query` CSV and its `.key` file
      in `rnaseq_reads/`. Leave a species empty to fetch from SRA;
    - the no-RNA-seq slice: `--run_sra_fetch false`. No training runs and any reads
      in `rnaseq_reads/` are ignored.
