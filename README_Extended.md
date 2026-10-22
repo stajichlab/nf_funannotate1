@@ -171,7 +171,7 @@ How the pipeline decides, for each species:
 2. If a `rnaseq_reads/sra_query/<Species_name>.sra_query.csv` lists at least one
    run, the SRA search is not repeated. A CSV with only the header line is reused
    only when a matching `<Species_name>.sra_query.key` file sits beside it (the
-   pipeline writes one when a query completes; its text is `v2|<NCBI_TAXONID>`).
+   pipeline writes one when a query completes; its text is `v2|<taxon IDs>`: the species' distinct `NCBI_TAXONID` values joined with `+`).
    Without the key, a header-only CSV may be left over from a failed query, so
    the species is searched again. Writing both files is what stops the search for
    strategy A.
@@ -200,7 +200,7 @@ Each species needs three read files and one query file:
 | `rnaseq_reads/<Species_name>_norm_R2.fastq.gz` | paired-end read 2, in the same order as R1 |
 | `rnaseq_reads/<Species_name>_norm_SE.fastq.gz` | single-end reads, or an empty file |
 | `rnaseq_reads/sra_query/<Species_name>.sra_query.csv` | a header-only CSV |
-| `rnaseq_reads/sra_query/<Species_name>.sra_query.key` | one line, `v2|<NCBI_TAXONID>` of the species. Together with the CSV it stops the NCBI SRA search for this species. |
+| `rnaseq_reads/sra_query/<Species_name>.sra_query.key` | one line, `v2|<taxon IDs>`: the species' distinct `NCBI_TAXONID` values joined with `+`, most frequent first. Together with the CSV it stops the NCBI SRA search for this species. |
 
 ```bash
 cd my_annotation
@@ -217,13 +217,14 @@ cp rnaseq_raw/Fgra_R1.fastq.gz rnaseq_reads/Fusarium_graminearum_norm_R1.fastq.g
 cp rnaseq_raw/Fgra_R2.fastq.gz rnaseq_reads/Fusarium_graminearum_norm_R2.fastq.gz
 : > rnaseq_reads/Fusarium_graminearum_norm_SE.fastq.gz
 
-# The key holds the species' NCBI_TAXONID from samples.csv (column 7 in the minimal
-# sheet; the most frequent one if strains differ). A different taxon ID, or no key, means a new search.
+# The key holds the species' distinct NCBI_TAXONID values from samples.csv (column 7 in the
+# minimal sheet), most frequent first (ties: lowest), joined with '+', at most 10. A different
+# list, or no key, means a new search.
 for sp in Aspergillus_nidulans Fusarium_graminearum; do
     echo 'species_tag,taxonid,sra_accession,spots,platform,layout' \
         > rnaseq_reads/sra_query/${sp}.sra_query.csv
     taxid=$(awk -F, -v s="${sp//_/ }" 'NR>1 && $1==s {print $7}' samples.csv \
-            | sort | uniq -c | sort -k1,1nr -k2,2n | awk 'NR==1{print $2}')
+            | sort | uniq -c | sort -k1,1nr -k2,2n | awk 'NR<=10{print $2}' | paste -sd+ -)
     echo "v2|${taxid}" > rnaseq_reads/sra_query/${sp}.sra_query.key
 done
 ```

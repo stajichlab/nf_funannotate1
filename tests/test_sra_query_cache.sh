@@ -11,6 +11,9 @@
 #   6. CSV with a run row                  -> reused, no query
 #   7. 3 matches                           -> efetch asks for -stop 3 (not 250: NCBI 400s past the end)
 #   8. 900 matches                         -> efetch capped at -stop 250
+#  10. taxon list 162425+227321           -> query ORs the species name and both txids; key lists both; CSV taxonid = first
+#  11. same list, header-only CSV + key    -> reused
+#  12. tag Fusarium_sp. (not a binomial)   -> query has only the txid terms
 #   9. 0 matches                           -> efetch not called; completed query: header-only CSV + key
 #
 # Usage: bash tests/test_sra_query_cache.sh     (needs nextflow; ~1 min)
@@ -27,7 +30,7 @@ SQ="$T/launch/rnaseq_reads/sra_query"
 CALLS="$T/calls.log"
 
 # esearch passes through; efetch logs the call, then fails or returns one runinfo row.
-printf '#!/bin/sh\ncat >/dev/null; echo ESEARCH\n' > "$BIN/esearch"
+printf '#!/bin/sh\ncat >/dev/null 2>&1; echo "esearch $*" >> "%s"; echo ESEARCH\n' "$CALLS" > "$BIN/esearch"
 cat > "$BIN/efetch" <<EOS
 #!/bin/sh
 echo "efetch \$*" >> "$CALLS"
@@ -47,7 +50,7 @@ rows() { grep -c . "$SQ/$TAG.sra_query.csv" 2>/dev/null || echo 0; }
 run() {  # run [FAKE_FAIL=1] ; reports number of efetch calls in $NCALL
     : > "$CALLS"
     ( cd "$T/launch" && env PATH="$BIN:$PATH" "$@" nextflow run "$HARNESS" -ansi-log false -w "$T/work" \
-        --species_tag "$TAG" --taxonid "$TID" > "$T/nf.log" 2>&1 )
+        --species_tag "${TAGV:-$TAG}" --taxonid "${TIDV:-$TID}" > "$T/nf.log" 2>&1 )
     NCALL=$(grep -c efetch "$CALLS" 2>/dev/null || true); NCALL=${NCALL:-0}
 }
 reset() { rm -rf "$T/launch" "$T/work"; mkdir -p "$SQ"; }
@@ -82,6 +85,15 @@ check "8 900 matches: -stop 250" 'grep -q -- "-stop 250\$" "$CALLS"'
 reset; run FAKE_COUNT=0
 check "9 0 matches: efetch not called" '[ "$NCALL" -eq 0 ]'
 check "9 0 matches: header-only CSV + key" '[ "$(rows)" -eq 1 ] && [ "$(cat "$SQ/$TAG.sra_query.key" 2>/dev/null)" = "v2|$TID" ]'
+
+reset; TIDV='162425+227321' run FAKE_COUNT=1
+check "10 list: species name in query" 'grep -q "\"Aspergillus nidulans\"\[Organism\] OR txid162425\[Organism\] OR txid227321\[Organism\]" "$CALLS"'
+check "10 list: key lists both"        '[ "$(cat "$SQ/$TAG.sra_query.key" 2>/dev/null)" = "v2|162425+227321" ]'
+check "10 list: CSV taxonid is the first" 'sed -n 2p "$SQ/$TAG.sra_query.csv" | grep -q "^$TAG,162425,"'
+reset; echo "$HDR" > "$SQ/$TAG.sra_query.csv"; echo "v2|162425+227321" > "$SQ/$TAG.sra_query.key"; TIDV='162425+227321' run FAKE_COUNT=1
+check "11 list + matching key: reused" '[ "$NCALL" -eq 0 ]'
+reset; TAGV=Fusarium_sp. TIDV=5506 run FAKE_COUNT=1
+check "12 non-binomial tag: txid only" 'grep -q "(txid5506\[Organism\])" "$CALLS" && ! grep -q "Fusarium sp" "$CALLS"'
 
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ] || { echo "--- last nextflow log ---"; tail -30 "$T/nf.log"; exit 1; }
