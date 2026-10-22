@@ -23,14 +23,14 @@ cp ~/.nextflow/assets/stajichlab/nf_funannotate1/conf/site_template.config mysit
 
 | Concern | Setting | Default if omitted |
 |---------|---------|--------------------|
-| Container cache | `params.sif_dir` (or export `NXF_APPTAINER_CACHE`) | `<launchDir>/singularity_cache` |
+| Container cache | `sif_dir` in your params file, `--sif_dir`, or export `NXF_APPTAINER_CACHE`. Not in this `-c` config (see below) | `<launchDir>/singularity_cache` |
 | Partition | `process.queue`, or `withLabel:`/`withName:` `queue` | cluster default partition |
 | Account / QOS / extra flags | `process.clusterOptions` (keep `-N 1 -n 1`) | `-N 1 -n 1` |
 | Shared databases | `params.*` paths (see the template) | downloaded under `<launchDir>` |
 | GPUs (SignalP / DeepTMHMM) | `--signalp_gpu` / `--deeptmhmm_gpu`, plus a GPU `queue` | CPU |
 
 ```groovy
-params.sif_dir = '/shared/containers'
+// (set sif_dir in your params file, not here: a `-c` file is read after the image paths are built)
 process {
     queue          = 'batch'
     clusterOptions = '-N 1 -n 1 --account=mylab'

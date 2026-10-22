@@ -243,7 +243,7 @@ class FunannotateUtils {
     // params.container_mariadb wins; otherwise use params.container_funannotate,
     // which bundles MariaDB (mariadbd, mariadb-install-db, /usr/bin/mysqld_safe).
     static String mariadbImage(Map params) {
-        return (params.container_mariadb ?: params.container_funannotate) as String
+        return (params.container_mariadb ?: params.container_funannotate ?: "${params.sif_dir}/funannotate-1.9.0.sif") as String
     }
 
     // Local file for an image. A plain path is returned unchanged. A URI
