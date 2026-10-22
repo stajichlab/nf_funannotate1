@@ -29,7 +29,7 @@ rerun)
     # Run again after `rm -rf work .nextflow`, so nothing is resumed: the SRA outputs must come
     # from the caches in rnaseq_reads/ (storeDir) and rnaseq_reads/sra_query/ (query CSV + key).
     L=$(latest_log); echo "log: $L"
-    cat work/*/*/.command.log 2>/dev/null > /tmp/e2e_cmdlog.$$
+    find work -name .command.log -exec cat {} + 2>/dev/null > /tmp/e2e_cmdlog.$$
     for sp in $SPECIES; do
         check "$sp: query reused, not repeated" 'grep -q "Reusing cached result for '"$sp"'" /tmp/e2e_cmdlog.$$ && ! grep -q "Found .* paired-end accessions for '"$sp"'" /tmp/e2e_cmdlog.$$'
     done
@@ -37,13 +37,13 @@ rerun)
     check "no download ran (no fasterq/prefetch)" '! grep -qiE "prefetch|fasterq-dump|fastq-dump" /tmp/e2e_cmdlog.$$'
     rm -f /tmp/e2e_cmdlog.$$ ;;
 own-reads)
-    cat work/*/*/.command.log 2>/dev/null > /tmp/e2e_cmdlog.$$
+    find work -name .command.log -exec cat {} + 2>/dev/null > /tmp/e2e_cmdlog.$$
     check "Yarrowia query reused (header-only CSV + key)" 'grep -q "Reusing cached result for Yarrowia_lipolytica" /tmp/e2e_cmdlog.$$'
     check "no NCBI query for Yarrowia"                    '! grep -q "Found .* paired-end accessions for Yarrowia_lipolytica" /tmp/e2e_cmdlog.$$'
     rm -f /tmp/e2e_cmdlog.$$ ;;
 key-removed)
     f=rnaseq_reads/sra_query/Yarrowia_lipolytica.sra_query
-    cat work/*/*/.command.log 2>/dev/null > /tmp/e2e_cmdlog.$$
+    find work -name .command.log -exec cat {} + 2>/dev/null > /tmp/e2e_cmdlog.$$
     check "Yarrowia searched again (no key)"   'grep -q "Found .* paired-end accessions for Yarrowia_lipolytica" /tmp/e2e_cmdlog.$$'
     check "CSV lists runs again"               '[ "$(grep -c . "'"$f"'.csv")" -ge 2 ]'
     check "key written again"                  '[ -s "'"$f"'.key" ]'

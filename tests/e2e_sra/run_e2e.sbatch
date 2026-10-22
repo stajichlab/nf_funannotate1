@@ -25,6 +25,8 @@
 #                                         the ucr_hpcc profile is added automatically on UCR HPCC)
 #   REVISION=<tag|branch|sha>         pin a revision when PIPELINE is a project name
 #   STOP_AFTER=1..5                   run only the first N steps
+#   START_AT=1..5                     skip the steps before N (resume after a failed check; the earlier
+#                                     steps' outputs must still be in the launch directory)
 #
 # Time: the first run is the long one (SRA download, Trinity, PASA, predict for two ~20 Mb
 # genomes; hours). The other steps reuse its caches and take minutes plus queue time.
@@ -34,6 +36,7 @@ set -euo pipefail
 [ -f "$REPO/run_annotate.sh" ] || { echo "REPO=$REPO has no run_annotate.sh" >&2; exit 2; }
 HERE="$REPO/tests/e2e_sra"
 STOP_AFTER="${STOP_AFTER:-5}"
+START_AT="${START_AT:-1}"
 mkdir -p logs
 
 # Inputs for the launch directory.
@@ -47,32 +50,42 @@ PROTEINS="${PROTEINS:-$PWD/lib/swissprot_fungi.faa}"
 export PIPELINE="$REPO"                         # run this checkout, not the published project
 RUN=(bash "$REPO/run_annotate.sh" -params-file params.yaml --proteins "$PROTEINS")
 step() { echo; echo "=== [$(date '+%F %T')] step $1: $2"; }
+skip() { [ "$START_AT" -gt "$1" ]; }       # true when step $1 is before START_AT
 done_after() { if [ "$STOP_AFTER" -le "$1" ]; then echo "STOP_AFTER=$STOP_AFTER reached"; exit 0; fi; }
 
-step 1 "fetch genomes"
-if [ ! -s genomes/Yarrowia_lipolytica_CLIB122.fna.gz ] || [ ! -s genomes/Cryptococcus_deneoformans_JEC21.fna.gz ]; then
-    bash fetch_genomes.sh
+f=rnaseq_reads/sra_query/Yarrowia_lipolytica.sra_query
+
+if ! skip 1; then
+    step 1 "fetch genomes"
+    if [ ! -s genomes/Yarrowia_lipolytica_CLIB122.fna.gz ] || [ ! -s genomes/Cryptococcus_deneoformans_JEC21.fna.gz ]; then
+        bash fetch_genomes.sh
+    fi
 fi
 done_after 1
 
-step 2 "run 1: query, fetch, train, predict"
-"${RUN[@]}"
-bash check.sh run1
+if ! skip 2; then
+    step 2 "run 1: query, fetch, train, predict"
+    "${RUN[@]}"
+    bash check.sh run1
+fi
 done_after 2
 
-step 3 "rerun with no Nextflow cache: SRA steps must come from the caches"
-rm -rf work .nextflow
-"${RUN[@]}"
-bash check.sh rerun
+if ! skip 3; then
+    step 3 "rerun with no Nextflow cache: SRA steps must come from the caches"
+    rm -rf work .nextflow
+    "${RUN[@]}"
+    bash check.sh rerun
+fi
 done_after 3
 
-step 4 "own-reads path: Yarrowia header-only CSV + key kept, no NCBI query"
-f=rnaseq_reads/sra_query/Yarrowia_lipolytica.sra_query
-cp "$f.csv" "$f.csv.orig"
-head -1 "$f.csv.orig" > "$f.csv"
-rm -rf work .nextflow
-"${RUN[@]}"
-bash check.sh own-reads
+if ! skip 4; then
+    step 4 "own-reads path: Yarrowia header-only CSV + key kept, no NCBI query"
+    [ -e "$f.csv.orig" ] || cp "$f.csv" "$f.csv.orig"
+    head -1 "$f.csv.orig" > "$f.csv"
+    rm -rf work .nextflow
+    "${RUN[@]}"
+    bash check.sh own-reads
+fi
 done_after 4
 
 step 5 "key removed: Yarrowia must be searched again"
