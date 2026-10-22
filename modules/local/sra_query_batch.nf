@@ -14,7 +14,7 @@
 // and skip the search, use --skip_sra_query true, or write the key by hand.
 //
 // The runinfo fetch is capped to the first 250 UIDs (efetch -start 1 -stop
-// 250 -- esearch itself has no -retmax flag) and given a 300s timeout per
+// min(Count, 250) -- esearch itself has no -retmax flag) and given a 300s timeout per
 // attempt. Without the cap, a heavily-sequenced species (e.g.
 // Cryptococcus neoformans, Fusarium graminearum, Neurospora crassa -- each
 // with 900+ matching SRA records) makes the runinfo fetch take well over the
@@ -95,6 +95,17 @@ process SRA_QUERY_BATCH {
         fi
     }
 
+    # esearch, then efetch runinfo for min(Count, 250) records. Asking efetch for
+    # -stop 250 when the query matches fewer records makes it request past the end;
+    # NCBI answers 400 and edirect retries, which ran all 3 attempts into the 300 s
+    # timeout (Cryptococcus_deneoformans, 215 matches, 2026-09-27, found in Fungi_BFD).
+    # Count 0 is a completed query with an empty result (exit 0, empty runinfo).
+    FETCH_RUNINFO='env=\$(esearch -db sra -query "\$1") || exit 1
+        n=\$(printf "%s" "\$env" | xtract -pattern ENTREZ_DIRECT -element Count)
+        [ -n "\$n" ] || exit 1
+        [ "\$n" -gt 0 ] || exit 0
+        printf "%s" "\$env" | efetch -format runinfo -start 1 -stop \$(( n < 250 ? n : 250 ))'
+
     query_species() {
         local stag="\$1" tid="\$2" attempt
         local ORG
@@ -103,8 +114,8 @@ process SRA_QUERY_BATCH {
 
         for attempt in 1 2 3; do
             rm -f "_runinfo_\${stag}.tmp"
-            if timeout 300 bash -c \\
-                    "esearch -db sra -query '\${ORG} AND RNA-Seq[Strategy] AND PAIRED[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND (BGISEQ[Platform] OR Illumina[Platform])' | efetch -format runinfo -start 1 -stop 250" \\
+            if timeout 300 bash -c "\$FETCH_RUNINFO" _ \\
+                    "\${ORG} AND RNA-Seq[Strategy] AND PAIRED[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND (BGISEQ[Platform] OR Illumina[Platform])" \\
                     < /dev/null > "_runinfo_\${stag}.tmp"; then
                 return 0
             fi
@@ -167,8 +178,8 @@ process SRA_QUERY_BATCH {
             # SE fallback: if no PE hits and enable_single_end, query SINGLE layout
             if [ "${params.enable_single_end}" = "true" ] && [ "\$NHITS" -eq 0 ]; then
                 rm -f "_runinfo_se_\${species_tag}.tmp"
-                if timeout 300 bash -c \\
-                        "esearch -db sra -query '\$(org_term "\${species_tag}" "\${taxonid}") AND RNA-Seq[Strategy] AND SINGLE[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND Illumina[Platform]' | efetch -format runinfo -start 1 -stop 250" \\
+                if timeout 300 bash -c "\$FETCH_RUNINFO" _ \\
+                        "\$(org_term "\${species_tag}" "\${taxonid}") AND RNA-Seq[Strategy] AND SINGLE[Layout] AND 00000000075[ReadLength] : 00000000300[ReadLength] AND Illumina[Platform]" \\
                         < /dev/null > "_runinfo_se_\${species_tag}.tmp"; then
                     awk -F',' -v BL="${launchDir}/rnaseq_blacklist.csv" '
                         BEGIN {

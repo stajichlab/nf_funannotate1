@@ -9,6 +9,9 @@
 #   4. header-only CSV, matching key       -> reused, no query
 #   5. header-only CSV, key for other taxon-> queried again
 #   6. CSV with a run row                  -> reused, no query
+#   7. 3 matches                           -> efetch asks for -stop 3 (not 250: NCBI 400s past the end)
+#   8. 900 matches                         -> efetch capped at -stop 250
+#   9. 0 matches                           -> efetch not called; completed query: header-only CSV + key
 #
 # Usage: bash tests/test_sra_query_cache.sh     (needs nextflow; ~1 min)
 set -uo pipefail
@@ -27,12 +30,13 @@ CALLS="$T/calls.log"
 printf '#!/bin/sh\ncat >/dev/null; echo ESEARCH\n' > "$BIN/esearch"
 cat > "$BIN/efetch" <<EOS
 #!/bin/sh
-echo efetch >> "$CALLS"
+echo "efetch \$*" >> "$CALLS"
 [ -n "\${FAKE_FAIL:-}" ] && exit 1
 echo "Run,ReleaseDate,LoadDate,spots,spots_with_mates,avgLength,size_MB,AssemblyName,download_path,Experiment,LibraryName,LibraryStrategy,LibrarySource,LibrarySelection,LibraryLayout,InsertSize,InsertDev,Platform,Model,SRAStudy,BioProject,Sample,BioSample,SampleName"
 EOS
 # runinfo columns used by the module: 1 Run, 2 date, 4 spots, 13 strategy, 16 layout, 19 platform; pad to 30.
 echo 'echo "SRR1234567,2024-01-01,x,500000,x,x,x,x,x,x,x,mycelium,RNA-Seq,x,x,PAIRED,x,x,ILLUMINA,x,SRP1,PRJ1,x,x,x,x,x,x,x,sampleA"' >> "$BIN/efetch"
+printf '#!/bin/sh\necho "${FAKE_COUNT:-1}"\n' > "$BIN/xtract"   # esearch Count
 printf '#!/bin/sh\nexit 0\n' > "$BIN/sleep"       # no 30/60 s retry backoff
 command -v timeout >/dev/null || printf '#!/bin/sh\nshift\nexec "$@"\n' > "$BIN/timeout"   # macOS has none
 chmod +x "$BIN"/*
@@ -70,6 +74,14 @@ check "5 header-only + other taxon key: re-queried" '[ "$NCALL" -ge 1 ]'
 
 reset; printf '%s\n%s,%s,SRR9,1000000,ILLUMINA,PAIRED\n' "$HDR" "$TAG" "$TID" > "$SQ/$TAG.sra_query.csv"; run FAKE_OK=1
 check "6 CSV with a run: reused" '[ "$NCALL" -eq 0 ]'
+
+reset; run FAKE_COUNT=3
+check "7 3 matches: -stop 3"  'grep -q -- "-stop 3\$" "$CALLS"'
+reset; run FAKE_COUNT=900
+check "8 900 matches: -stop 250" 'grep -q -- "-stop 250\$" "$CALLS"'
+reset; run FAKE_COUNT=0
+check "9 0 matches: efetch not called" '[ "$NCALL" -eq 0 ]'
+check "9 0 matches: header-only CSV + key" '[ "$(rows)" -eq 1 ] && [ "$(cat "$SQ/$TAG.sra_query.key" 2>/dev/null)" = "v2|$TID" ]'
 
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ] || { echo "--- last nextflow log ---"; tail -30 "$T/nf.log"; exit 1; }
