@@ -53,7 +53,16 @@ sif_dir: /shared/containers          # container images and Apptainer pull cache
 # proteins: /data/db/uniprot_sprot_fungi.faa   # default: <launch dir>/lib/swissprot_fungi.faa
 ```
 
-RNA-seq reads go in `rnaseq_reads/` per species. To test one genome first add
+RNA-seq comes from **one of two sources, chosen per species** (normally not mixed):
+
+- **Your own reads:** place `<Species_name>_norm_R1/R2/SE.fastq.gz` and an empty
+  `sra_query/<Species_name>.sra_query.csv` in `rnaseq_reads/`. Nothing is downloaded.
+- **Public reads from NCBI SRA:** leave `rnaseq_reads/` empty for that species. The
+  pipeline queries SRA, downloads and normalizes the reads into `rnaseq_reads/`.
+
+Exact file names and an example are in
+[README_Extended.md](README_Extended.md#4-choose-where-the-rna-seq-reads-come-from).
+To test one genome first add
 `--n_test 1`; to pick one use `--asmid ANID_A4`. After a stop or failure, run the
 same command again and `-resume` continues. The full walkthrough (read layout,
 `samples.csv` columns, params, container pulls) is in
