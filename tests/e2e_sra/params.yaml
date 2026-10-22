@@ -1,0 +1,10 @@
+# End-to-end SRA test: 2 small genomes, real SRA query + fetch + Trinity/PASA training + predict.
+# Add your site's sif_dir etc. in a -c file or a second params file (README.md in this directory).
+run_sra_fetch: true
+max_rnaseq_runs: 1        # one PE run per species keeps the download and Trinity small
+skip_fcs: true            # no 470 GB FCS-GX database needed for a test
+run_annotate: false
+run_antismash: false
+run_interpro: false
+run_signalp: false
+run_deeptmhmm: false
