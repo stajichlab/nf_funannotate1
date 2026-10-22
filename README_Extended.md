@@ -257,6 +257,10 @@ query result to `rnaseq_reads/sra_query/<Species_name>.sra_query.csv` and the
 normalized reads next to it. Check the CSV before a long run with
 `--stop_after_sra_query true`, which stops once the queries are done. To remove
 an unwanted run, list it in `rnaseq_blacklist.csv` in the launch directory.
+Runs are screened before they are kept: a keyword filter on the library and sample
+names, then a look at each candidate's BioSample record that drops host-associated
+and mutant-strain runs. It is a first pass, not a guarantee, so check the CSV for
+heavily studied species.
 
 ### 5. Write your site settings (two files)
 

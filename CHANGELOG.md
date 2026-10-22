@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- `SRA_QUERY_BATCH` checks each SRA run's BioSample (Title/Attributes) before keeping it, and drops
+  host-associated runs (macrophage, THP-1, tissue, ...) and mutant or engineered strains (`delta`,
+  `::`, `OE-`, knockout, RNAi, ...) that the LibraryName/SampleName keyword filter missed. The ranked
+  short-list is 15 runs (was 5), so rejected runs are backfilled; the first 5 clean ones are kept (SE:
+  `--max_rnaseq_se_runs`). A failed or empty BioSample lookup keeps the run. The keyword filter also
+  drops mutant names. Costs about 1.2 s per looked-up run. Ported from Fungi_BFD.
 - `SRA_QUERY_BATCH` searches SRA for the species name and **every** distinct `NCBI_TAXONID` of its
   strains (`txid<id>[Organism]`, expanded to child taxa) instead of only the first ID with
   `[Organism:noexp]`, which found nothing when the first ID was strain-level (Lentinula edodes). The
