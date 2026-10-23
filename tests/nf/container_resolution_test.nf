@@ -63,4 +63,8 @@ process C_DEEPTMHMM {
 
 workflow {
     C_FUNANNOTATE(); C_GENOME_CLEAN(); C_ANTISMASH(); C_SIGNALP(); C_DEEPTMHMM()
+    // Where tasks run (Linux CI) the echoed line is the output; where they fail (macOS) the error
+    // report quotes the command, which the driver also reads.
+    C_FUNANNOTATE.out.mix(C_GENOME_CLEAN.out, C_ANTISMASH.out, C_SIGNALP.out, C_DEEPTMHMM.out)
+        .view { it.trim() }
 }
