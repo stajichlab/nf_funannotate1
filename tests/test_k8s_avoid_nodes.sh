@@ -4,6 +4,10 @@
 set -uo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 command -v nextflow >/dev/null || { echo "SKIP: nextflow not found"; exit 0; }
+# The nrp profile needs Nextflow >= 26 (k8s/README.md): 25.10 applies profiles in file order and then fails
+# with "Cannot enable more than one container engine".
+major=$(nextflow -version 2>/dev/null | sed -n 's/.*version \([0-9][0-9]*\)\..*/\1/p' | head -1)
+[ "${major:-0}" -ge 26 ] || { echo "SKIP: needs Nextflow >= 26 (found ${major:-unknown})"; exit 0; }
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 check() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1"; fi; }
