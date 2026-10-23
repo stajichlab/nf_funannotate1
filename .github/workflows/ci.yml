@@ -47,6 +47,9 @@ jobs:
       - name: sif_dir resolution (site profile, env var)
         run: bash tests/test_sif_dir_resolution.sh
 
+      - name: k8s_avoid_nodes pod affinity
+        run: bash tests/test_k8s_avoid_nodes.sh
+
       - name: Schema-driven --help renders
         run: nextflow run . --help
 

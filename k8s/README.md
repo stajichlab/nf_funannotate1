@@ -183,6 +183,24 @@ tar -cf - -C /data/refdb funannotate_db | pigz | aws $EP s3 cp - s3://<bucket>/r
 aws $EP s3 cp s3://<bucket>/refdb/funannotate_db.tar.gz - | tar -xzf - -C /data/refdb
 ```
 
+## A node hangs pulling the image
+
+Task pods pull `ghcr.io/nextgenusfs/funannotate:v1.9.0` (4.2 GB compressed, one 3.9 GB layer). NRP caches
+images between nodes (Spegel, [Faster images download](https://nrp.ai/documentation/userdocs/running/fast-img-download/)),
+but a pod that lands on a node without the image, or on a bad node, can sit in `ContainerCreating` for a
+long time: one node stayed there for over an hour (`kubectl describe pod` shows `Pulling` with nothing after
+it) and, once the pod was deleted, the retry was scheduled onto the same node. Nextflow has no timeout for a
+pending pod. To spot it: `kubectl get pods -n <namespace> -o wide` and look for old `ContainerCreating` pods.
+To get past it, delete the pod (`--grace-period=0 --force` if it stays `Terminating`) and keep the node out of
+the run with `k8s_avoid_nodes`, in the run's params file or on the command line (not in a `-c` file, which is
+read after `conf/site_nrp.config`):
+
+```yaml
+k8s_avoid_nodes: [nrp-00.rcac.purdue.edu]
+```
+
+Then restart the run Job (`kubectl delete -k <run>` and `kubectl apply -k <run>`; it resumes).
+
 ## Known risks / untested
 
 - Pods get the namespace default ephemeral storage for `/tmp` (50 Gi on

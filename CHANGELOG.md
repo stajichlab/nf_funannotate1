@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `k8s_avoid_nodes` (`conf/site_nrp.config`): hostnames to keep NRP task pods off, for a node that hangs pulling the
+  image. Documented in `k8s/README.md`; test: `tests/test_k8s_avoid_nodes.sh`.
+
 ### Fixed
 - The funannotate image and `apptainer.cacheDir` now follow a `sif_dir` set by a site profile. Under
   `-profile annotate,slurm,ucr_hpcc,singularity` `container_funannotate` stayed at
