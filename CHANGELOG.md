@@ -7,6 +7,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- k8s / NRP runs use the funannotate image `docker://ghcr.io/nextgenusfs/funannotate:v1.9.0` again. Since the
+  move to the 1.9.0 release (3c4c8fd) the default was a local `.sif` path, which a pod cannot pull, so task pods
+  stayed in `InvalidImageName` unless `container_funannotate` was set by hand (found by the NRP end-to-end test).
 - The funannotate image and `apptainer.cacheDir` now follow a `sif_dir` set by a site profile. Under
   `-profile annotate,slurm,ucr_hpcc,singularity` `container_funannotate` stayed at
   `<launchDir>/singularity_cache/funannotate-1.9.0.sif` (a string built in `nextflow.config` before the
