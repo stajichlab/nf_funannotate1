@@ -5,6 +5,8 @@
 #   bash check.sh own-reads   after the own-reads launch (README.md step 4): no query was made
 #   bash check.sh key-removed after deleting the key too: the species was searched again
 set -uo pipefail
+# No `find`: the NRP shell image has none. Needs bash >= 4 (globstar) and GNU stat.
+shopt -s globstar nullglob
 MODE="${1:-run1}"; LOGDIR="logs/nextflow"
 SPECIES="Yarrowia_lipolytica Cryptococcus_deneoformans"
 pass=0; fail=0
@@ -21,29 +23,29 @@ run1)
         check "$sp: reads R2 non-empty"          '[ -s "rnaseq_reads/'"$sp"'_norm_R2.fastq.gz" ]'
         check "$sp: Trinity transcripts exist"   '[ -s "rnaseq_data/'"$sp"'.trinity-GG.fasta" ]'
     done
-    n=$(find genome_annotation -name '*.gbk' -size +0c 2>/dev/null | wc -l)
+    n=0; for g in genome_annotation/*/predict_results/*.gbk; do [ -s "$g" ] && n=$((n+1)); done
     check "GBK per genome (found $n, want 2)"    '[ "$n" -ge 2 ]'
-    find rnaseq_reads -maxdepth 1 -name '*_norm_*' -exec stat -c '%n %Y %s' {} + | sort > .e2e_reads.snapshot
+    stat -c '%n %Y %s' rnaseq_reads/*_norm_* | sort > .e2e_reads.snapshot
     echo "--- chosen runs ---"; for sp in $SPECIES; do printf '%-28s %s\n' "$sp" "$(sed 1d rnaseq_reads/sra_query/$sp.sra_query.csv | cut -d, -f3 | paste -sd' ' -)"; done ;;
 rerun)
     # Run again after `rm -rf work .nextflow`, so nothing is resumed: the SRA outputs must come
     # from the caches in rnaseq_reads/ (storeDir) and rnaseq_reads/sra_query/ (query CSV + key).
     L=$(latest_log); echo "log: $L"
-    find work -name .command.log -exec cat {} + 2>/dev/null > /tmp/e2e_cmdlog.$$
+    cat work/**/.command.log 2>/dev/null > /tmp/e2e_cmdlog.$$
     for sp in $SPECIES; do
         check "$sp: query reused, not repeated" 'grep -q "Reusing cached result for '"$sp"'" /tmp/e2e_cmdlog.$$ && ! grep -q "Found .* paired-end accessions for '"$sp"'" /tmp/e2e_cmdlog.$$'
     done
-    check "read files untouched (same size and mtime as after run 1)" 'find rnaseq_reads -maxdepth 1 -name "*_norm_*" -exec stat -c "%n %Y %s" {} + | sort | cmp -s - .e2e_reads.snapshot'
+    check "read files untouched (same size and mtime as after run 1)" 'stat -c "%n %Y %s" rnaseq_reads/*_norm_* | sort | cmp -s - .e2e_reads.snapshot'
     check "no download ran (no fasterq/prefetch)" '! grep -qiE "prefetch|fasterq-dump|fastq-dump" /tmp/e2e_cmdlog.$$'
     rm -f /tmp/e2e_cmdlog.$$ ;;
 own-reads)
-    find work -name .command.log -exec cat {} + 2>/dev/null > /tmp/e2e_cmdlog.$$
+    cat work/**/.command.log 2>/dev/null > /tmp/e2e_cmdlog.$$
     check "Yarrowia query reused (header-only CSV + key)" 'grep -q "Reusing cached result for Yarrowia_lipolytica" /tmp/e2e_cmdlog.$$'
     check "no NCBI query for Yarrowia"                    '! grep -q "Found .* paired-end accessions for Yarrowia_lipolytica" /tmp/e2e_cmdlog.$$'
     rm -f /tmp/e2e_cmdlog.$$ ;;
 key-removed)
     f=rnaseq_reads/sra_query/Yarrowia_lipolytica.sra_query
-    find work -name .command.log -exec cat {} + 2>/dev/null > /tmp/e2e_cmdlog.$$
+    cat work/**/.command.log 2>/dev/null > /tmp/e2e_cmdlog.$$
     check "Yarrowia searched again (no key)"   'grep -q "Found .* paired-end accessions for Yarrowia_lipolytica" /tmp/e2e_cmdlog.$$'
     check "CSV lists runs again"               '[ "$(grep -c . "'"$f"'.csv")" -ge 2 ]'
     check "key written again"                  '[ -s "'"$f"'.key" ]'
