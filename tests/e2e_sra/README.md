@@ -72,11 +72,19 @@ rule), and the CSV is rewritten with runs.
 
 ## NRP variant
 
-Same sample sheet and params on NRP: copy this directory to the PVC run directory
-(`/data/runs/sra_e2e`), put the genomes in `genomes/`, and use the run Job from
-[k8s/README.md](../../k8s/README.md) with `run_sra_fetch: true` (the "Turning features back on"
-step 1). Needs `sra_tools` 1.4.0 (the default), and no queue limit of more than your
-`executor.queueSize`. Run `check.sh` in the run directory from a pod
-(`kubectl exec ... -- bash check.sh`). Trinity needs the larger task sizes, so set
-`k8s.computeResourceType = 'Job'` and raise `k8s_max_cpus` / `k8s_max_memory` as k8s/README.md
-describes, or expect the PASA step to be capped at 16 cores / 32 GB.
+Run on NRP 2026-10-22 and 2026-10-23: all five steps pass (11, 4, 2, 3 checks). Layout and commands:
+
+- Run directory `/data/runs/sra_e2e` on the PVC: copy `samples.csv`, `params.yaml`, `check.sh` and
+  `fetch_genomes.sh` there (`fetch_genomes.sh` works from a shell pod, which has `curl`), set a BUSCO lineage that is on
+  the PVC (the sample sheet's `tremellomycetes_odb10` is not; use `fungi_odb10`), and start the run Job from
+  [k8s/README.md](../../k8s/README.md) (`kubectl apply -k <overlay>/runs/sra_e2e`).
+- The PVC checkout of this repo must have the funannotate image fix (a `docker://` default for k8s/NRP); without it
+  task pods sit in `InvalidImageName`.
+- Steps 3 to 5 are the same as above, done by hand: `kubectl delete -k` the finished Job, change the run directory
+  (steps 3 to 5 start with `rm -rf work .nextflow .nextflow-snapshots .nf-run.heartbeat`; step 4 makes Yarrowia's
+  query CSV header-only and keeps its key; step 5 also deletes the key), `kubectl apply -k` again, then run
+  `bash check.sh <mode>` in the run directory from a shell pod. `check.sh` needs bash >= 4 and GNU `stat` only.
+- Run 1 took about 2 hours of wall time in the first attempt and an hour after the restart; later steps about
+  15 to 30 minutes each, mostly pod start-up.
+- A node that hangs pulling the 4 GB funannotate image can stall a run for over an hour: see "A node hangs pulling
+  the image" in k8s/README.md and `k8s_avoid_nodes`.
