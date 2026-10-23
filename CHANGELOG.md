@@ -7,6 +7,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- k8s / NRP runs use the funannotate image `docker://ghcr.io/nextgenusfs/funannotate:v1.9.0` again. Since the
+  move to the 1.9.0 release (3c4c8fd) the default was a local `.sif` path, which a pod cannot pull, so task pods
+  stayed in `InvalidImageName` unless `container_funannotate` was set by hand (found by the NRP end-to-end test).
 - A `sif_dir` set in a `-c` site config file now reaches every `<sif_dir>/<name>.sif` image (funannotate, AAFTF,
   antismash, signalp, deeptmhmm, and the SignalP GPU model cache), as it already did for `--sif_dir`, a params
   file, an environment variable and a site profile. These paths were strings built when the config was parsed,
