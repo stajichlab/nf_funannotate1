@@ -5,7 +5,7 @@
 #   bash check.sh own-reads   after the own-reads launch (README.md step 4): no query was made
 #   bash check.sh key-removed after deleting the key too: the species was searched again
 set -uo pipefail
-# No `find`: the NRP shell image has none. Needs bash >= 4 (globstar) and GNU stat.
+# No `find` or `cmp`: the NRP shell image has neither. Needs bash >= 4 (globstar) and GNU stat.
 shopt -s globstar nullglob
 MODE="${1:-run1}"; LOGDIR="logs/nextflow"
 SPECIES="Yarrowia_lipolytica Cryptococcus_deneoformans"
@@ -35,7 +35,7 @@ rerun)
     for sp in $SPECIES; do
         check "$sp: query reused, not repeated" 'grep -q "Reusing cached result for '"$sp"'" /tmp/e2e_cmdlog.$$ && ! grep -q "Found .* paired-end accessions for '"$sp"'" /tmp/e2e_cmdlog.$$'
     done
-    check "read files untouched (same size and mtime as after run 1)" 'stat -c "%n %Y %s" rnaseq_reads/*_norm_* | sort | cmp -s - .e2e_reads.snapshot'
+    check "read files untouched (same size and mtime as after run 1)" '[ "$(stat -c "%n %Y %s" rnaseq_reads/*_norm_* | sort)" = "$(cat .e2e_reads.snapshot)" ]'
     check "no download ran (no fasterq/prefetch)" '! grep -qiE "prefetch|fasterq-dump|fastq-dump" /tmp/e2e_cmdlog.$$'
     rm -f /tmp/e2e_cmdlog.$$ ;;
 own-reads)
