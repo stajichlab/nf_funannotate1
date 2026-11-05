@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- `container_funannotate` is the funannotate 1.9.1 release: `<sif_dir>/funannotate-1.9.1.sif` (was
+  `funannotate-1.9.0.sif`), made with `apptainer pull <sif_dir>/funannotate-1.9.1.sif
+  docker://ghcr.io/nextgenusfs/funannotate:v1.9.1`. k8s / NRP runs use `docker://ghcr.io/nextgenusfs/funannotate:v1.9.1`.
+  From 1.9.1 on there are no `-norust` (perl EVM) images; `v1.9.0-norust` is the last one.
+
 ### Added
 - `k8s_avoid_nodes` (`conf/site_nrp.config`): hostnames to keep NRP task pods off, for a node that hangs pulling the
   image. Documented in `k8s/README.md`; test: `tests/test_k8s_avoid_nodes.sh`.

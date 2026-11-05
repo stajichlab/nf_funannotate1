@@ -185,8 +185,9 @@ aws $EP s3 cp s3://<bucket>/refdb/funannotate_db.tar.gz - | tar -xzf - -C /data/
 
 ## A node hangs pulling the image
 
-Task pods pull `ghcr.io/nextgenusfs/funannotate:v1.9.0` (4.2 GB compressed, one 3.9 GB layer). NRP caches
-images between nodes (Spegel, [Faster images download](https://nrp.ai/documentation/userdocs/running/fast-img-download/)),
+Task pods pull `ghcr.io/nextgenusfs/funannotate:v1.9.1` (2.0 GB compressed, largest layer 1.7 GB, from the
+linux/amd64 registry manifest on 2026-11-04; v1.9.0 was 4.2 GB with one 3.9 GB layer). NRP caches images
+between nodes (Spegel, [Faster images download](https://nrp.ai/documentation/userdocs/running/fast-img-download/)),
 but a pod that lands on a node without the image, or on a bad node, can sit in `ContainerCreating` for a
 long time: one node stayed there for over an hour (`kubectl describe pod` shows `Pulling` with nothing after
 it) and, once the pod was deleted, the retry was scheduled onto the same node. Nextflow has no timeout for a
