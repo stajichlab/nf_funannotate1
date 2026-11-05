@@ -316,7 +316,7 @@ taxonkit_container: https://depot.galaxyproject.org/singularity/taxonkit:0.20.0-
 process {
     // ASM_STATS runs in a minimal image by default. That image does not
     // have the tools it needs. Use the funannotate image instead.
-    withName: 'ASM_STATS|.*:ASM_STATS' { container = 'docker://ghcr.io/nextgenusfs/funannotate:v1.9.0' }
+    withName: 'ASM_STATS|.*:ASM_STATS' { container = 'docker://ghcr.io/nextgenusfs/funannotate:v1.9.1' }
 
     // Maximum resources for one task. Set these to your largest node or to
     // your workstation. Tasks that ask for more are reduced to these values.
@@ -518,14 +518,16 @@ Neither axis auto-selects a version — pick one explicitly per run:
 | 1.9.0-rc.1, perl EVM | `funannotate-1.9.0-rc.1` | `docker://ghcr.io/nextgenusfs/funannotate:v1.9.0-rc.1-norust` |
 | 1.9.0, perl EVM | `funannotate-1.9.0-rc.6` (`params.conda_env` default; manifest not yet built, pip pin is still rc.6) | `docker://ghcr.io/nextgenusfs/funannotate:v1.9.0-norust` |
 | 1.9.0-rc.1, rust EVM | `funannotate-1.9.0-rc.1-rust` | (not used) |
-| 1.9.0, rust EVM | `funannotate-1.9.0-rc.6-rust` (manifest not yet built) | `params.container_funannotate` default: `<sif_dir>/funannotate-1.9.0.sif`, a local `.sif` of `docker://ghcr.io/nextgenusfs/funannotate:v1.9.0` (rust-enabled) |
+| 1.9.1, rust EVM | `funannotate-1.9.0-rc.6-rust` (manifest not yet built) | `params.container_funannotate` default: `<sif_dir>/funannotate-1.9.1.sif`, a local `.sif` of `docker://ghcr.io/nextgenusfs/funannotate:v1.9.1` (rust-enabled) |
+
+From 1.9.1 on, no `-norust` (perl EVM) images are published. `v1.9.0-norust` is the last one.
 
 ```bash
 # 1.8.17 via conda
 sbatch run_annotate.sh --conda_env funannotate-1.8.17 -c conf/release_1_8.config
 PROVISION=conda sbatch run_annotate.sh --conda_env funannotate-1.9.0-rust
 
-# 1.9.0, perl EVM, via singularity (no-rust image)
+# 1.9.0, perl EVM, via singularity (no-rust image; the last one, none for 1.9.1+)
 PROVISION=singularity sbatch run_annotate.sh \
     --container_funannotate docker://ghcr.io/nextgenusfs/funannotate:v1.9.0-norust
 ```
@@ -540,9 +542,9 @@ PROVISION=singularity sbatch run_annotate.sh \
 
 Nextflow pulls most of these public images automatically into the `sif_dir` cache (the funannotate image is the exception, see below):
 
-- `funannotate` — the default is `<sif_dir>/funannotate-1.9.0.sif` (a local file, not pulled
+- `funannotate` — the default is `<sif_dir>/funannotate-1.9.1.sif` (a local file, not pulled
   automatically). Make it once:
-  `apptainer pull <sif_dir>/funannotate-1.9.0.sif docker://ghcr.io/nextgenusfs/funannotate:v1.9.0`.
+  `apptainer pull <sif_dir>/funannotate-1.9.1.sif docker://ghcr.io/nextgenusfs/funannotate:v1.9.1`.
   The image includes MariaDB, see below.
 - `sra` — `ghcr.io/hyphaltip/sra_tools_container/sra_tools:1.3.1` ([source](https://github.com/hyphaltip/sra_tools_container))
 - `genome_clean` — `ghcr.io/stajichlab/aaftf:latest`. The default path is
@@ -560,7 +562,7 @@ one-liners live in `conf/provision_singularity.config` next to each
 
 ### PASA MySQL backend (MariaDB)
 
-MariaDB is part of the funannotate image (`funannotate-1.9.0.sif`, from `ghcr.io/nextgenusfs/funannotate:v1.9.0`).
+MariaDB is part of the funannotate image (`funannotate-1.9.1.sif`, from `ghcr.io/nextgenusfs/funannotate:v1.9.1`).
 The image (and the `-norust` image) contains `mariadbd` 11.8.6, `mariadb-install-db`, `mariadb`
 and `/usr/bin/mysqld_safe`. With `--pasa_mysql true` under `-profile singularity`,
 `FUNANNOTATE_TRAIN` and `FUNANNOTATE_UPDATE` run inside that image, find these
@@ -582,7 +584,7 @@ The other MariaDB steps use `params.container_mariadb`: `SETUP_MARIADB_DATADIR`
   or `container_mariadb` is a `docker://` URI; the default is a local `.sif` and needs no conversion.)
   The pipeline maps the URI
   to the file Nextflow's own image cache uses in `sif_dir` (for example
-  `ghcr.io-nextgenusfs-funannotate-v1.9.0.img`). If that file is missing,
+  `ghcr.io-nextgenusfs-funannotate-v1.9.1.img`). If that file is missing,
   the first task pulls it once under a file lock; later tasks and Nextflow
   reuse it. (A direct `apptainer exec docker://...` of the funannotate image
   took 885 s and about 15 GB of temporary space on UCR HPCC.)
@@ -619,9 +621,9 @@ like the `slurm` one in `nextflow.config`.
    `NXF_SINGULARITY_CACHE` / `APPTAINER_CACHE` (fallback documented in
    `nextflow.config`). Export one of those env vars. Nextflow pulls the public
    images on first use: `sra_tools:1.3.1` (ghcr.io), and the biocontainers (edirect, prodigal,
-   skani, busco, interproscan, setup, braker3). Make `funannotate-1.9.0.sif` (includes MariaDB)
-   and `AAFTF.sif` from the public images: `apptainer pull <sif_dir>/funannotate-1.9.0.sif
-   docker://ghcr.io/nextgenusfs/funannotate:v1.9.0`; `apptainer pull <sif_dir>/AAFTF.sif
+   skani, busco, interproscan, setup, braker3). Make `funannotate-1.9.1.sif` (includes MariaDB)
+   and `AAFTF.sif` from the public images: `apptainer pull <sif_dir>/funannotate-1.9.1.sif
+   docker://ghcr.io/nextgenusfs/funannotate:v1.9.1`; `apptainer pull <sif_dir>/AAFTF.sif
    docker://ghcr.io/stajichlab/aaftf:latest`. You must build the non-public
    images listed in `conf/provision_singularity.config` yourself:
    `signalp6-fast.sif` + converted GPU weights and `DeepTMHMM-1.0.sif`

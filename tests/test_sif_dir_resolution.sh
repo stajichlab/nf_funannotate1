@@ -35,7 +35,7 @@ all_under() {  # all five labels resolve under <dir>/
 P="-profile annotate,local,singularity"
 
 resolve default -- $P -c "$T/off.config"
-check "default: all five images under <launchDir>/singularity_cache" 'grep -q "singularity_cache/" "$T/default.txt" && all_under "$T/default.txt" "$(sed -n "s/^funannotate=\(.*\)\/funannotate-1.9.0.sif$/\1/p" "$T/default.txt")"'
+check "default: all five images under <launchDir>/singularity_cache" 'grep -q "singularity_cache/" "$T/default.txt" && all_under "$T/default.txt" "$(sed -n "s/^funannotate=\(.*\)\/funannotate-1.9.1.sif$/\1/p" "$T/default.txt")"'
 
 resolve cfg -- $P -c "$T/site.config"
 check "sif_dir in a -c site config: all five images follow it"   'all_under "$T/cfg.txt" /site/cfg'
