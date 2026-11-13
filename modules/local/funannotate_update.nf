@@ -26,6 +26,16 @@ process FUNANNOTATE_UPDATE {
     def mariadb_img        = FunannotateUtils.localImageFile(mariadb_image, params.sif_dir as String)
     def ensure_mariadb_img = FunannotateUtils.ensureLocalImageScript(mariadb_image, params.sif_dir as String)
     def pasa_db_arg = "--pasa_db sqlite"
+    // params.update_alt_transcripts: null/'' = funannotate's own default (0.1, adds alt isoforms).
+    // A number in [0,1] is passed as --alt_transcripts; 1 keeps one model per locus (UTR-only update).
+    def alt_tx = params.update_alt_transcripts
+    if (alt_tx != null && alt_tx.toString() != '') {
+        def v = alt_tx.toString()
+        if (!(v ==~ /^(0|1|0?\.\d+|1\.0+)$/) || (v as double) > 1d) {
+            error "update_alt_transcripts must be a number from 0 to 1, got '${v}'"
+        }
+    }
+    def alt_arg = (alt_tx != null && alt_tx.toString() != '') ? "--alt_transcripts ${alt_tx}" : ''
     """
     # ── Skip if no reads (empty marker file from SRA_FETCH) ──────────────────
     if [ ! -s "${r1}" ]; then
@@ -241,6 +251,7 @@ process FUNANNOTATE_UPDATE {
     funannotate update -i ${params.target}/${out} \\
         --left ${r1} --right ${r2} \\
         --cpus ${task.cpus} \\
+        ${alt_arg} \\
         \$pasa_db_arg
     if [ "${params.pasa_mysql}" = "true" ]; then stop_mysqldb; fi
     echo "[INFO] stopped mysql"

@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `update_alt_transcripts` (`conf/profile_annotate.config`, default `null`): passed to `funannotate update` as
+  `--alt_transcripts` when set (number from 0 to 1). `null` keeps funannotate's default (0.1, which adds alt
+  isoforms). `1` is meant to keep one model per locus (UTR update only); check the mRNA-per-locus count on a
+  pilot before relying on it. Values outside 0 to 1 stop the task with an error.
+
 ### Changed
 - `container_funannotate` is the funannotate 1.9.1 release: `<sif_dir>/funannotate-1.9.1.sif` (was
   `funannotate-1.9.0.sif`), made with `apptainer pull <sif_dir>/funannotate-1.9.1.sif
