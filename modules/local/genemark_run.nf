@@ -296,7 +296,11 @@ process GENEMARK_RUN {
             echo "ERROR: bam2hints produced no intron hints from ${training_bam}" >&2
             exit 1
         fi
-        run_filter_introns "${filterIntronsFindStrand}" genome.fa raw_hints.gff --score > stranded_hints.gff
+        # Copy the vendored script into the task dir (bound into the container) and run the copy: a
+        # container cannot always see ${workflow.projectDir} (a clone under ~/.nextflow/assets was invisible
+        # to braker3 on UCR HPCC: "Can't open perl script"). Copy on the host, so it works in host mode too.
+        cp "${filterIntronsFindStrand}" ./filterIntronsFindStrand.pl
+        run_filter_introns ./filterIntronsFindStrand.pl genome.fa raw_hints.gff --score > stranded_hints.gff
         if [ ! -s stranded_hints.gff ]; then
             echo "ERROR: filterIntronsFindStrand.pl dropped all hints (no canonical splice sites found) -- ${training_bam} may be too noisy for --ET; consider genemark_mode=ES" >&2
             exit 1
